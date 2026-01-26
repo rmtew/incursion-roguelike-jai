@@ -1,0 +1,15 @@
+# Build artifacts
+.build/
+*.exe
+*.pdb
+*.obj
+*.lib
+*.exp
+
+# Python
+__pycache__/
+*.pyc
+
+# Editor
+*.swp
+*~
