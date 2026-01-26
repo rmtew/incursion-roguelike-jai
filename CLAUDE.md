@@ -96,9 +96,26 @@ py extract_constants.py
 - Lexer with context-sensitive tokenization
 - Parser for: Flavor, Item, Monster, Effect, Feature, Terrain, Race, Class
 
-### Next Steps
-- God/Domain parsing
-- Event handler translation (currently skipped)
+### Next Steps - Parsing Real .irh Files
+
+**Quick fixes needed:**
+- Add "Flavour" (British spelling) to lexer - 883 occurrences in source files
+- Add "Poison" keyword - 54 occurrences
+- Add "Disease" keyword - 13 occurrences
+
+**Resource types needing parser implementation:**
+| Type | Count | Priority |
+|------|-------|----------|
+| Template | 113 | High - monster/item variants |
+| Region | 94 | Medium - dungeon generation |
+| Encounter | 88 | Medium - spawn tables |
+| Text | 61 | Low - help text |
+| Domain | 44 | Medium - god powers |
+| God | 17 | Medium - religion system |
+| Dungeon | 3 | Low |
+
+**Major work:**
+- Event handler translation (currently skipped) - This is the bulk of game logic
 - Resource file loading and linking
 - Game loop integration
 
