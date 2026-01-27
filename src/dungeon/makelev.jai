@@ -18,16 +18,99 @@ TT_WANDER    :: 0x20;  // Chance to end after touching 2 rooms
 TT_NATURAL   :: 0x40;  // Curved, natural, non-horizontal tunnels
 
 // Priority levels for terrain writing (higher priority overwrites lower)
-PRIO_EMPTY        :: 0;
-PRIO_ROCK_STREAMER :: 10;
-PRIO_CORRIDOR_WALL :: 20;
+PRIO_EMPTY          :: 0;
+PRIO_ROCK_STREAMER  :: 10;
+PRIO_RIVER_STREAMER :: 15;   // Rivers/chasms have higher priority than rock streamers
+PRIO_CORRIDOR_WALL  :: 20;
 PRIO_CORRIDOR_FLOOR :: 30;
-PRIO_ROOM_WALL    :: 40;
-PRIO_ROOM_FLOOR   :: 50;
+PRIO_ROOM_WALL      :: 40;
+PRIO_ROOM_FLOOR     :: 50;
 PRIO_ROOM_FURNITURE :: 60;
-PRIO_VAULT        :: 80;
-PRIO_FEATURE_FLOOR :: 90;
-PRIO_MAX          :: 100;
+PRIO_VAULT          :: 80;
+PRIO_FEATURE_FLOOR  :: 90;
+PRIO_MAX            :: 100;
+
+// Streamer types (matching original regions with RF_RIVER, RF_CHASM, etc.)
+StreamerType :: enum {
+    WATER_RIVER;      // Wide water river crossing the map
+    WATER_STREAM;     // Narrower water feature
+    CHASM;            // Bottomless pit
+    LAVA_RIVER;       // Lava flow (not implemented yet, uses CHASM terrain)
+    RUBBLE;           // Collapsed area with rough terrain
+}
+
+// Streamer type properties
+StreamerInfo :: struct {
+    terrain: Terrain;
+    is_river: bool;     // Starts from edge, constant width
+    min_width: s32;
+    max_width: s32;
+    priority: u8;
+}
+
+STREAMER_INFO :: StreamerInfo.[
+    .{.WATER, true, 2, 5, PRIO_RIVER_STREAMER},   // WATER_RIVER
+    .{.WATER, false, 1, 3, PRIO_ROCK_STREAMER},   // WATER_STREAM
+    .{.CHASM, false, 3, 6, PRIO_RIVER_STREAMER},  // CHASM
+    .{.CHASM, false, 2, 4, PRIO_RIVER_STREAMER},  // LAVA_RIVER (uses CHASM for now)
+    .{.ROCK, false, 1, 3, PRIO_ROCK_STREAMER},    // RUBBLE (TODO: add rubble terrain)
+];
+
+// Vault structure for pre-designed special rooms
+VaultDef :: struct {
+    name: string;
+    width: s32;
+    height: s32;
+    map_data: string;    // ASCII art map, row by row
+    min_depth: s32;      // Minimum dungeon depth for this vault
+}
+
+// Simple vault definitions (placeholder for future expansion)
+// Characters: . = floor, # = wall, + = door, ~ = water, > = stairs down, < = stairs up
+VAULTS :: VaultDef.[
+    .{
+        "treasure_room",
+        7, 5,
+        #string END
+#######
+#.....#
+#..>..#
+#.....#
+##+####
+END,
+        3
+    },
+    .{
+        "water_shrine",
+        9, 7,
+        #string END
+#########
+#.......#
+#.~~~~~.#
+#.~~~~~.#
+#.~~~~~.#
+#.......#
+####+####
+END,
+        2
+    },
+    .{
+        "guard_post",
+        9, 9,
+        #string END
+#########
+#...#...#
+#...+...#
+#...#...#
+###+##+##
+#...#...#
+#...+...#
+#...#...#
+#########
+END,
+        1
+    },
+];
 
 // Room type constants (from Defines.h)
 RM_ANY       :: -1;
@@ -1811,7 +1894,11 @@ DirY :: s32.[-1, 1, 1, -1];  // NE, SE, SW, NW
 
 // Write a streamer (river or chasm) across the map
 // In original: void Map::WriteStreamer(Rect &r, uint8 sx, uint8 sy, Dir d, rID regID)
-write_streamer :: (m: *Map, terrain: Terrain, is_river: bool = false) {
+write_streamer :: (m: *Map, gs: *GenState, stype: StreamerType) {
+    info := STREAMER_INFO[cast(s32) stype];
+    terrain := info.terrain;
+    is_river := info.is_river;
+
     // Pick starting position and direction
     sx: s32;
     sy: s32;
@@ -1854,11 +1941,16 @@ write_streamer :: (m: *Map, terrain: Terrain, is_river: bool = false) {
     width: s32;
     max_width: s32;
     if is_river {
-        width = 2 + random(3);
+        width = info.min_width + random(info.max_width - info.min_width + 1);
         max_width = width;
     } else {
-        width = 1;
-        max_width = 2 + random(4);
+        width = info.min_width;
+        max_width = info.max_width;
+    }
+
+    // For chasms, ensure minimum width
+    if stype == .CHASM {
+        if max_width < 4 then max_width = 4;
     }
 
     // Movement ratios (controls how diagonal the path is)
@@ -1896,11 +1988,138 @@ write_streamer :: (m: *Map, terrain: Terrain, is_river: bool = false) {
                 tx := sx + ix;
                 ty := sy + iy;
                 if tx >= 1 && tx < m.width - 1 && ty >= 1 && ty < m.height - 1 {
-                    map_set(m, tx, ty, terrain);
+                    write_at(m, gs, tx, ty, terrain, info.priority);
                 }
             }
         }
     }
+}
+
+// Legacy version for backward compatibility
+write_streamer :: (m: *Map, terrain: Terrain, is_river: bool = false) {
+    // Determine streamer type from terrain and is_river
+    stype: StreamerType;
+    if terrain == .WATER {
+        stype = ifx is_river then .WATER_RIVER else .WATER_STREAM;
+    } else if terrain == .CHASM {
+        stype = .CHASM;
+    } else {
+        stype = .RUBBLE;
+    }
+
+    // Create temp GenState for legacy calls
+    gs: GenState;
+    gen_state_init(*gs);
+    write_streamer(m, *gs, stype);
+}
+
+// Write a vault (pre-designed special room) at a position
+// Returns true if vault was placed successfully
+write_vault :: (m: *Map, gs: *GenState, vault_idx: s32, x: s32, y: s32) -> bool {
+    if vault_idx < 0 || vault_idx >= VAULTS.count return false;
+
+    vault := VAULTS[vault_idx];
+
+    // Check if vault fits at position
+    if x + vault.width > m.width - 1 return false;
+    if y + vault.height > m.height - 1 return false;
+    if x < 1 || y < 1 return false;
+
+    // Check if area is clear (all rock)
+    for vy: 0..vault.height-1 {
+        for vx: 0..vault.width-1 {
+            cell := get_cell(gs, m, x + vx, y + vy);
+            if cell != null && cell.priority > PRIO_EMPTY {
+                return false;  // Something already here
+            }
+        }
+    }
+
+    // Parse and place the vault
+    map_chars := vault.map_data.data;
+    map_len := vault.map_data.count;
+    vx: s32 = 0;
+    vy: s32 = 0;
+
+    for i: 0..map_len-1 {
+        ch := map_chars[i];
+
+        if ch == #char "\n" {
+            vy += 1;
+            vx = 0;
+            continue;
+        }
+
+        if vx >= vault.width || vy >= vault.height continue;
+
+        terrain: Terrain;
+
+        if ch == {
+            case #char "#";  terrain = .WALL;
+            case #char ".";  terrain = .FLOOR;
+            case #char "+";  terrain = .DOOR_CLOSED;
+            case #char "~";  terrain = .WATER;
+            case #char ">";  terrain = .STAIRS_DOWN;
+            case #char "<";  terrain = .STAIRS_UP;
+            case #char " ";
+                vx += 1;
+                continue;  // Skip spaces
+            case;
+                vx += 1;
+                continue;  // Unknown character
+        }
+
+        write_at(m, gs, x + vx, y + vy, terrain, PRIO_VAULT);
+
+        // Mark as vault cell
+        cell := get_cell(gs, m, x + vx, y + vy);
+        if cell != null {
+            cell.priority = PRIO_VAULT;
+        }
+
+        vx += 1;
+    }
+
+    // Track as a room
+    room: Room;
+    room.bounds = Rect.{x, y, x + vault.width - 1, y + vault.height - 1};
+    room.connected = false;
+    array_add(*m.rooms, room);
+
+    return true;
+}
+
+// Try to place a random vault somewhere in the dungeon
+// Returns true if a vault was placed
+try_place_vault :: (m: *Map, gs: *GenState, depth: s32) -> bool {
+    // Build list of valid vaults for this depth
+    valid_vaults: [..] s32;
+    valid_vaults.allocator = temp;
+
+    for i: 0..VAULTS.count-1 {
+        if VAULTS[i].min_depth <= depth {
+            array_add(*valid_vaults, cast(s32)i);
+        }
+    }
+
+    if valid_vaults.count == 0 return false;
+
+    // Pick a random vault
+    vault_idx := valid_vaults[random(cast(s32)valid_vaults.count)];
+    vault := VAULTS[vault_idx];
+
+    // Try random positions
+    MAX_TRIES :: 50;
+    for try: 0..MAX_TRIES-1 {
+        x := 2 + random(m.width - vault.width - 4);
+        y := 2 + random(m.height - vault.height - 4);
+
+        if write_vault(m, gs, vault_idx, x, y) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 // Place doors where floor meets wall with floor on opposite side
@@ -2055,20 +2274,41 @@ generate_makelev :: (m: *Map, seed: u32) {
     // Step 2: Place streamers (rivers, chasms)
     // 30% chance for a streamer
     if random(100) < 30 {
-        streamer_type := random(3);
-        if streamer_type == 0 {
-            // Water river
-            write_streamer(m, .WATER, is_river = true);
-        } else if streamer_type == 1 {
-            // Chasm
-            write_streamer(m, .CHASM, is_river = false);
+        streamer_roll := random(100);
+        stype: StreamerType;
+
+        if streamer_roll < 35 {
+            // Water river (35%)
+            stype = .WATER_RIVER;
+        } else if streamer_roll < 55 {
+            // Chasm (20%)
+            stype = .CHASM;
+        } else if streamer_roll < 75 {
+            // Water stream (20%)
+            stype = .WATER_STREAM;
+        } else if streamer_roll < 90 {
+            // Lava river (15%) - deeper levels
+            if m.depth >= 5 {
+                stype = .LAVA_RIVER;
+            } else {
+                stype = .WATER_STREAM;
+            }
         } else {
-            // Another water feature (not full river)
-            write_streamer(m, .WATER, is_river = false);
+            // Rubble (10%)
+            stype = .RUBBLE;
         }
+
+        write_streamer(m, *gs, stype);
     }
 
-    // Step 3: Place large submaps (TODO - skip for now)
+    // Step 3: Place vaults (special pre-designed rooms)
+    // 20% chance per level, higher at deeper levels
+    vault_chance := 20 + m.depth * 5;
+    if random(100) < vault_chance {
+        if try_place_vault(m, *gs, m.depth) {
+            print("  Placed vault on level %\n", m.depth);
+        }
+    }
 
     // Step 4: Draw each panel
     for py: 0..gs.panels_y-1 {

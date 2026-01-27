@@ -438,3 +438,77 @@ The flood-fill connectivity algorithm works as follows:
 6. Carve a tunnel between them with TT_DIRECT | TT_WANDER flags
 7. Re-flood to update connectivity
 8. Repeat until no unconnected regions remain (or 26 trials)
+
+---
+
+## 2026-01-27: Enhanced Streamers and Vault System
+
+### Streamer Type System
+
+Added proper typed streamers matching the original's region-based system:
+
+**StreamerType enum:**
+- `WATER_RIVER` - Wide water crossing from edge (is_river=true)
+- `WATER_STREAM` - Narrower water feature
+- `CHASM` - Bottomless pit with minimum width 4
+- `LAVA_RIVER` - Uses CHASM terrain for now (depth 5+)
+- `RUBBLE` - Collapsed area (placeholder)
+
+**StreamerInfo struct:**
+- `terrain` - What terrain type to place
+- `is_river` - Rivers start from edge with constant width
+- `min_width` / `max_width` - Width range
+- `priority` - PRIO_RIVER_STREAMER for rivers/chasms, PRIO_ROCK_STREAMER for others
+
+**Distribution (when streamer placed):**
+| Roll | Type |
+|------|------|
+| 0-34 | WATER_RIVER (35%) |
+| 35-54 | CHASM (20%) |
+| 55-74 | WATER_STREAM (20%) |
+| 75-89 | LAVA_RIVER (15%, depth 5+) |
+| 90-99 | RUBBLE (10%) |
+
+### Vault System (Pre-Designed Rooms)
+
+Added basic vault (special room) placement system:
+
+**VaultDef struct:**
+- `name` - Identifier
+- `width` / `height` - Dimensions
+- `map_data` - ASCII art map string
+- `min_depth` - Minimum dungeon depth
+
+**Vault characters:**
+- `#` = wall, `.` = floor, `+` = door
+- `~` = water, `>` = stairs down, `<` = stairs up
+
+**Initial vaults:**
+1. `treasure_room` (7x5) - Small room with stairs, depth 3+
+2. `water_shrine` (9x7) - Room with water pool, depth 2+
+3. `guard_post` (9x9) - Four-quadrant guard post, depth 1+
+
+**Placement:**
+- 20% base chance + 5% per dungeon depth
+- Tries 50 random positions, must fit and not overlap existing rooms
+- Vaults use PRIO_VAULT (80) - higher than rooms, lower than map edges
+
+### Files Modified
+
+- `src/dungeon/makelev.jai`:
+  - Added PRIO_RIVER_STREAMER constant
+  - Added StreamerType enum and STREAMER_INFO array
+  - Added VaultDef struct and VAULTS array
+  - Enhanced write_streamer() to use StreamerType
+  - Added write_vault() and try_place_vault() functions
+  - Updated generate_makelev() to use new systems
+
+### Updated TODO
+
+- [x] TT_CONNECT flag for corridor termination
+- [x] Room touching detection during tunnel
+- [x] More streamer types based on region definitions
+- [x] Vault placement (basic system)
+- [ ] Weighted room selection from dungeon definition resources (requires full resource system)
+- [ ] More vault designs
+- [ ] Lava terrain type for proper lava rivers
