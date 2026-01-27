@@ -20,6 +20,7 @@
 ```
 incursion-port/
   CLAUDE.md              - This file (project guide)
+  PLAN-MVP.md            - MVP roadmap: dungeon generation with terminal view
   journal.md             - Development journal with change summaries
   backlog.md             - Workarounds, deferred work, and future ideas
   RECONSTRUCTION.md      - Master reconstruction guide with struct definitions
@@ -102,12 +103,30 @@ py extract_constants.py
 - Lexer with context-sensitive tokenization
 - Parser for: Flavor, Item, Monster, Effect, Feature, Terrain, Race, Class
 
-### Next Steps - Parsing Real .irh Files
+### Next Steps - MVP (see PLAN-MVP.md)
 
-**Major work:**
-- Event handler translation (currently skipped) - This is the bulk of game logic
-- Resource file loading and linking
-- Game loop integration
+1. Resource baking (compile-time .irh → runtime tables)
+2. Dungeon generator (rooms, corridors, terrain)
+3. Population system (monsters, items, features)
+4. Terminal renderer (Simp-based glyph display)
+5. Inspection interface (Claude-queryable state)
+
+### Key Jai Modules for MVP
+
+| Module | Purpose | Location |
+|--------|---------|----------|
+| Simp | 2D rendering, fonts, colors | `modules/Simp.md` |
+| Window_Creation | Window management | `modules/Window_Creation.md` |
+| Input | Keyboard/mouse events | `modules/Input.md` |
+| GUI_Test | Screenshot capture, synthetic input | `tools/GUI_Test/` |
+| Bucket_Array | Stable-handle storage for Registry | `modules/Bucket_Array.md` |
+| Pool | Block allocator with reset | `modules/Pool.md` |
+| Bit_Array | Memory-efficient FOV/explored maps | `modules/Bit_Array.md` |
+| Hash_Table | Resource lookup by name/ID | `modules/Hash_Table.md` |
+| PCG | Deterministic RNG | `modules/PCG.md` |
+| Relative_Pointers | Save files that survive mmap | `modules/Relative_Pointers.md` |
+| Command_Line | CLI args from struct | `modules/Command_Line.md` |
+| Iprof | Profiling plugin | `modules/Iprof.md` |
 
 ### Grammar Alignment (Tokens.lex / Grammar.acc)
 
@@ -179,6 +198,8 @@ py extract_constants.py
 - `#string` for multiline strings (test data)
 - `#import "Module"` for module imports
 - `#load "file.jai"` for splitting code into files (merges into current scope)
+- `temp` / `temporary_allocator` for per-frame scratch allocations (auto-reset)
+- `push_allocator(temp)` to use temporary allocator in a scope
 
 ### Useful Modules (see `C:\Data\R\git\jai\modules\*.md`)
 | Module | Purpose |

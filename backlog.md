@@ -1,5 +1,47 @@
 # Backlog
 
+## MVP Progress
+
+### Completed
+- [x] Phase 4: Terminal Renderer - Bitmap font rendering working
+- [x] Phase 2: Dungeon Generator (basic) - BSP rooms + corridors
+- [x] Phase 2: Dungeon Generator (enhanced) - Room shapes, water pools, rougher corridors
+
+### In Progress
+
+### Not Started
+- [ ] Phase 1: Resource Baking - Compile-time .irh to runtime tables
+- [ ] Phase 3: Population System - Monsters, items from encounter tables
+- [ ] Phase 5: Inspection Interface - Claude-queryable state dumps
+- [ ] Phase 6: Integration & Testing - Wire everything together
+
+## Dungeon Generator Improvements Needed
+
+### Room Variety
+- [x] Circular rooms
+- [x] Octagonal rooms
+- [x] Cross-shaped rooms
+- [x] Diamond-shaped rooms
+- [ ] Irregular caverns (WriteRCavern, WriteLifeCave style)
+- [ ] Castle-style subdivided rooms (WriteCastle)
+
+### Terrain Features
+- [x] Water pools
+- [ ] Rivers/streamers (linear water features)
+- [ ] Chasms
+- [ ] Special terrain from region definitions
+
+### Structural Features
+- Doors at room entrances (currently basic detection)
+- Secret doors
+- Traps
+- Altars, fountains, etc.
+
+### Connection Improvements
+- More natural corridor shapes
+- Occasional dead ends
+- Room connection verification (flood fill)
+
 ## Current Parsing Issues
 
 ### mundane.irh (15 errors)
@@ -44,3 +86,14 @@
 - Resource linking (references between resources)
 - Game loop integration
 - Actual game functionality
+
+## Technical Debt
+
+### Terminal Renderer
+- Font path fallback is hacky (tries both `fonts/` and `../fonts/`)
+- Could use Jai's `#run` to embed font at compile time
+
+### Dungeon Generator
+- BSP tree nodes are individually allocated (could use pool)
+- Room array uses dynamic allocation (could be fixed size for MVP)
+- No validation that all rooms are connected
