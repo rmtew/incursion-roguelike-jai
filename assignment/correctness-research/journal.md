@@ -1,0 +1,89 @@
+# Correctness Research Journal
+
+## 2026-01-28: Initial Setup
+
+### Session Goals
+- Created `assignment/correctness-research` folder
+- Established initial notes on verification strategies
+- Identified key approaches for ensuring reimplementation correctness
+
+### Approaches Identified
+
+1. **Parser Output Comparison** - Compare parsed structures between original and port
+2. **Golden File Testing** - Create expected-output test files
+3. **Value Extraction** - Extract runtime data from original executable
+4. **Replay Testing** - Record and replay game sessions
+5. **Property-Based Testing** - Define and verify invariants
+6. **Side-by-Side Review** - Manual code comparison
+
+### Recommended Starting Point
+
+**Golden file testing** appears most practical for immediate use:
+- Self-contained
+- No need to modify or build original source
+- Can incrementally cover more resources
+- Documents expected behavior as side effect
+
+### Key Questions Raised
+
+1. Can original Incursion source be built to create reference executable?
+2. What computed values exist in parsed resources that differ from file content?
+3. What's the minimum verification needed for MVP confidence?
+
+### Next Steps
+
+1. Create sample golden file for one Monster resource
+2. Build dump utility for Jai parser output
+3. Design comparison format
+
+---
+
+## 2026-01-28: Authoritative Specification Analysis
+
+### Key Discovery: lang/ Folder
+
+The `lang/` folder in the original source contains the **authoritative specification**:
+
+1. **`Tokens.lex`** (483 lines) - FLex lexer specification
+   - Defines all token types, keywords, context sensitivity
+   - Shows exactly how `brace_level`, `decl_state` control keyword recognition
+   - Lists all Keywords1 (always reserved) vs Keywords2 (only outside code)
+   - Defines ATTRIBUTE, COLOR, DIRECTION, WEP_TYPE, STYPE tokens with values
+
+2. **`Grammar.acc`** (1500+ lines) - ACCENT parser grammar
+   - Complete BNF+ with semantic actions
+   - Shows exact syntax for every resource type
+   - Defines `cexpr` precedence levels, `dice_val`, `mval`, etc.
+   - Shows `gear_entry`, `special_ability`, `abil_level` syntax
+
+### Verification Strategy Refinement
+
+With the authoritative specs available, the best approach is:
+
+1. **Grammar-Based Testing**: Write test cases that exercise every grammar rule
+2. **Token Verification**: Ensure lexer produces correct tokens for all categories
+3. **Parse Tree Comparison**: For each resource type, verify parsed structures match
+
+### Practical Verification Checklist
+
+For each resource type, verify:
+- [ ] All fields are parsed correctly
+- [ ] Optional fields default to correct values
+- [ ] Flags are accumulated properly (| operator)
+- [ ] Nested constructs (gear_entry, special_ability) work
+- [ ] Event handlers parse and attach correctly
+- [ ] Constants and Lists are stored properly
+
+### Original Parser Infrastructure
+
+From exploration:
+- `src/yygram.cpp` (36,962 lines) - Generated ACCENT parser
+- `src/Tokens.cpp` - Generated FLex lexer
+- `src/RComp.cpp` (1,440 lines) - Compiler driver
+- `src/Debug.cpp` - Has `Dump()` methods for all resource types (lines 1856-1978)
+
+The `TMonster::Dump()`, `TItem::Dump()` etc. functions could be used to generate expected output for comparison.
+
+---
+
+*Future entries should be appended below*
