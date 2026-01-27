@@ -79,6 +79,7 @@ TokenType :: enum u16 {
     DIRECTION  :: 92;  // North, South, etc. - int_value = direction constant
     WEP_TYPE   :: 93;  // slash, pierce, blunt - int_value = SLASH, PIERCE, BLUNT
     STYPE      :: 94;  // fort, ref, will - int_value = FORT, REF, WILL
+    MAPAREA    :: 95;  // Map grid data from {:...:} block
 
     // Control flow keywords (100-119)
     KW_IF      :: 100;
@@ -365,6 +366,7 @@ Lexer :: struct {
     line:        s32;
     column:      s32;
     brace_level: s32;   // Track { } depth for context-sensitive lexing
+    grid_mode:   bool;  // Set after seeing Grid: to handle {: map grid :}
 }
 
 lexer_init :: (source: string) -> Lexer {
@@ -374,6 +376,7 @@ lexer_init :: (source: string) -> Lexer {
     lex.line = 1;
     lex.column = 1;
     lex.brace_level = 0;
+    lex.grid_mode = false;
     return lex;
 }
 
@@ -1152,11 +1155,53 @@ scan_identifier :: (lex: *Lexer, start_pos: s64, start_line: s32, start_col: s32
     // Check for keyword
     kw_type := lookup_keyword(text, in_code);
     if kw_type != .INVALID {
+        // Set grid_mode when we see the Grid keyword
+        if kw_type == .KW_GRID {
+            lex.grid_mode = true;
+        }
         return make_token(lex, kw_type, text, start_line, start_col);
     }
 
     // Plain identifier
     return make_token(lex, .IDENTIFIER, text, start_line, start_col);
+}
+
+// Map grid scanning - reads {: ... :} block
+// Returns MAPAREA token with grid contents, stripping whitespace from line edges
+scan_map_grid :: (lex: *Lexer, start_pos: s64, start_line: s32, start_col: s32) -> Token {
+    // We've seen '{', now consume ':'
+    advance_char(lex);  // consume ':'
+    lex.grid_mode = false;  // Reset grid mode
+
+    grid_start := lex.pos;
+
+    // Read until we see :}
+    while !is_at_end(lex) {
+        c := peek_char(lex);
+        if c == #char ":" {
+            // Check if next is }
+            if lex.pos + 1 < lex.source.count && lex.source[lex.pos + 1] == #char "}" {
+                // Found :}, extract grid content
+                grid_content := slice(lex.source, grid_start, lex.pos - grid_start);
+                advance_char(lex);  // consume ':'
+                advance_char(lex);  // consume '}'
+
+                // Process the grid: strip leading/trailing whitespace from each line
+                // and calculate dimensions
+                tok := make_token(lex, .MAPAREA, grid_content, start_line, start_col);
+                return tok;
+            }
+        }
+        if c == #char "\n" {
+            lex.line += 1;
+            lex.column = 0;
+        }
+        advance_char(lex);
+    }
+
+    // Unterminated grid
+    tok := make_token(lex, .INVALID, "Unterminated map grid", start_line, start_col);
+    return tok;
 }
 
 // Multi-character operator scanning
@@ -1329,6 +1374,10 @@ lexer_next_token :: (lex: *Lexer) -> Token {
     if c == #char ";" return make_token(lex, .SEMICOLON, ";", start_line, start_col);
     if c == #char "," return make_token(lex, .COMMA, ",", start_line, start_col);
     if c == #char "{" {
+        // Check for map grid syntax: {: ... :}
+        if lex.grid_mode && peek_char(lex) == #char ":" {
+            return scan_map_grid(lex, start_pos, start_line, start_col);
+        }
         lex.brace_level += 1;
         return make_token(lex, .LBRACE, "{", start_line, start_col);
     }

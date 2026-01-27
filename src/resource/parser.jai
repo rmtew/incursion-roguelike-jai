@@ -48,10 +48,53 @@ ParsedGrant :: struct {
     starting_level: s64;
 }
 
+GearFlags :: enum_flags u32 {
+    CURSED;        // GF_CURSED
+    BLESSED;       // GF_BLESSED
+    RANDOM_ITEM;   // GF_RANDOM_ITEM
+    RANDOM_EFFECT; // GF_RANDOM_EFFECT
+    ELSE_BRANCH;   // GF_ELSE
+}
+
 ParsedGearEntry :: struct {
-    has_quantity: bool;
-    quantity:     ParsedDice;
-    item_ref:     string;
+    // Condition (IF expr)
+    has_condition:   bool;
+    condition:       string;  // We store condition code as string for now
+
+    // Chance percentage (N%)
+    has_chance:      bool;
+    chance:          s64;
+
+    // Quantity (dice)
+    has_quantity:    bool;
+    quantity:        ParsedDice;
+
+    // Item reference or random
+    item_ref:        string;       // $"item name"
+    random_item:     s64;          // RANDOM cexpr3
+
+    // Enhancement bonus (+N or -N)
+    has_bonus:       bool;
+    bonus:           s64;
+
+    // Qualities (WITH [...])
+    qualities:       [4] s64;
+    quality_count:   s64;
+
+    // Template (OF $"template")
+    template_ref:    string;
+
+    // Random effect range (OF RANDOM N TO M)
+    random_effect_min: s64;
+    random_effect_max: s64;
+
+    // Location (AT (x, y))
+    has_location:    bool;
+    loc_x:           s64;
+    loc_y:           s64;
+
+    // Flags
+    flags:           GearFlags;
 }
 
 ParsedList :: struct {
@@ -212,6 +255,7 @@ ParsedMonster :: struct {
     immunities:   [..] s64;
     resistances:  [..] s64;
     stati:        [..] ParsedStati;
+    gear:         [..] ParsedGearEntry;
     line, column: s32;
 }
 
@@ -432,6 +476,10 @@ ParsedRegion :: struct {
     floor:        string;        // $"shallow water"
     has_depth:    bool;
     depth:        s64;
+    has_grid:     bool;
+    grid:         string;        // Map grid content
+    grid_width:   s64;           // Width calculated from grid
+    grid_height:  s64;           // Height calculated from grid
     lists:        [..] ParsedList;
     line, column: s32;
 }
@@ -484,6 +532,56 @@ ParsedText :: struct {
     line, column: s32;
 }
 
+// Module header
+ParsedModule :: struct {
+    has_name:     bool;
+    name:         string;
+    has_file:     bool;
+    file:         string;
+    has_slot:     bool;
+    slot:         s64;
+}
+
+// Artifact power types
+ArtPowerType :: enum u8 { EQUIP; WIELD; HIT; INVOKE; }
+ArtPowerKind :: enum u8 { STATI; EFFECT; INNATE; FEAT; }
+
+ParsedArtPower :: struct {
+    power_type:   ArtPowerType;  // When this power activates
+    kind:         ArtPowerKind;  // What kind of power
+    // For STATI
+    stati_type:   s64;
+    stati_param:  s64;
+    // For EFFECT/INNATE
+    effect_ref:   string;        // $"spell name"
+    // For FEAT
+    feat_id:      s64;
+    // Usage limits
+    has_uses:     bool;
+    uses_per_day: s64;
+    uses_per_week: s64;
+    has_dice:     bool;
+    use_dice:     ParsedDice;
+}
+
+ParsedArtifact :: struct {
+    name:         string;
+    has_desc:     bool;
+    desc:         string;
+    has_item:     bool;
+    item_ref:     string;        // Base item $"item name"
+    // Attribute adjustments
+    attr_adj:     [8] s64;       // A_STR through A_LOY
+    has_attr_adj: [8] bool;
+    // Properties
+    resists:      s64;           // Bitfield of resistances
+    sustains:     s64;           // Bitfield of sustained attributes
+    qualities:    s64;           // Bitfield of qualities
+    // Powers
+    powers:       [..] ParsedArtPower;
+    line, column: s32;
+}
+
 // Dungeon
 ParsedSpecial :: struct {
     room_ref:     string;        // $"room name"
@@ -511,6 +609,9 @@ Parser :: struct {
     errors:    [..] ParseError;
     had_error: bool;
 
+    // Module header (optional, at top of file)
+    module:     ParsedModule;
+
     // Parsed results
     flavors:    [..] ParsedFlavor;
     items:      [..] ParsedItem;
@@ -527,6 +628,7 @@ Parser :: struct {
     gods:       [..] ParsedGod;
     texts:      [..] ParsedText;
     dungeons:   [..] ParsedDungeon;
+    artifacts:  [..] ParsedArtifact;
 }
 
 // Parser initialization
@@ -600,6 +702,48 @@ add_error :: (p: *Parser, msg: string) {
     err.message = msg;
     array_add(*p.errors, err);
     p.had_error = true;
+}
+
+// Calculate grid dimensions from map grid content
+// Returns (width, height). Width is the length of the first non-empty line.
+calculate_grid_dimensions :: (grid_text: string) -> s64, s64 {
+    width: s64 = 0;
+    height: s64 = 0;
+    line_start: s64 = 0;
+    line_count: s64 = 0;
+
+    for i: 0..grid_text.count-1 {
+        if grid_text[i] == #char "\n" {
+            line_len := i - line_start;
+            // Skip leading/trailing whitespace on the line
+            trimmed_len := count_non_whitespace_chars(grid_text, line_start, i);
+            if trimmed_len > 0 {
+                if width == 0 width = trimmed_len;
+                height += 1;
+            }
+            line_start = i + 1;
+        }
+    }
+    // Handle last line if no trailing newline
+    if line_start < grid_text.count {
+        trimmed_len := count_non_whitespace_chars(grid_text, line_start, grid_text.count);
+        if trimmed_len > 0 {
+            if width == 0 width = trimmed_len;
+            height += 1;
+        }
+    }
+    return width, height;
+}
+
+count_non_whitespace_chars :: (text: string, start: s64, end: s64) -> s64 {
+    count: s64 = 0;
+    for i: start..end-1 {
+        c := text[i];
+        if c != #char " " && c != #char "\t" && c != #char "\r" {
+            count += 1;
+        }
+    }
+    return count;
 }
 
 // Expression parsing
@@ -884,10 +1028,13 @@ parse_grant_level_condition :: (p: *Parser, grant: *ParsedGrant) -> bool {
     if match(p, .KW_EVERY) {
         tok := peek(p);
         if tok.type == .KW_LEVEL {
+            // "every level" - every level starting at 1
             advance(p);
             grant.level_type = .EVERY_LEVEL;
             grant.every_n = 1;
+            grant.starting_level = 1;
         } else {
+            // "every N level" - every Nth level
             n, n_ok := parse_cexpr3(p);
             if !n_ok return false;
             skip_ordinal_suffix(p);
@@ -897,19 +1044,25 @@ parse_grant_level_condition :: (p: *Parser, grant: *ParsedGrant) -> bool {
 
             grant.level_type = .EVERY_NTH_LEVEL;
             grant.every_n = n;
+            grant.starting_level = 1;  // Default starting level
         }
 
-        _, start_ok := consume(p, .KW_STARTING, "Expected 'starting'");
-        if !start_ok return false;
-        _, at2_ok := consume(p, .KW_AT, "Expected 'at'");
-        if !at2_ok return false;
+        // Optional "starting at N" clause
+        if match(p, .KW_STARTING) {
+            _, at2_ok := consume(p, .KW_AT, "Expected 'at'");
+            if !at2_ok return false;
 
-        start_level, start_ok2 := parse_cexpr3(p);
-        if !start_ok2 return false;
-        skip_ordinal_suffix(p);
+            start_level, start_ok2 := parse_cexpr3(p);
+            if !start_ok2 return false;
+            skip_ordinal_suffix(p);
 
-        grant.starting_level = start_level;
+            grant.starting_level = start_level;
+
+            // Optional trailing "level" keyword
+            match(p, .KW_LEVEL);
+        }
     } else {
+        // "N level" - at specific level N
         level, lvl_ok := parse_cexpr3(p);
         if !lvl_ok return false;
         skip_ordinal_suffix(p);
@@ -1045,6 +1198,207 @@ parse_flags_list :: (p: *Parser, flags: *[..] s64) -> bool {
     return semi_ok;
 }
 
+// Gear parsing - full grammar support
+// gear_entry: (IF '(' expr ')')? (N%)? (dice)? (CURSED|BLESSED)? (res_ref|RANDOM n) (+/-N)? (WITH [..] | OF ..)*
+parse_gear_list :: (p: *Parser, gear: *[..] ParsedGearEntry) -> bool {
+    advance(p);  // consume 'Gear'
+
+    _, colon_ok := consume(p, .COLON, "Expected ':'");
+    if !colon_ok return false;
+
+    is_else := false;
+    while true {
+        entry: ParsedGearEntry;
+        if is_else {
+            entry.flags |= .ELSE_BRANCH;
+        }
+
+        if !parse_gear_entry(p, *entry) return false;
+        array_add(gear, entry);
+
+        // Check for comma (continue) or ELSE (else branch) or done
+        if match(p, .COMMA) {
+            is_else = false;
+        } else if match(p, .KW_ELSE) {
+            is_else = true;
+        } else {
+            break;
+        }
+    }
+
+    match(p, .SEMICOLON);
+    return true;
+}
+
+parse_gear_entry :: (p: *Parser, entry: *ParsedGearEntry) -> bool {
+    // (IF '(' sep_expr ')' )?
+    if match(p, .KW_IF) {
+        _, lparen_ok := consume(p, .LPAREN, "Expected '('");
+        if !lparen_ok return false;
+
+        // Skip the condition expression for now - we'd need full expression parsing
+        entry.has_condition = true;
+        paren_depth := 1;
+        while paren_depth > 0 && !parser_is_at_end(p) {
+            tok := advance(p);
+            if tok.type == .LPAREN paren_depth += 1;
+            if tok.type == .RPAREN paren_depth -= 1;
+        }
+    }
+
+    // (NUMBER '%' )?
+    if check(p, .NUMBER) || check(p, .PERCENT) {
+        next := peek(p);
+        // Check if it's N% or a PERCENT token (which includes the number)
+        if next.type == .PERCENT {
+            entry.has_chance = true;
+            entry.chance = next.int_value;
+            advance(p);
+        } else if next.type == .NUMBER {
+            // Look ahead for %
+            advance(p);
+            if match(p, .MODULO) {  // % operator
+                entry.has_chance = true;
+                entry.chance = next.int_value;
+            } else {
+                // Not a percentage, put it back (will be parsed as dice or item)
+                p.pos -= 1;
+            }
+        }
+    }
+
+    // (dice_only)? - e.g., 1d4, 2d6
+    // Dice are tokenized as NUMBER DICE_D NUMBER (e.g., 1d4)
+    // We check if this looks like a dice expression (not a percentage, not an item ref)
+    if (check(p, .NUMBER) && check_at(p, 1, .DICE_D)) ||
+       (check(p, .DICE_D)) {
+        // Try to parse dice
+        dice, dice_ok := parse_dice_value(p);
+        if dice_ok {
+            entry.has_quantity = true;
+            entry.quantity = dice;
+        }
+    }
+
+    // (CURSED | BLESSED)?
+    if match(p, .KW_CURSED) {
+        entry.flags |= .CURSED;
+    } else if match(p, .KW_BLESSED) {
+        entry.flags |= .BLESSED;
+    }
+
+    // (res_ref | RANDOM cexpr3) - required
+    tok := peek(p);
+    if tok.type == .RES_REF {
+        advance(p);
+        entry.item_ref = extract_res_ref_name(tok.text);
+    } else if match(p, .KW_RANDOM) {
+        entry.flags |= .RANDOM_ITEM;
+        val, ok := parse_cexpr3(p);
+        if ok {
+            entry.random_item = val;
+        }
+    } else {
+        // No item specified - might be syntax error, but let it pass
+        return true;
+    }
+
+    // (+/- NUMBER)?
+    if match(p, .PLUS) {
+        val, ok := parse_cexpr3(p);
+        if ok {
+            entry.has_bonus = true;
+            entry.bonus = val;
+        }
+    } else if match(p, .MINUS) {
+        val, ok := parse_cexpr3(p);
+        if ok {
+            entry.has_bonus = true;
+            entry.bonus = -val;
+        }
+    }
+
+    // (WITH [...] | OF ... | AT (x,y))*
+    while true {
+        // WITH '[' qualities ']'
+        if match(p, .KW_WITH) {
+            _, lbracket_ok := consume(p, .LBRACKET, "Expected '['");
+            if !lbracket_ok return false;
+
+            while entry.quality_count < 4 && !check(p, .RBRACKET) && !parser_is_at_end(p) {
+                qual_val, qual_ok := parse_cexpr(p);
+                if !qual_ok break;
+                entry.qualities[entry.quality_count] = qual_val;
+                entry.quality_count += 1;
+                match(p, .COMMA);
+            }
+
+            _, rbracket_ok := consume(p, .RBRACKET, "Expected ']'");
+            if !rbracket_ok return false;
+        }
+        // OF res_ref | OF RANDOM ...
+        else if match(p, .KW_OF) {
+            if match(p, .KW_RANDOM) {
+                entry.flags |= .RANDOM_EFFECT;
+
+                // Check for range: TO syntax
+                if check(p, .NUMBER) || check(p, .CONSTANT) {
+                    min_val, min_ok := parse_cexpr3(p);
+                    if min_ok {
+                        if match(p, .KW_TO) {
+                            max_val, max_ok := parse_cexpr3(p);
+                            if max_ok {
+                                entry.random_effect_min = min_val;
+                                entry.random_effect_max = max_val;
+                            }
+                        } else {
+                            // Just max value
+                            entry.random_effect_max = min_val;
+                        }
+                    }
+                }
+                // else: just RANDOM with no value
+            } else if check(p, .RES_REF) {
+                tmpl_tok := advance(p);
+                entry.template_ref = extract_res_ref_name(tmpl_tok.text);
+            }
+        }
+        // AT '(' x ',' y ')'
+        else if match(p, .KW_AT) {
+            _, lparen_ok := consume(p, .LPAREN, "Expected '('");
+            if !lparen_ok return false;
+
+            x_val, x_ok := parse_cexpr3(p);
+            if !x_ok return false;
+
+            _, comma_ok := consume(p, .COMMA, "Expected ','");
+            if !comma_ok return false;
+
+            y_val, y_ok := parse_cexpr3(p);
+            if !y_ok return false;
+
+            _, rparen_ok := consume(p, .RPAREN, "Expected ')'");
+            if !rparen_ok return false;
+
+            entry.has_location = true;
+            entry.loc_x = x_val;
+            entry.loc_y = y_val;
+        }
+        else {
+            break;
+        }
+    }
+
+    return true;
+}
+
+// Check token at offset from current position
+check_at :: (p: *Parser, offset: s64, token_type: TokenType) -> bool {
+    idx := p.pos + offset;
+    if idx >= p.tokens.count return false;
+    return p.tokens[idx].type == token_type;
+}
+
 // Constants section parsing
 parse_constants_section :: (p: *Parser, constants: *[..] ParsedConstant) -> bool {
     advance(p);  // consume 'Constants'
@@ -1099,11 +1453,14 @@ parse_constants_section :: (p: *Parser, constants: *[..] ParsedConstant) -> bool
 parser_parse :: (p: *Parser) -> bool {
     while !parser_is_at_end(p) {
         if !parse_resource(p) {
-            // Error recovery
+            // Error recovery - skip to next statement or block boundary
             while !parser_is_at_end(p) && !check(p, .SEMICOLON) && !check(p, .RBRACE) {
                 advance(p);
             }
-            if check(p, .SEMICOLON) advance(p);
+            // Consume the terminator to avoid infinite loops
+            if check(p, .SEMICOLON) || check(p, .RBRACE) {
+                advance(p);
+            }
         }
     }
     return !p.had_error;
@@ -1112,6 +1469,37 @@ parser_parse :: (p: *Parser) -> bool {
 // Resource dispatch
 parse_resource :: (p: *Parser) -> bool {
     tok := peek(p);
+
+    // Module header statements (can appear at top of file)
+    if tok.type == .KW_MODULE {
+        advance(p);
+        name_tok, name_ok := consume(p, .STRING, "Expected module name");
+        if !name_ok return false;
+        p.module.has_name = true;
+        p.module.name = extract_string_content(name_tok.text);
+        _, semi_ok := consume(p, .SEMICOLON, "Expected ';'");
+        return semi_ok;
+    }
+    if tok.type == .KW_FILE {
+        advance(p);
+        file_tok, file_ok := consume(p, .STRING, "Expected file path");
+        if !file_ok return false;
+        p.module.has_file = true;
+        p.module.file = extract_string_content(file_tok.text);
+        _, semi_ok := consume(p, .SEMICOLON, "Expected ';'");
+        return semi_ok;
+    }
+    if tok.type == .KW_SLOT {
+        advance(p);
+        slot_val, slot_ok := parse_cexpr(p);
+        if !slot_ok return false;
+        p.module.has_slot = true;
+        p.module.slot = slot_val;
+        _, semi_ok := consume(p, .SEMICOLON, "Expected ';'");
+        return semi_ok;
+    }
+
+    // Resource definitions
     if tok.type == .KW_FLAVOR    return parse_flavor(p);
     if tok.type == .KW_MONSTER   return parse_monster(p);
     if tok.type == .KW_ITEM      return parse_item(p);
@@ -1128,6 +1516,7 @@ parse_resource :: (p: *Parser) -> bool {
     if tok.type == .KW_GOD       return parse_god(p);
     if tok.type == .KW_TEXT      return parse_text(p);
     if tok.type == .KW_DUNGEON   return parse_dungeon(p);
+    if tok.type == .KW_ARTIFACT  return parse_artifact(p);
 
     add_error(p, "Expected resource definition");
     return false;
@@ -1300,6 +1689,8 @@ parse_monster :: (p: *Parser) -> bool {
             match(p, .SEMICOLON);
         } else if tok.type == .KW_FLAGS {
             if !parse_flags_list(p, *monster.flags) return false;
+        } else if tok.type == .KW_GEAR {
+            if !parse_gear_list(p, *monster.gear) return false;
         } else if tok.type == .KW_ON || tok.type == .KW_EVENT {
             skip_event_handler(p);
         } else {
@@ -2145,8 +2536,10 @@ parse_template :: (p: *Parser) -> bool {
     tmpl.column = start_tok.column;
 
     // Check for "for MA_*" clause
+    // Note: "for" is tokenized as KW_FOR_KW outside code blocks, or IDENTIFIER in some contexts
     tok := peek(p);
-    if tok.type == .IDENTIFIER && strings_equal_nocase(tok.text, "for") {
+    if tok.type == .KW_FOR_KW || tok.type == .KW_FOR ||
+       (tok.type == .IDENTIFIER && strings_equal_nocase(tok.text, "for")) {
         advance(p);
         for_val, for_ok := parse_cexpr(p);
         if !for_ok return false;
@@ -2296,16 +2689,7 @@ parse_template_entry :: (p: *Parser, tmpl: *ParsedTemplate) -> bool {
     }
 
     if tok.type == .KW_GEAR {
-        // Skip gear definitions for now (complex)
-        advance(p);
-        _, colon_ok := consume(p, .COLON, "Expected ':'");
-        if !colon_ok return false;
-        // Skip until semicolon
-        while !check(p, .SEMICOLON) && !check(p, .RBRACE) && !parser_is_at_end(p) {
-            advance(p);
-        }
-        match(p, .SEMICOLON);
-        return true;
+        return parse_gear_list(p, *tmpl.gear);
     }
 
     if tok.type == .KW_GRANTS {
@@ -2519,6 +2903,20 @@ parse_region :: (p: *Parser) -> bool {
             if !ok return false;
             region.has_depth = true;
             region.depth = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_GRID {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            // Grid: is followed by MAPAREA token ({: ... :})
+            grid_tok, grid_ok := consume(p, .MAPAREA, "Expected map grid");
+            if !grid_ok return false;
+            region.has_grid = true;
+            region.grid = grid_tok.text;
+            // Calculate grid dimensions from content
+            width, height := calculate_grid_dimensions(grid_tok.text);
+            region.grid_width = width;
+            region.grid_height = height;
             match(p, .SEMICOLON);
         } else if tok.type == .KW_LISTS {
             // Skip Lists for now (complex encounter list syntax)
@@ -2959,4 +3357,279 @@ parse_dungeon :: (p: *Parser) -> bool {
 
     array_add(*p.dungeons, dungeon);
     return true;
+}
+
+// Artifact resource parser
+// Grammar: artifact_def: ARTIFACT LITERAL '{' (arti_entry)* '}';
+parse_artifact :: (p: *Parser) -> bool {
+    start_tok := advance(p);  // consume 'Artifact'
+
+    name_tok, name_ok := consume(p, .STRING, "Expected artifact name");
+    if !name_ok return false;
+
+    artifact: ParsedArtifact;
+    artifact.name = extract_string_content(name_tok.text);
+    artifact.line = start_tok.line;
+    artifact.column = start_tok.column;
+
+    _, lbrace_ok := consume(p, .LBRACE, "Expected '{'");
+    if !lbrace_ok return false;
+
+    while !check(p, .RBRACE) && !parser_is_at_end(p) {
+        if !parse_artifact_entry(p, *artifact) {
+            // Skip to next entry on error
+            while !check(p, .RBRACE) && !check(p, .SEMICOLON) && !parser_is_at_end(p) {
+                advance(p);
+            }
+            match(p, .SEMICOLON);
+        }
+    }
+
+    _, rbrace_ok := consume(p, .RBRACE, "Expected '}'");
+    if !rbrace_ok return false;
+
+    array_add(*p.artifacts, artifact);
+    return true;
+}
+
+parse_artifact_entry :: (p: *Parser, artifact: *ParsedArtifact) -> bool {
+    tok := peek(p);
+
+    // Desc: "text";
+    if tok.type == .KW_DESC {
+        advance(p);
+        match(p, .COLON);
+        desc_tok, desc_ok := consume(p, .STRING, "Expected description");
+        if !desc_ok return false;
+        artifact.has_desc = true;
+        artifact.desc = extract_string_content(desc_tok.text);
+        match(p, .SEMICOLON);
+        return true;
+    }
+
+    // Item: $"item ref";
+    if tok.type == .KW_ITEM {
+        advance(p);
+        match(p, .COLON);
+        ref_tok, ref_ok := consume(p, .RES_REF, "Expected item reference");
+        if !ref_ok return false;
+        artifact.has_item = true;
+        artifact.item_ref = extract_res_ref_name(ref_tok.text);
+        match(p, .SEMICOLON);
+        return true;
+    }
+
+    // Attribute adjustments: Str: +2, Dex: -1, ...;
+    if tok.type == .ATTRIBUTE {
+        while check(p, .ATTRIBUTE) {
+            attr_tok := advance(p);
+            attr_idx := attr_tok.int_value;
+            match(p, .COLON);
+            val, val_ok := parse_cexpr3(p);
+            if !val_ok return false;
+            if attr_idx >= 0 && attr_idx < 8 {
+                artifact.has_attr_adj[attr_idx] = true;
+                artifact.attr_adj[attr_idx] = val;
+            }
+            if !match(p, .COMMA) break;
+        }
+        match(p, .SEMICOLON);
+        return true;
+    }
+
+    // Resists: RES_FIRE, RES_COLD, ...;
+    if tok.type == .KW_RESISTS {
+        advance(p);
+        match(p, .COLON);
+        while true {
+            res_val, res_ok := parse_cexpr3(p);
+            if !res_ok break;
+            artifact.resists |= res_val;
+            if !match(p, .COMMA) break;
+        }
+        match(p, .SEMICOLON);
+        return true;
+    }
+
+    // Sustains: Str, Dex, ...;
+    if tok.type == .KW_SUSTAINS {
+        advance(p);
+        match(p, .COLON);
+        while check(p, .ATTRIBUTE) {
+            attr_tok := advance(p);
+            attr_idx := attr_tok.int_value;
+            if attr_idx >= 0 && attr_idx < 8 {
+                artifact.sustains |= (1 << attr_idx);
+            }
+            if !match(p, .COMMA) break;
+        }
+        match(p, .SEMICOLON);
+        return true;
+    }
+
+    // Qualities: QU_ONE, ...;
+    if tok.type == .KW_QUALITIES {
+        advance(p);
+        match(p, .COLON);
+        while true {
+            qu_val, qu_ok := parse_cexpr3(p);
+            if !qu_ok break;
+            artifact.qualities |= qu_val;
+            if !match(p, .COMMA) break;
+        }
+        match(p, .SEMICOLON);
+        return true;
+    }
+
+    // Equip/Wield/Hit/Invoke FOR power, power, ...;
+    if tok.type == .KW_EQUIP || tok.type == .KW_WIELD ||
+       tok.type == .KW_HIT || tok.type == .KW_INVOKE {
+        power_type: ArtPowerType;
+        if tok.type == .KW_EQUIP  power_type = .EQUIP;
+        if tok.type == .KW_WIELD  power_type = .WIELD;
+        if tok.type == .KW_HIT    power_type = .HIT;
+        if tok.type == .KW_INVOKE power_type = .INVOKE;
+        advance(p);
+
+        // Expect FOR
+        if !match(p, .KW_FOR) && !match(p, .KW_FOR_KW) {
+            add_error(p, "Expected 'for' after power type");
+            return false;
+        }
+
+        // Parse power list
+        while true {
+            if !parse_art_power(p, artifact, power_type) return false;
+            if !match(p, .COMMA) break;
+        }
+        match(p, .SEMICOLON);
+        return true;
+    }
+
+    // Event handler - skip
+    if tok.type == .KW_ON || tok.type == .KW_EVENT {
+        skip_event_handler(p);
+        return true;
+    }
+
+    // Constants section
+    if tok.type == .KW_CONSTANTS {
+        // Skip constants section for now
+        advance(p);
+        match(p, .COLON);
+        while !check(p, .SEMICOLON) && !check(p, .RBRACE) && !parser_is_at_end(p) {
+            advance(p);
+        }
+        match(p, .SEMICOLON);
+        return true;
+    }
+
+    // Unknown entry - skip
+    advance(p);
+    return true;
+}
+
+// Parse individual artifact power
+// Grammar: Stati[type,param] | Stati[type] | res_ref | res_ref N/day | innate res_ref | Feat id
+parse_art_power :: (p: *Parser, artifact: *ParsedArtifact, power_type: ArtPowerType) -> bool {
+    tok := peek(p);
+    power: ParsedArtPower;
+    power.power_type = power_type;
+
+    // Stati[type, param] or Stati[type]
+    if tok.type == .KW_STATI {
+        advance(p);
+        power.kind = .STATI;
+
+        _, lbracket_ok := consume(p, .LBRACKET, "Expected '['");
+        if !lbracket_ok return false;
+
+        stati_type, type_ok := parse_cexpr3(p);
+        if !type_ok return false;
+        power.stati_type = stati_type;
+
+        if match(p, .COMMA) {
+            stati_param, param_ok := parse_cexpr3(p);
+            if !param_ok return false;
+            power.stati_param = stati_param;
+        }
+
+        _, rbracket_ok := consume(p, .RBRACKET, "Expected ']'");
+        if !rbracket_ok return false;
+
+        array_add(*artifact.powers, power);
+        return true;
+    }
+
+    // Innate $"effect"
+    if tok.type == .KW_INNATE {
+        advance(p);
+        power.kind = .INNATE;
+
+        ref_tok, ref_ok := consume(p, .RES_REF, "Expected effect reference");
+        if !ref_ok return false;
+        power.effect_ref = extract_res_ref_name(ref_tok.text);
+
+        array_add(*artifact.powers, power);
+        return true;
+    }
+
+    // Feat FEAT_ID
+    if tok.type == .KW_FEAT {
+        advance(p);
+        power.kind = .FEAT;
+
+        feat_val, feat_ok := parse_cexpr3(p);
+        if !feat_ok return false;
+        power.feat_id = feat_val;
+
+        array_add(*artifact.powers, power);
+        return true;
+    }
+
+    // $"effect" with optional modifiers
+    if tok.type == .RES_REF {
+        advance(p);
+        power.kind = .EFFECT;
+        power.effect_ref = extract_res_ref_name(tok.text);
+
+        next := peek(p);
+
+        // $"effect" at STYPE (optional save type)
+        if next.type == .KW_AT {
+            advance(p);
+            // Skip save type for now
+            if check(p, .STYPE) advance(p);
+        }
+        // $"effect" every Xd6 turns
+        else if next.type == .KW_EVERY {
+            advance(p);
+            power.has_dice = true;
+            dice, dice_ok := parse_dice_value(p);
+            if dice_ok power.use_dice = dice;
+            match(p, .KW_TURNS);
+        }
+        // $"effect" N/day or N per day
+        else if next.type == .NUMBER || next.type == .CONSTANT {
+            uses, uses_ok := parse_cexpr3(p);
+            if uses_ok {
+                power.has_uses = true;
+                after := peek(p);
+                if after.type == .SLASH || after.type == .KW_PER {
+                    advance(p);
+                    if match(p, .KW_DAY) {
+                        power.uses_per_day = uses;
+                    } else if match(p, .KW_WEEK) {
+                        power.uses_per_week = uses;
+                    }
+                }
+            }
+        }
+
+        array_add(*artifact.powers, power);
+        return true;
+    }
+
+    add_error(p, "Expected artifact power");
+    return false;
 }

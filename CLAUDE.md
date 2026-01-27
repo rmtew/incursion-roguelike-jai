@@ -100,11 +100,6 @@ py extract_constants.py
 
 ### Next Steps - Parsing Real .irh Files
 
-**Resource types needing parser implementation:**
-| Type | Count | Priority |
-|------|-------|----------|
-| Artifact | 0 | High - powerful items |
-
 **Major work:**
 - Event handler translation (currently skipped) - This is the bulk of game logic
 - Resource file loading and linking
@@ -113,7 +108,7 @@ py extract_constants.py
 ### Grammar Alignment (Tokens.lex / Grammar.acc)
 
 **Completed (2026-01-27):**
-- ✓ Token types: ATTRIBUTE, COLOR, DIRECTION, WEP_TYPE, STYPE (with values)
+- ✓ Token types: ATTRIBUTE, COLOR, DIRECTION, WEP_TYPE, STYPE, MAPAREA (with values)
 - ✓ Keywords1: Type keywords (`void`, `bool`, `int8`, etc.) and special words (`abs`, `true`, `false`, `null`, etc.)
 - ✓ Keywords2: ~60 property keywords (`Glyph`, `Value`, `Colour`, `Material`, etc.)
 - ✓ Direction words with values (North, South, etc.)
@@ -125,13 +120,13 @@ py extract_constants.py
 - ✓ Effect properties: sval, dval, aval, lval, tval, rval, Base Chance, Purpose
 - ✓ Item properties: Lifespan, Fuel, Capacity, WeightLim, WeightMod, MaxSize, Timeout, CType, Fires
 - ✓ British spelling "Colour" for flavor resources
+- ✓ Map grid syntax `{:...:}` with MAPAREA token (grid_mode in lexer)
+- ✓ Full `gear_entry` syntax: `IF (cond)`, `N%` chance, dice quantity, `CURSED`/`BLESSED`, `WITH [qualities]`, `OF effect`, `AT (x,y)`
+- ✓ `Artifact` resource type with power system (`Equip FOR`, `Wield FOR`, `Hit FOR`, `Invoke FOR`)
+- ✓ Module header: `Module "name";`, `Slot N;`, `File "path";`
+- ✓ `abil_level` variations: `every level`, `every N level` (optional starting at)
 
-**Remaining gaps:**
-- Map grid syntax `{:...:}` not implemented
-- Full `gear_entry` syntax: `IF (cond)`, `N%` chance, dice quantity, `CURSED`/`BLESSED`, `WITH [qualities]`, `OF effect`, `AT (x,y)`
-- `Artifact` resource type with power system (`Equip FOR`, `Wield FOR`, `Hit FOR`, `Invoke FOR`)
-- Module header: `Module "name";`, `Slot N;`, `File "path";`
-- `abil_level` variations: `every level`, `every N level` (without starting at)
+**Parser is now aligned with Grammar.acc for all major resource types.**
 
 ## Key Technical Decisions
 
