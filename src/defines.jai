@@ -54,12 +54,12 @@ glyph_bg :: (g: Glyph) -> u8 {
     return cast(u8) ((g.value >> 16) & 0xFF);
 }
 
-// Common type aliases
-hObj :: s32;    // Object handle
-rID :: s32;     // Resource ID
+// Distinct types to prevent accidental mixing
+hObj :: #type,distinct s32;    // Object handle
+rID :: #type,distinct s32;     // Resource ID
 
-NULL_OBJ : hObj : -1;
-NULL_ID : rID : -1;
+NULL_OBJ : hObj : xx,no_check -1;
+NULL_ID : rID : xx,no_check -1;
 
 // Size constants
 SZ_TINY       :: 0;
@@ -94,15 +94,17 @@ A_LUC :: 6;
 
 // Resource ID manipulation
 rID_module :: (id: rID) -> s32 {
-    return (id >> 16) & 0xFFFF;
+    raw := cast,no_check(s32) id;
+    return (raw >> 16) & 0xFFFF;
 }
 
 rID_index :: (id: rID) -> s32 {
-    return id & 0xFFFF;
+    raw := cast,no_check(s32) id;
+    return raw & 0xFFFF;
 }
 
 make_rID :: (module: s32, index: s32) -> rID {
-    return cast(rID) ((module << 16) | (index & 0xFFFF));
+    return cast,no_check(rID) ((module << 16) | (index & 0xFFFF));
 }
 
 // Console colors
@@ -123,24 +125,4 @@ PURPLE       :: 13;
 YELLOW       :: 14;
 WHITE        :: 15;
 
-// Math helpers
-my_abs :: (x: $T) -> T {
-    if x < 0 return -x;
-    return x;
-}
-
-my_max :: (a: $T, b: T) -> T {
-    if a > b return a;
-    return b;
-}
-
-my_min :: (a: $T, b: T) -> T {
-    if a < b return a;
-    return b;
-}
-
-clamp :: (x: $T, lo: T, hi: T) -> T {
-    if x < lo return lo;
-    if x > hi return hi;
-    return x;
-}
+// Note: Use abs() from Math module, min()/max()/clamp() from Basic module

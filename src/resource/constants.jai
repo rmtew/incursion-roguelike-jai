@@ -7173,7 +7173,7 @@ lookup_resource_constant :: (name: string) -> s64, bool {
 }
 
 compare_strings :: (a: string, b: string) -> s32 {
-    len := my_min(a.count, b.count);
+    len := min(a.count, b.count);
     for i: 0..len-1 {
         if a[i] < b[i] return -1;
         if a[i] > b[i] return 1;

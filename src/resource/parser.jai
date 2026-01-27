@@ -1417,7 +1417,7 @@ parse_race_entry :: (p: *Parser, race: *ParsedRace) -> bool {
 
     if tok.type == .IDENTIFIER || tok.type == .CONSTANT {
         // Handle MALE_NAMES, FEMALE_NAMES, FAMILY_NAMES
-        if strings_equal(tok.text, "MALE_NAMES") ||
+        if tok.text == "MALE_NAMES" ||
            (tok.type == .CONSTANT && is_names_constant(tok.text)) {
             advance(p);
             _, colon_ok := consume(p, .COLON, "Expected ':'");
@@ -1429,7 +1429,7 @@ parse_race_entry :: (p: *Parser, race: *ParsedRace) -> bool {
             match(p, .SEMICOLON);
             return true;
         }
-        if strings_equal(tok.text, "FEMALE_NAMES") {
+        if tok.text == "FEMALE_NAMES" {
             advance(p);
             _, colon_ok := consume(p, .COLON, "Expected ':'");
             if !colon_ok return false;
@@ -1440,7 +1440,7 @@ parse_race_entry :: (p: *Parser, race: *ParsedRace) -> bool {
             match(p, .SEMICOLON);
             return true;
         }
-        if strings_equal(tok.text, "FAMILY_NAMES") {
+        if tok.text == "FAMILY_NAMES" {
             advance(p);
             _, colon_ok := consume(p, .COLON, "Expected ':'");
             if !colon_ok return false;

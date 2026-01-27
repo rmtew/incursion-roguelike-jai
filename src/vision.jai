@@ -3,8 +3,8 @@
 
 // Line of sight using Bresenham-like algorithm
 has_los :: (m: *Map, x1: s32, y1: s32, x2: s32, y2: s32) -> bool {
-    dx := my_abs(x2 - x1);
-    dy := my_abs(y2 - y1);
+    dx := abs(x2 - x1);
+    dy := abs(y2 - y1);
 
     sx: s32 = 1;
     if x1 > x2 sx = -1;
@@ -40,14 +40,14 @@ has_los :: (m: *Map, x1: s32, y1: s32, x2: s32, y2: s32) -> bool {
 
 // Distance functions
 chebyshev_distance :: (x1: s32, y1: s32, x2: s32, y2: s32) -> s32 {
-    dx := my_abs(x2 - x1);
-    dy := my_abs(y2 - y1);
-    return my_max(dx, dy);
+    dx := abs(x2 - x1);
+    dy := abs(y2 - y1);
+    return max(dx, dy);
 }
 
 manhattan_distance :: (x1: s32, y1: s32, x2: s32, y2: s32) -> s32 {
-    dx := my_abs(x2 - x1);
-    dy := my_abs(y2 - y1);
+    dx := abs(x2 - x1);
+    dy := abs(y2 - y1);
     return dx + dy;
 }
 

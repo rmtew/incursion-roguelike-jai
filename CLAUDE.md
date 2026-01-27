@@ -155,13 +155,58 @@ py extract_constants.py
 - **Never run** `git clean -fd` without checking `git status` first
 - Consider using `git stash` instead of clean
 
-## Jai Language Notes
+## Jai Language Reference
 
-See `/jai-language.md` in parent directory for full reference.
+**External Reference**: `C:\Data\R\git\jai\jai-language.md` - Full language reference with module documentation
 
-Key patterns used in this project:
+### Key Patterns Used in This Project
 - `using` for struct composition: `Monster :: struct { using creature: Creature; }`
 - `[..]` for dynamic arrays
 - `*[..] T` for mutable array pointers
 - `#string` for multiline strings (test data)
 - `#import "Module"` for module imports
+- `#load "file.jai"` for splitting code into files (merges into current scope)
+
+### Useful Modules (see `C:\Data\R\git\jai\modules\*.md`)
+| Module | Purpose |
+|--------|---------|
+| Basic | Core utilities: print, arrays, strings, memory |
+| String | String manipulation, comparison, parsing |
+| Math | Math constants, trig, min/max/clamp |
+| File | File I/O operations |
+| Hash_Table | Hash map implementation |
+| Pool | Arena allocator for efficient memory |
+
+## Code Improvement Opportunities
+
+### Use Standard Library Functions
+The codebase defines custom helpers that duplicate standard library functionality:
+
+| Current | Replace With | Module |
+|---------|-------------|--------|
+| `my_abs()` | `abs()` | Math |
+| `my_max()`, `my_min()` | `max()`, `min()` | Basic |
+| `clamp()` | `clamp()` | Basic (already exists) |
+| `strings_equal()` | `==` or `equal()` | String module |
+| `slice()` | `to_string(ptr, count)` | Basic |
+
+### Module Import Redundancy
+- `#import "Random"` appears in both `main.jai` and `dice.jai`
+- Jai's `#load` merges into the same scope, so imports in `main.jai` are available to loaded files
+- Consider removing redundant imports from loaded files
+
+### Global State
+- `registry: Registry` is a global variable
+- Could be passed as a parameter for better testability and multiple registry support
+
+### Test Framework Enhancement
+- Could use `@Test` annotations with compile-time discovery via `#run` metaprogramming
+- See Jai's built-in test patterns in the modules
+
+### Memory Management
+- Consider using `Pool` allocator for Stati linked list allocations
+- Current code uses individual `New()` / `free()` calls which fragment memory
+
+### Potential Type Improvements
+- `hObj` and `rID` are both `s32` - could use distinct types to prevent mixing
+- Jai supports this via: `hObj :: #type,distinct s32;`

@@ -12,6 +12,26 @@ Stati :: struct {
     next:     *Stati;
 }
 
+// Stati pool - free list for efficient allocation/deallocation
+stati_free_list: *Stati = null;
+
+stati_alloc :: () -> *Stati {
+    if stati_free_list != null {
+        // Reuse from free list
+        s := stati_free_list;
+        stati_free_list = s.next;
+        return s;
+    }
+    // Allocate new
+    return New(Stati);
+}
+
+stati_free :: (s: *Stati) {
+    // Add to free list for reuse
+    s.next = stati_free_list;
+    stati_free_list = s;
+}
+
 // Base object
 Object :: struct {
     myHandle: hObj;
@@ -58,7 +78,7 @@ thing_get_stati :: (t: *Thing, type: s16) -> *Stati {
 }
 
 thing_add_stati :: (t: *Thing, type: s16, val: s16, mag: s16) {
-    s := New(Stati);
+    s := stati_alloc();
     s.type = type;
     s.val = val;
     s.mag = mag;
@@ -79,7 +99,7 @@ thing_remove_stati :: (t: *Thing, type: s16) {
             } else {
                 prev.next = s.next;
             }
-            free(s);
+            stati_free(s);
             return;
         }
         prev = s;
@@ -91,7 +111,7 @@ thing_free_stati :: (t: *Thing) {
     s := t.stati;
     while s != null {
         next := s.next;
-        free(s);
+        stati_free(s);
         s = next;
     }
     t.stati = null;

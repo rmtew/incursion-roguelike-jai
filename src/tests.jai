@@ -1,7 +1,6 @@
 // Incursion Port - Test Framework and Tests
 // Reconstructed from RECONSTRUCTION.md
-
-#import "Basic";
+// Note: Basic module imported via main.jai
 
 // Test state
 test_count: s32;
@@ -36,13 +35,7 @@ test_assert_eq :: (actual: $T, expected: T, name: string) {
     }
 }
 
-test_strings_equal :: (a: string, b: string) -> bool {
-    if a.count != b.count return false;
-    for i: 0..a.count-1 {
-        if a[i] != b[i] return false;
-    }
-    return true;
-}
+// Note: Use == for string comparison (Jai compares content)
 
 test_summary :: () {
     print("\n========================================\n");
@@ -132,7 +125,7 @@ test_dice :: () {
         d := make_dice(2, 6, 3);
         buffer: [32] u8;
         s := dice_to_string(d, buffer);
-        test_assert(test_strings_equal(s, "2d6+3"), "dice_to_string 2d6+3");
+        test_assert(s == "2d6+3", "dice_to_string 2d6+3");
     }
 }
 
@@ -180,7 +173,7 @@ test_registry :: () {
         t: Thing;
         thing_init(*t);
         h := registry_register(*t);
-        test_assert(h >= 0, "registry_register returns valid handle");
+        test_assert(h != NULL_OBJ, "registry_register returns valid handle");
 
         got := registry_get(h);
         test_assert(got == *t, "registry_get returns same object");

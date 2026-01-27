@@ -303,11 +303,9 @@ make_token :: (lex: *Lexer, type: TokenType, text: string, start_line: s32, star
     return tok;
 }
 
+// Use to_string from Basic module for substring views
 slice :: (s: string, start: s64, length: s64) -> string {
-    result: string;
-    result.data = s.data + start;
-    result.count = length;
-    return result;
+    return to_string(s.data + start, length);
 }
 
 // Skip whitespace and comments
@@ -517,19 +515,13 @@ lex_is_uppercase_constant :: (text: string) -> bool {
 // Check if a constant is one of the names constants
 is_names_constant :: (text: string) -> bool {
     if text.count < 10 return false;
-    return strings_equal(text, "MALE_NAMES") ||
-           strings_equal(text, "FEMALE_NAMES") ||
-           strings_equal(text, "FAMILY_NAMES");
+    return text == "MALE_NAMES" ||
+           text == "FEMALE_NAMES" ||
+           text == "FAMILY_NAMES";
 }
 
-strings_equal :: (a: string, b: string) -> bool {
-    if a.count != b.count return false;
-    for i: 0..a.count-1 {
-        if a[i] != b[i] return false;
-    }
-    return true;
-}
-
+// strings_equal replaced with == operator (Jai compares string content)
+// strings_equal_nocase kept for case-insensitive comparison (no stdlib equivalent)
 strings_equal_nocase :: (a: string, b: string) -> bool {
     if a.count != b.count return false;
     for i: 0..a.count-1 {
@@ -545,7 +537,7 @@ strings_equal_nocase :: (a: string, b: string) -> bool {
 lookup_keyword :: (text: string, in_code: bool) -> TokenType {
     // Convert to lowercase for comparison
     lower: [64] u8;
-    len := my_min(text.count, 63);
+    len := min(text.count, 63);
     for i: 0..len-1 {
         c := text[i];
         if c >= #char "A" && c <= #char "Z" {
@@ -559,143 +551,143 @@ lookup_keyword :: (text: string, in_code: bool) -> TokenType {
     lower_str.count = len;
 
     // Resource keywords
-    if strings_equal(lower_str, "monster") return .KW_MONSTER;
-    if strings_equal(lower_str, "item") return .KW_ITEM;
-    if strings_equal(lower_str, "flavor") return .KW_FLAVOR;
-    if strings_equal(lower_str, "effect") return .KW_EFFECT;
-    if strings_equal(lower_str, "spell") return .KW_SPELL;
-    if strings_equal(lower_str, "feature") return .KW_FEATURE;
-    if strings_equal(lower_str, "terrain") return .KW_TERRAIN;
-    if strings_equal(lower_str, "race") return .KW_RACE;
-    if strings_equal(lower_str, "class") return .KW_CLASS;
-    if strings_equal(lower_str, "god") return .KW_GOD;
-    if strings_equal(lower_str, "domain") return .KW_DOMAIN;
-    if strings_equal(lower_str, "dungeon") return .KW_DUNGEON;
-    if strings_equal(lower_str, "artifact") return .KW_ARTIFACT;
-    if strings_equal(lower_str, "region") return .KW_REGION;
-    if strings_equal(lower_str, "npc") return .KW_NPC;
-    if strings_equal(lower_str, "encounter") return .KW_ENCOUNTER;
-    if strings_equal(lower_str, "wizard") return .KW_WIZARD;
-    if strings_equal(lower_str, "priest") return .KW_PRIEST;
-    if strings_equal(lower_str, "template") return .KW_TEMPLATE;
-    if strings_equal(lower_str, "text") return .KW_TEXT;
-    if strings_equal(lower_str, "quest") return .KW_QUEST;
-    if strings_equal(lower_str, "behaviour") return .KW_BEHAVIOUR;
-    if strings_equal(lower_str, "routine") return .KW_ROUTINE;
-    if strings_equal(lower_str, "event") return .KW_EVENT;
-    if strings_equal(lower_str, "on") return .KW_ON;
+    if lower_str == "monster" return .KW_MONSTER;
+    if lower_str == "item" return .KW_ITEM;
+    if lower_str == "flavor" return .KW_FLAVOR;
+    if lower_str == "effect" return .KW_EFFECT;
+    if lower_str == "spell" return .KW_SPELL;
+    if lower_str == "feature" return .KW_FEATURE;
+    if lower_str == "terrain" return .KW_TERRAIN;
+    if lower_str == "race" return .KW_RACE;
+    if lower_str == "class" return .KW_CLASS;
+    if lower_str == "god" return .KW_GOD;
+    if lower_str == "domain" return .KW_DOMAIN;
+    if lower_str == "dungeon" return .KW_DUNGEON;
+    if lower_str == "artifact" return .KW_ARTIFACT;
+    if lower_str == "region" return .KW_REGION;
+    if lower_str == "npc" return .KW_NPC;
+    if lower_str == "encounter" return .KW_ENCOUNTER;
+    if lower_str == "wizard" return .KW_WIZARD;
+    if lower_str == "priest" return .KW_PRIEST;
+    if lower_str == "template" return .KW_TEMPLATE;
+    if lower_str == "text" return .KW_TEXT;
+    if lower_str == "quest" return .KW_QUEST;
+    if lower_str == "behaviour" return .KW_BEHAVIOUR;
+    if lower_str == "routine" return .KW_ROUTINE;
+    if lower_str == "event" return .KW_EVENT;
+    if lower_str == "on" return .KW_ON;
 
     // Property keywords
-    if strings_equal(lower_str, "image") return .KW_IMAGE;
-    if strings_equal(lower_str, "level") return .KW_LEVEL;
-    if strings_equal(lower_str, "hitdice") || strings_equal(lower_str, "hd") return .KW_HITDICE;
-    if strings_equal(lower_str, "mat") return .KW_MAT;
-    if strings_equal(lower_str, "weight") return .KW_WEIGHT;
-    if strings_equal(lower_str, "size") return .KW_SIZE;
-    if strings_equal(lower_str, "sdmg") return .KW_SDMG;
-    if strings_equal(lower_str, "attk") return .KW_ATTK;
-    if strings_equal(lower_str, "ldmg") return .KW_LDMG;
-    if strings_equal(lower_str, "desc") return .KW_DESC;
-    if strings_equal(lower_str, "flags") return .KW_FLAGS;
-    if strings_equal(lower_str, "cr") return .KW_CR;
-    if strings_equal(lower_str, "hp") return .KW_HP;
-    if strings_equal(lower_str, "mov") return .KW_MOV;
-    if strings_equal(lower_str, "spd") return .KW_SPD;
-    if strings_equal(lower_str, "hit") return .KW_HIT;
-    if strings_equal(lower_str, "def") return .KW_DEF;
-    if strings_equal(lower_str, "arm") return .KW_ARM;
-    if strings_equal(lower_str, "mana") return .KW_MANA;
-    if strings_equal(lower_str, "acc") return .KW_ACC;
-    if strings_equal(lower_str, "crit") return .KW_CRIT;
-    if strings_equal(lower_str, "threat") return .KW_THREAT;
-    if strings_equal(lower_str, "speed") return .KW_SPEED;
-    if strings_equal(lower_str, "parry") return .KW_PARRY;
-    if strings_equal(lower_str, "range") return .KW_RANGE;
-    if strings_equal(lower_str, "coverage") return .KW_COVERAGE;
-    if strings_equal(lower_str, "penalty") return .KW_PENALTY;
-    if strings_equal(lower_str, "cost") return .KW_COST;
-    if strings_equal(lower_str, "group") return .KW_GROUP;
-    if strings_equal(lower_str, "nutrition") return .KW_NUTRITION;
-    if strings_equal(lower_str, "depth") return .KW_DEPTH;
-    if strings_equal(lower_str, "res") return .KW_RES;
-    if strings_equal(lower_str, "imm") return .KW_IMM;
-    if strings_equal(lower_str, "stati") return .KW_STATI;
-    if strings_equal(lower_str, "source") return .KW_SOURCE;
-    if strings_equal(lower_str, "sources") return .KW_SOURCES;
+    if lower_str == "image" return .KW_IMAGE;
+    if lower_str == "level" return .KW_LEVEL;
+    if lower_str == "hitdice" || lower_str == "hd" return .KW_HITDICE;
+    if lower_str == "mat" return .KW_MAT;
+    if lower_str == "weight" return .KW_WEIGHT;
+    if lower_str == "size" return .KW_SIZE;
+    if lower_str == "sdmg" return .KW_SDMG;
+    if lower_str == "attk" return .KW_ATTK;
+    if lower_str == "ldmg" return .KW_LDMG;
+    if lower_str == "desc" return .KW_DESC;
+    if lower_str == "flags" return .KW_FLAGS;
+    if lower_str == "cr" return .KW_CR;
+    if lower_str == "hp" return .KW_HP;
+    if lower_str == "mov" return .KW_MOV;
+    if lower_str == "spd" return .KW_SPD;
+    if lower_str == "hit" return .KW_HIT;
+    if lower_str == "def" return .KW_DEF;
+    if lower_str == "arm" return .KW_ARM;
+    if lower_str == "mana" return .KW_MANA;
+    if lower_str == "acc" return .KW_ACC;
+    if lower_str == "crit" return .KW_CRIT;
+    if lower_str == "threat" return .KW_THREAT;
+    if lower_str == "speed" return .KW_SPEED;
+    if lower_str == "parry" return .KW_PARRY;
+    if lower_str == "range" return .KW_RANGE;
+    if lower_str == "coverage" return .KW_COVERAGE;
+    if lower_str == "penalty" return .KW_PENALTY;
+    if lower_str == "cost" return .KW_COST;
+    if lower_str == "group" return .KW_GROUP;
+    if lower_str == "nutrition" return .KW_NUTRITION;
+    if lower_str == "depth" return .KW_DEPTH;
+    if lower_str == "res" return .KW_RES;
+    if lower_str == "imm" return .KW_IMM;
+    if lower_str == "stati" return .KW_STATI;
+    if lower_str == "source" return .KW_SOURCE;
+    if lower_str == "sources" return .KW_SOURCES;
 
     // Effect keywords
-    if strings_equal(lower_str, "qval") return .KW_QVAL;
-    if strings_equal(lower_str, "xval") return .KW_XVAL;
-    if strings_equal(lower_str, "yval") return .KW_YVAL;
-    if strings_equal(lower_str, "pval") return .KW_PVAL;
-    if strings_equal(lower_str, "schools") return .KW_SCHOOLS;
+    if lower_str == "qval" return .KW_QVAL;
+    if lower_str == "xval" return .KW_XVAL;
+    if lower_str == "yval" return .KW_YVAL;
+    if lower_str == "pval" return .KW_PVAL;
+    if lower_str == "schools" return .KW_SCHOOLS;
 
     // Feature/Terrain keywords
-    if strings_equal(lower_str, "target") return .KW_TARGET;
-    if strings_equal(lower_str, "constants") return .KW_CONSTANTS;
-    if strings_equal(lower_str, "cval") return .KW_CVAL;
+    if lower_str == "target" return .KW_TARGET;
+    if lower_str == "constants" return .KW_CONSTANTS;
+    if lower_str == "cval" return .KW_CVAL;
 
     // Race/Class keywords
-    if strings_equal(lower_str, "grants") return .KW_GRANTS;
-    if strings_equal(lower_str, "favoured") || strings_equal(lower_str, "favored") return .KW_FAVOURED;
-    if strings_equal(lower_str, "skills") return .KW_SKILLS;
-    if strings_equal(lower_str, "lists") return .KW_LISTS;
-    if strings_equal(lower_str, "ability") return .KW_ABILITY;
-    if strings_equal(lower_str, "feat") return .KW_FEAT;
-    if strings_equal(lower_str, "at") return .KW_AT;
-    if strings_equal(lower_str, "every") return .KW_EVERY;
-    if strings_equal(lower_str, "starting") return .KW_STARTING;
-    if strings_equal(lower_str, "nd") return .KW_ND;
-    if strings_equal(lower_str, "rd") return .KW_RD;
-    if strings_equal(lower_str, "th") return .KW_TH;
-    if strings_equal(lower_str, "st") return .KW_ST;
-    if strings_equal(lower_str, "proficiencies") return .KW_PROFICIENCIES;
-    if strings_equal(lower_str, "gear") return .KW_GEAR;
-    if strings_equal(lower_str, "domains") return .KW_DOMAINS;
+    if lower_str == "grants" return .KW_GRANTS;
+    if lower_str == "favoured" || lower_str == "favored" return .KW_FAVOURED;
+    if lower_str == "skills" return .KW_SKILLS;
+    if lower_str == "lists" return .KW_LISTS;
+    if lower_str == "ability" return .KW_ABILITY;
+    if lower_str == "feat" return .KW_FEAT;
+    if lower_str == "at" return .KW_AT;
+    if lower_str == "every" return .KW_EVERY;
+    if lower_str == "starting" return .KW_STARTING;
+    if lower_str == "nd" return .KW_ND;
+    if lower_str == "rd" return .KW_RD;
+    if lower_str == "th" return .KW_TH;
+    if lower_str == "st" return .KW_ST;
+    if lower_str == "proficiencies" return .KW_PROFICIENCIES;
+    if lower_str == "gear" return .KW_GEAR;
+    if lower_str == "domains" return .KW_DOMAINS;
 
     // Color keywords
-    if strings_equal(lower_str, "red") return .KW_RED;
-    if strings_equal(lower_str, "blue") return .KW_BLUE;
-    if strings_equal(lower_str, "green") return .KW_GREEN;
-    if strings_equal(lower_str, "white") return .KW_WHITE;
-    if strings_equal(lower_str, "black") return .KW_BLACK;
-    if strings_equal(lower_str, "yellow") return .KW_YELLOW;
-    if strings_equal(lower_str, "purple") return .KW_PURPLE;
-    if strings_equal(lower_str, "cyan") return .KW_CYAN;
-    if strings_equal(lower_str, "grey") || strings_equal(lower_str, "gray") return .KW_GREY;
-    if strings_equal(lower_str, "brown") return .KW_BROWN;
-    if strings_equal(lower_str, "pink") return .KW_PINK;
-    if strings_equal(lower_str, "shadow") return .KW_SHADOW;
-    if strings_equal(lower_str, "magenta") return .KW_MAGENTA;
-    if strings_equal(lower_str, "sky") return .KW_SKY;
-    if strings_equal(lower_str, "azure") return .KW_AZURE;
-    if strings_equal(lower_str, "emerald") return .KW_EMERALD;
-    if strings_equal(lower_str, "bright") return .KW_BRIGHT;
-    if strings_equal(lower_str, "dark") return .KW_DARK;
-    if strings_equal(lower_str, "light") return .KW_LIGHT;
+    if lower_str == "red" return .KW_RED;
+    if lower_str == "blue" return .KW_BLUE;
+    if lower_str == "green" return .KW_GREEN;
+    if lower_str == "white" return .KW_WHITE;
+    if lower_str == "black" return .KW_BLACK;
+    if lower_str == "yellow" return .KW_YELLOW;
+    if lower_str == "purple" return .KW_PURPLE;
+    if lower_str == "cyan" return .KW_CYAN;
+    if lower_str == "grey" || lower_str == "gray" return .KW_GREY;
+    if lower_str == "brown" return .KW_BROWN;
+    if lower_str == "pink" return .KW_PINK;
+    if lower_str == "shadow" return .KW_SHADOW;
+    if lower_str == "magenta" return .KW_MAGENTA;
+    if lower_str == "sky" return .KW_SKY;
+    if lower_str == "azure" return .KW_AZURE;
+    if lower_str == "emerald" return .KW_EMERALD;
+    if lower_str == "bright" return .KW_BRIGHT;
+    if lower_str == "dark" return .KW_DARK;
+    if lower_str == "light" return .KW_LIGHT;
 
     // Attribute keywords
-    if strings_equal(lower_str, "str") return .KW_STR;
-    if strings_equal(lower_str, "dex") return .KW_DEX;
-    if strings_equal(lower_str, "con") return .KW_CON;
-    if strings_equal(lower_str, "int") return .KW_INT;
-    if strings_equal(lower_str, "wis") return .KW_WIS;
-    if strings_equal(lower_str, "cha") return .KW_CHA;
-    if strings_equal(lower_str, "luc") return .KW_LUC;
+    if lower_str == "str" return .KW_STR;
+    if lower_str == "dex" return .KW_DEX;
+    if lower_str == "con" return .KW_CON;
+    if lower_str == "int" return .KW_INT;
+    if lower_str == "wis" return .KW_WIS;
+    if lower_str == "cha" return .KW_CHA;
+    if lower_str == "luc" return .KW_LUC;
 
     // Control flow (only in code blocks)
     if in_code {
-        if strings_equal(lower_str, "if") return .KW_IF;
-        if strings_equal(lower_str, "else") return .KW_ELSE;
-        if strings_equal(lower_str, "for") return .KW_FOR;
-        if strings_equal(lower_str, "while") return .KW_WHILE;
-        if strings_equal(lower_str, "return") return .KW_RETURN;
-        if strings_equal(lower_str, "switch") return .KW_SWITCH;
-        if strings_equal(lower_str, "case") return .KW_CASE;
-        if strings_equal(lower_str, "break") return .KW_BREAK;
-        if strings_equal(lower_str, "default") return .KW_DEFAULT;
-        if strings_equal(lower_str, "do") return .KW_DO;
-        if strings_equal(lower_str, "continue") return .KW_CONTINUE;
+        if lower_str == "if" return .KW_IF;
+        if lower_str == "else" return .KW_ELSE;
+        if lower_str == "for" return .KW_FOR;
+        if lower_str == "while" return .KW_WHILE;
+        if lower_str == "return" return .KW_RETURN;
+        if lower_str == "switch" return .KW_SWITCH;
+        if lower_str == "case" return .KW_CASE;
+        if lower_str == "break" return .KW_BREAK;
+        if lower_str == "default" return .KW_DEFAULT;
+        if lower_str == "do" return .KW_DO;
+        if lower_str == "continue" return .KW_CONTINUE;
     }
 
     return .INVALID;

@@ -1,7 +1,6 @@
 // Incursion Port - Dice System
 // Reconstructed from RECONSTRUCTION-CORE.md
-
-#import "Random";
+// Note: Random module imported via main.jai
 
 Dice :: struct {
     number: s8;
