@@ -6,6 +6,8 @@
 - [x] Phase 4: Terminal Renderer - Bitmap font rendering working
 - [x] Phase 2: Dungeon Generator (basic) - BSP rooms + corridors
 - [x] Phase 2: Dungeon Generator (enhanced) - Room shapes, water pools, rougher corridors
+- [x] Parser: All test .irh files parse successfully (2026-01-28)
+  - flavors.irh (883), mundane.irh (73), domains.irh (44), weapons.irh (118), enclist.irh (87), dungeon.irh (184)
 
 ### In Progress
 
@@ -44,13 +46,22 @@
 
 ## Current Parsing Issues
 
-### mundane.irh (15 errors)
-- Line 659: "Expected resource definition" - Need to investigate
-- Line 916: "Expected ':'" - Syntax issue to investigate
+### mundane.irh - FIXED (2026-01-28)
+- ~~Line 659: `Potion Effect "flask of oil"` - Fixed with preprocessor alias + compound effect parsing~~
+- ~~Line 916: "Expected ':'" - Fixed with optional colon support~~
 
-### weapons.irh (15 errors)
-- Line 345: "Expected ':'" - `Group WG_SIMPLE` missing colon (may be source file typo)
-- Cascade errors from line 345
+### weapons.irh - FIXED (2026-01-28)
+- ~~Line 345: "Expected ':'" - Fixed with optional colon for `Group` property~~
+
+### dungeon.irh - FIXED (2026-01-28)
+- ~~Line 5: Global variable declarations - Fixed with type keyword detection and skip~~
+- ~~Line 14+: `$"ref"` resource references - Fixed with RES_REF token handling in constants~~
+- ~~KW_MOV vs KW_MOVE mismatch - Fixed terrain/feature parsing~~
+- ~~Effect `and` continuation blocks - Fixed with while loop after effect body~~
+- ~~Color alias "skyblue" - Fixed lexer to recognize as KW_SKY~~
+- ~~Flags separator `|` - Fixed parse_flags_list to accept pipe~~
+- ~~Multi-line #define macros - Fixed lexer preprocessor handling~~
+- ~~Bare numbers in Image specs - Fixed parse_glyph_image to accept NUMBER~~
 
 ## Workarounds in Place
 
@@ -61,8 +72,9 @@
 
 ### Preprocessor Handling
 - `#if 0` / `#endif` blocks are skipped in lexer
-- Other preprocessor directives are not handled
+- Multi-line `#define` macros with backslash continuation are skipped
 - Function-like macros (e.g., `OPT_COST(a,b)`) are parsed but return last arg value
+- Preprocessor aliases (Potion, Scroll, etc.) are recognized via `lookup_preprocessor_alias()`
 
 ## Ideas for Later
 
@@ -86,6 +98,63 @@
 - Resource linking (references between resources)
 - Game loop integration
 - Actual game functionality
+
+## Claude-Driven GUI Testing (Brainstorm)
+
+Ideas for enabling Claude Code to drive and test the GUI:
+
+### Simulated Input Approaches
+1. **GUI_Test module** - Jai has built-in `GUI_Test` module for synthetic input
+   - Can send keyboard events, mouse clicks, mouse movement
+   - Can capture screenshots for verification
+   - Designed for automated testing workflows
+
+2. **Input injection** - Direct keyboard/mouse event injection
+   - Send synthetic keypresses via Window_Creation module
+   - Useful for testing player movement, menu navigation
+
+3. **Replay files** - Record and playback input sequences
+   - Store input streams as files (timestamp, event)
+   - Deterministic replay for regression testing
+
+### State Access Approaches
+4. **Inspection interface** - Text-based queries (Phase 5)
+   - `dump` - ASCII map view
+   - `query x,y` - Get cell contents
+   - `stats` - Game state summary
+   - Machine-parseable JSON output mode
+
+5. **Debug IPC** - Inter-process communication
+   - Named pipe or socket for debug commands
+   - Query game state from external process
+   - Claude could run alongside game and query state
+
+6. **Shared memory** - Direct memory access
+   - Map game state to shared memory region
+   - External tools can read game state in real-time
+   - Fast, zero-copy access
+
+7. **Debug console** - In-game command line
+   - Execute game commands (teleport, spawn, modify)
+   - Query state with structured output
+   - Useful for both testing and debugging
+
+### Screenshot Verification
+8. **Expected output comparison**
+   - Capture reference screenshots with known seeds
+   - Diff against current output
+   - Pixel-level or glyph-level comparison
+
+9. **OCR-based verification**
+   - Read glyphs from screenshots
+   - Verify expected characters at positions
+   - Works without internal state access
+
+### Hybrid Approaches
+10. **Test harness mode** - Special build for testing
+    - Expose all game state via API
+    - Hook input at application level
+    - Combined read/write access for full control
 
 ## Technical Debt
 

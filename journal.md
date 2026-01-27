@@ -663,3 +663,119 @@ RM_GRID: 1, RM_LIFECAVE: 10, RM_RCAVERN: 4, RM_MAZE: 2, RM_LCIRCLE: 1, RM_SHAPED
 - `src/main.jai` - Added loads for rng.jai and dungeon modules
 - `src/rng.jai` - Removed redundant import
 - `src/tests.jai` - Added dungeon.irh test
+
+---
+
+## 2026-01-28: Parser Fixes for mundane.irh and weapons.irh
+
+### Issues Fixed
+
+1. **Optional colons for properties** (Grammar alignment)
+   - Grammar shows `(':')? ` (optional colon) for many properties
+   - Our parser was requiring colons, causing failures
+   - Fixed `Level`, `Group`, and `Mat` properties to use `optional_colon(p)`
+   - weapons.irh now passes (was failing on `Group WG_SIMPLE | ...`)
+
+2. **Preprocessor alias macros** (main.irc #define support)
+   - Original uses `#define Potion AI_POTION` etc. in main.irc
+   - Added `lookup_preprocessor_alias()` in constants.jai
+   - Aliases: Potion (1), Scroll (2), Wizard (50), Priest (52), Witch (55), Druid (53), Sorcerer (51)
+   - Lexer now tokenizes these as CONSTANT tokens with correct values
+
+3. **Compound resource types** (effect sources)
+   - Grammar: `effect_def: ( cexpr3<n> ('/')? )* (SPELL | EFFECT ...) LITERAL ...`
+   - Added `parse_effect_with_sources()` for syntax like `Potion Effect "flask of oil"`
+   - Parser dispatch now checks if CONSTANT token is followed by EFFECT/SPELL keyword
+   - mundane.irh now passes (was failing on `Potion Effect "flask of oil"`)
+
+### Test Results After Fixes
+
+| File | Status | Resources |
+|------|--------|-----------|
+| flavors.irh | PASS | 883 Flavors |
+| mundane.irh | PASS | 72 Items, 1 Effect |
+| domains.irh | PASS | 43 Domains, 1 Effect |
+| weapons.irh | PASS | 118 Items |
+| enclist.irh | PASS | 87 Encounters |
+| dungeon.irh | FAIL | Global vars + refs in Constants |
+
+**Result: 165/166 tests pass (1 remaining failure: dungeon.irh)**
+
+### Files Modified
+
+- `src/resource/parser.jai`:
+  - Added `optional_colon()` helper function
+  - Made colons optional for Level, Group, Mat in item parsing
+  - Added `parse_effect_with_sources()` for compound effect syntax
+  - Updated main parse dispatch to detect CONSTANT + EFFECT patterns
+
+- `src/resource/lexer.jai`:
+  - Added call to `lookup_preprocessor_alias()` before returning plain IDENTIFIER
+
+- `src/resource/constants.jai`:
+  - Added `lookup_preprocessor_alias()` function with 7 aliases
+  - Added `strings_equal()` helper for exact string matching
+
+### Remaining Issue: dungeon.irh
+
+dungeon.irh fails due to:
+1. Line 5: Global variable declarations (`int16 murgash_killed;`)
+2. Line 14+: `$"ref"` resource references in Constants section expressions
+
+---
+
+## 2026-01-28: dungeon.irh Parsing Complete
+
+### Issues Fixed (continued from earlier session)
+
+1. **KW_MOV vs KW_MOVE mismatch**
+   - Lexer tokenized "mov" as KW_MOV (243), "move" as KW_MOVE (524)
+   - Terrain/Feature parsers only checked for KW_MOVE
+   - Fixed by checking `tok.type == .KW_MOVE || tok.type == .KW_MOV`
+
+2. **Effect `and` continuation blocks**
+   - Grammar: `edef_body : abil_def | edef_body 'and' abil_def`
+   - Effects can have multiple ability blocks: `Effect ... : EA_GENERIC { ... } and EA_TERRAFORM { ... }`
+   - Added while loop after effect body to handle `and EA_*` continuations
+
+3. **Color alias "skyblue"**
+   - Lexer had "sky" but not "skyblue" as KW_SKY
+   - Fixed: `if lower_str == "sky" || lower_str == "skyblue" return .KW_SKY;`
+
+4. **Flags separator: pipe support**
+   - Some files use `|` instead of `,` for flag separation
+   - Fixed parse_flags_list: `if !match(p, .COMMA) && !match(p, .PIPE) break;`
+
+5. **Multi-line #define macros**
+   - WATER_COMBAT macro spans 40+ lines with backslash continuations
+   - Lexer only skipped to newline, treating macro body as code
+   - Fixed preprocessor skip to track backslash continuations and skip entire macro
+
+6. **Bare numbers in Image specs**
+   - `Image: red 8;` uses bare `8` instead of `'8'` character constant
+   - Added NUMBER token support in parse_glyph_image
+
+### Test Results After Fixes
+
+| File | Status | Resources |
+|------|--------|-----------|
+| flavors.irh | PASS | 883 Flavors |
+| mundane.irh | PASS | 72 Items, 1 Effect |
+| domains.irh | PASS | 43 Domains, 1 Effect |
+| weapons.irh | PASS | 118 Items |
+| enclist.irh | PASS | 87 Encounters |
+| dungeon.irh | PASS | 5 Items, 4 Monsters, 3 Effects, 27 Features, 51 Terrains, 91 Regions, 3 Dungeons |
+
+**Result: 166/166 tests pass!**
+
+### Files Modified
+
+- `src/resource/parser.jai`:
+  - Fixed KW_MOVE/KW_MOV check in terrain/feature parsing
+  - Added `and` continuation block handling for effects
+  - Added pipe `|` support in parse_flags_list
+  - Added NUMBER token support in parse_glyph_image
+
+- `src/resource/lexer.jai`:
+  - Added "skyblue" alias for KW_SKY
+  - Fixed preprocessor handling for multi-line macros with backslash continuation

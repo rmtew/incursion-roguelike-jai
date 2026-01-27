@@ -809,6 +809,19 @@ test_irh_file :: (path: string, filename: string, label: string) {
         if p.artifacts.count > 0  print("      Artifacts: %\n", p.artifacts.count);
     } else {
         test_assert(false, tprint("% parsed with errors", label));
+        // Print stats even on failure to see what was parsed
+        total := p.flavors.count + p.items.count + p.monsters.count +
+                 p.effects.count + p.features.count + p.terrains.count +
+                 p.races.count + p.classes.count + p.templates.count +
+                 p.regions.count + p.encounters.count + p.domains.count +
+                 p.gods.count + p.texts.count + p.dungeons.count + p.artifacts.count;
+        if total > 0 {
+            print("    (Partially parsed % resources)\n", total);
+            if p.dungeons.count > 0   print("      Dungeons: %\n", p.dungeons.count);
+            if p.regions.count > 0    print("      Regions: %\n", p.regions.count);
+            if p.terrains.count > 0   print("      Terrains: %\n", p.terrains.count);
+            if p.features.count > 0   print("      Features: %\n", p.features.count);
+        }
         // Print first few errors
         max_errors := min(p.errors.count, 10);
         for i: 0..max_errors-1 {

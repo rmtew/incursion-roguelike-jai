@@ -7182,3 +7182,37 @@ compare_strings :: (a: string, b: string) -> s32 {
     if a.count > b.count return 1;
     return 0;
 }
+
+// Preprocessor alias lookup (from main.irc #define macros)
+// These aliases are defined in the original Incursion resource compiler
+// to allow shorter names for effect source types.
+lookup_preprocessor_alias :: (name: string) -> s64, bool {
+    // #define Potion AI_POTION
+    // #define Scroll AI_SCROLL
+    // #define Wizard AI_WIZARDRY
+    // #define Priest AI_THEURGY
+    // #define Witch  AI_WITCHCRAFT
+    // #define Druid  AI_DRUIDIC
+    // #define Sorcerer AI_SORCERY
+
+    if name.count < 5 || name.count > 8 return 0, false;
+
+    // Case-sensitive matching (original Incursion is case-sensitive)
+    if strings_equal(name, "Potion")   return 1, true;   // AI_POTION
+    if strings_equal(name, "Scroll")   return 2, true;   // AI_SCROLL
+    if strings_equal(name, "Wizard")   return 50, true;  // AI_WIZARDRY
+    if strings_equal(name, "Priest")   return 52, true;  // AI_THEURGY
+    if strings_equal(name, "Witch")    return 55, true;  // AI_WITCHCRAFT
+    if strings_equal(name, "Druid")    return 53, true;  // AI_DRUIDIC
+    if strings_equal(name, "Sorcerer") return 51, true;  // AI_SORCERY
+
+    return 0, false;
+}
+
+strings_equal :: (a: string, b: string) -> bool {
+    if a.count != b.count return false;
+    for i: 0..a.count-1 {
+        if a[i] != b[i] return false;
+    }
+    return true;
+}

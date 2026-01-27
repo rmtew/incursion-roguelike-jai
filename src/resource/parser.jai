@@ -24,8 +24,10 @@ ParsedDice :: struct {
 }
 
 ParsedConstant :: struct {
-    key:   s64;
-    value: s64;
+    key:      s64;
+    value:    s64;
+    is_ref:   bool;    // True if value is a resource reference
+    ref_name: string;  // Resource reference name (when is_ref=true)
 }
 
 // Grant types
@@ -347,6 +349,10 @@ ParsedTerrain :: struct {
     image:        ParsedGlyph;
     has_material: bool;
     material:     s64;
+    has_move:     bool;
+    move_mod:     s64;
+    has_penalty:  bool;
+    penalty:      s64;
     has_desc:     bool;
     desc:         string;
     flags:        [..] s64;
@@ -721,6 +727,12 @@ match :: (p: *Parser, type: TokenType) -> bool {
     return false;
 }
 
+// Optional colon - consumes colon if present, returns true either way
+// Used for grammar rules with (':')?
+optional_colon :: (p: *Parser) {
+    match(p, .COLON);
+}
+
 consume :: (p: *Parser, type: TokenType, msg: string) -> Token, bool {
     if check(p, type) return advance(p), true;
     add_error(p, msg);
@@ -996,12 +1008,16 @@ parse_glyph_image :: (p: *Parser) -> ParsedGlyph, bool {
     if !fg_ok return glyph, false;
     glyph.color = fg;
 
-    // Parse character (char constant or GLYPH_ constant)
+    // Parse character (char constant, GLYPH_ constant, or bare number)
     tok := peek(p);
     if tok.type == .CHAR_CONST {
         advance(p);
         glyph.char_code = tok.int_value;
     } else if tok.type == .CONSTANT {
+        advance(p);
+        glyph.char_code = tok.int_value;
+    } else if tok.type == .NUMBER {
+        // Allow bare numbers as character codes (e.g., "red 8" for '8')
         advance(p);
         glyph.char_code = tok.int_value;
     } else {
@@ -1269,8 +1285,7 @@ parse_grant_stati :: (p: *Parser, grants: *[..] ParsedGrant) -> bool {
 parse_flags_list :: (p: *Parser, flags: *[..] s64) -> bool {
     advance(p);  // consume 'Flags'
 
-    _, colon_ok := consume(p, .COLON, "Expected ':'");
-    if !colon_ok return false;
+    optional_colon(p);  // Colon is optional per grammar
 
     while true {
         tok := peek(p);
@@ -1291,7 +1306,8 @@ parse_flags_list :: (p: *Parser, flags: *[..] s64) -> bool {
             break;
         }
 
-        if !match(p, .COMMA) break;
+        // Accept both comma and pipe as separators (some files use | for flags)
+        if !match(p, .COMMA) && !match(p, .PIPE) break;
     }
 
     _, semi_ok := consume(p, .SEMICOLON, "Expected ';'");
@@ -1528,18 +1544,30 @@ parse_constants_section :: (p: *Parser, constants: *[..] ParsedConstant) -> bool
             return false;
         }
 
-        value, val_ok := parse_cexpr(p);
-        if !val_ok return false;
+        // Value can be either a numeric expression or a resource reference
+        value: s64;
+        ref_name: string;
+        is_ref := false;
 
-        // Handle resource reference as value
         tok := peek(p);
         if tok.type == .RES_REF {
+            // Resource reference value: $"name"
+            ref_name = extract_res_ref_name(tok.text);
+            is_ref = true;
+            value = 0;  // Resource refs don't have numeric values at parse time
             advance(p);
+        } else {
+            // Numeric expression value
+            val_result, val_ok := parse_cexpr(p);
+            if !val_ok return false;
+            value = val_result;
         }
 
         c: ParsedConstant;
         c.key = key;
         c.value = value;
+        c.is_ref = is_ref;
+        c.ref_name = ref_name;
         array_add(constants, c);
 
         if match(p, .SEMICOLON) break;
@@ -1599,6 +1627,20 @@ parse_resource :: (p: *Parser) -> bool {
         return semi_ok;
     }
 
+    // Skip global variable declarations (e.g., "int16 var1, var2;")
+    // These are script-level variables that we don't need for parsing resources
+    if tok.type == .KW_INT8 || tok.type == .KW_INT16 || tok.type == .KW_INT32 ||
+       tok.type == .KW_UINT8 || tok.type == .KW_UINT16 ||
+       tok.type == .KW_HOBJ || tok.type == .KW_RID || tok.type == .KW_BOOL {
+        // Skip the type and all identifiers/commas until semicolon
+        advance(p);
+        while !parser_is_at_end(p) && !check(p, .SEMICOLON) {
+            advance(p);
+        }
+        match(p, .SEMICOLON);
+        return true;
+    }
+
     // Resource definitions
     if tok.type == .KW_FLAVOR    return parse_flavor(p);
     if tok.type == .KW_MONSTER   return parse_monster(p);
@@ -1617,6 +1659,34 @@ parse_resource :: (p: *Parser) -> bool {
     if tok.type == .KW_TEXT      return parse_text(p);
     if tok.type == .KW_DUNGEON   return parse_dungeon(p);
     if tok.type == .KW_ARTIFACT  return parse_artifact(p);
+
+    // Effect definitions can start with source constants:
+    // e.g., "Potion Effect ...", "AI_POTION Effect ...", "AI_POTION/AI_SCROLL Effect ..."
+    // Grammar: effect_def: ( cexpr3<n> ('/')? )* (SPELL | EFFECT | POISON | DISEASE) LITERAL ...
+    if tok.type == .CONSTANT {
+        // Look ahead to see if this is followed by Effect/Spell/Poison/Disease
+        save_pos := p.pos;
+        sources: [..] s64;
+        sources.allocator = temp;
+
+        // Consume sources (constants optionally separated by '/')
+        while (check(p, .CONSTANT) || check(p, .NUMBER)) && sources.count < 4 {
+            src_tok := advance(p);
+            array_add(*sources, src_tok.int_value);
+            if !match(p, .SLASH) break;
+        }
+
+        // Check if followed by Effect/Spell/Poison/Disease keyword
+        next := peek(p);
+        if next.type == .KW_EFFECT || next.type == .KW_SPELL ||
+           next.type == .KW_POISON || next.type == .KW_DISEASE {
+            is_spell := next.type == .KW_SPELL;
+            return parse_effect_with_sources(p, is_spell, sources);
+        }
+
+        // Not an effect definition, restore position
+        p.pos = save_pos;
+    }
 
     add_error(p, "Expected resource definition");
     return false;
@@ -1839,8 +1909,7 @@ parse_item :: (p: *Parser) -> bool {
             match(p, .SEMICOLON);
         } else if tok.type == .KW_LEVEL {
             advance(p);
-            _, colon2_ok := consume(p, .COLON, "Expected ':'");
-            if !colon2_ok return false;
+            optional_colon(p);
             val, ok := parse_cexpr(p);
             if !ok return false;
             item.has_level = true;
@@ -1848,8 +1917,7 @@ parse_item :: (p: *Parser) -> bool {
             match(p, .SEMICOLON);
         } else if tok.type == .KW_MAT {
             advance(p);
-            _, colon2_ok := consume(p, .COLON, "Expected ':'");
-            if !colon2_ok return false;
+            optional_colon(p);
             val, ok := parse_cexpr(p);
             if !ok return false;
             item.has_material = true;
@@ -1884,8 +1952,7 @@ parse_item :: (p: *Parser) -> bool {
             match(p, .SEMICOLON);
         } else if tok.type == .KW_GROUP {
             advance(p);
-            _, colon2_ok := consume(p, .COLON, "Expected ':'");
-            if !colon2_ok return false;
+            optional_colon(p);
             val, ok := parse_cexpr(p);
             if !ok return false;
             item.has_group = true;
@@ -2023,6 +2090,84 @@ parse_item :: (p: *Parser) -> bool {
     return true;
 }
 
+// Parse effect with leading source constants (e.g., "Potion Effect ...", "AI_POTION/AI_SCROLL Effect ...")
+parse_effect_with_sources :: (p: *Parser, is_spell: bool, sources: [] s64) -> bool {
+    start_tok := advance(p);  // consume 'Effect', 'Spell', 'Poison', or 'Disease'
+
+    name_tok, name_ok := consume(p, .STRING, "Expected effect name");
+    if !name_ok return false;
+
+    _, colon_ok := consume(p, .COLON, "Expected ':'");
+    if !colon_ok return false;
+
+    type_val, type_ok := parse_cexpr(p);
+    if !type_ok return false;
+
+    effect: ParsedEffect;
+    effect.name = extract_string_content(name_tok.text);
+    effect.etype = type_val;
+    effect.is_spell = is_spell;
+    effect.line = start_tok.line;
+    effect.column = start_tok.column;
+
+    // Store sources
+    for src: sources {
+        array_add(*effect.sources, src);
+    }
+
+    _, lbrace_ok := consume(p, .LBRACE, "Expected '{'");
+    if !lbrace_ok return false;
+
+    // Parse effect body - inline since effect body parsing is complex
+    while !check(p, .RBRACE) && !parser_is_at_end(p) {
+        tok := peek(p);
+        if tok.type == .KW_LEVEL {
+            advance(p);
+            optional_colon(p);
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            effect.has_level = true;
+            effect.level = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_FLAGS {
+            if !parse_flags_list(p, *effect.flags) return false;
+        } else if tok.type == .KW_ON || tok.type == .KW_EVENT {
+            skip_event_handler(p);
+        } else if tok.type == .KW_DESC {
+            advance(p);
+            optional_colon(p);
+            desc_tok, desc_ok := consume(p, .STRING, "Expected description");
+            if !desc_ok return false;
+            effect.has_desc = true;
+            effect.desc = extract_string_content(desc_tok.text);
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_LISTS {
+            // Skip lists section for effects (not stored in ParsedEffect)
+            advance(p);
+            optional_colon(p);
+            // Skip list entries until we hit another keyword or closing brace
+            while !parser_is_at_end(p) && !check(p, .RBRACE) {
+                inner_tok := peek(p);
+                // Stop when we hit another entry keyword
+                if inner_tok.type == .KW_ON || inner_tok.type == .KW_FLAGS ||
+                   inner_tok.type == .KW_LEVEL || inner_tok.type == .KW_DESC {
+                    break;
+                }
+                advance(p);
+            }
+        } else {
+            // Skip unknown tokens in effect body
+            advance(p);
+        }
+    }
+
+    _, rbrace_ok := consume(p, .RBRACE, "Expected '}'");
+    if !rbrace_ok return false;
+
+    array_add(*p.effects, effect);
+    return true;
+}
+
 parse_effect :: (p: *Parser, is_spell: bool) -> bool {
     start_tok := advance(p);  // consume 'Effect' or 'Spell'
 
@@ -2047,10 +2192,22 @@ parse_effect :: (p: *Parser, is_spell: bool) -> bool {
 
     while !check(p, .RBRACE) && !parser_is_at_end(p) {
         tok := peek(p);
+
+        // Skip local variable declarations inside effect bodies
+        if tok.type == .KW_INT8 || tok.type == .KW_INT16 || tok.type == .KW_INT32 ||
+           tok.type == .KW_UINT8 || tok.type == .KW_UINT16 ||
+           tok.type == .KW_HOBJ || tok.type == .KW_RID || tok.type == .KW_BOOL {
+            advance(p);
+            while !parser_is_at_end(p) && !check(p, .SEMICOLON) {
+                advance(p);
+            }
+            match(p, .SEMICOLON);
+            continue;
+        }
+
         if tok.type == .KW_LEVEL {
             advance(p);
-            _, colon2_ok := consume(p, .COLON, "Expected ':'");
-            if !colon2_ok return false;
+            optional_colon(p);
             val, ok := parse_cexpr(p);
             if !ok return false;
             effect.has_level = true;
@@ -2216,6 +2373,45 @@ parse_effect :: (p: *Parser, is_spell: bool) -> bool {
     _, rbrace_ok := consume(p, .RBRACE, "Expected '}'");
     if !rbrace_ok return false;
 
+    // Handle 'and EA_*' continuation blocks (edef_body : abil_def | edef_body 'and' abil_def)
+    while check(p, .KW_AND) {
+        advance(p);  // consume 'and'
+
+        // Parse ability type (EA_GENERIC, EA_TERRAFORM, etc.)
+        _, abil_ok := parse_cexpr(p);
+        if !abil_ok return false;
+
+        _, lbrace2_ok := consume(p, .LBRACE, "Expected '{'");
+        if !lbrace2_ok return false;
+
+        // Parse the continuation block body (same as main effect body)
+        while !check(p, .RBRACE) && !parser_is_at_end(p) {
+            tok2 := peek(p);
+
+            // Skip local variable declarations
+            if tok2.type == .KW_INT8 || tok2.type == .KW_INT16 || tok2.type == .KW_INT32 ||
+               tok2.type == .KW_UINT8 || tok2.type == .KW_UINT16 ||
+               tok2.type == .KW_HOBJ || tok2.type == .KW_RID || tok2.type == .KW_BOOL {
+                advance(p);
+                while !parser_is_at_end(p) && !check(p, .SEMICOLON) {
+                    advance(p);
+                }
+                match(p, .SEMICOLON);
+                continue;
+            }
+
+            if tok2.type == .KW_ON || tok2.type == .KW_EVENT {
+                skip_event_handler(p);
+            } else {
+                // Skip any property in continuation blocks
+                advance(p);
+            }
+        }
+
+        _, rbrace2_ok := consume(p, .RBRACE, "Expected '}'");
+        if !rbrace2_ok return false;
+    }
+
     array_add(*p.effects, effect);
     return true;
 }
@@ -2258,6 +2454,46 @@ parse_feature :: (p: *Parser) -> bool {
             if !parse_constants_section(p, *feature.constants) return false;
         } else if tok.type == .KW_ON || tok.type == .KW_EVENT {
             skip_event_handler(p);
+        } else if tok.type == .KW_MAT {
+            advance(p);
+            optional_colon(p);
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            feature.has_material = true;
+            feature.material = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_HP || tok.type == .KW_HITPOINTS {
+            advance(p);
+            optional_colon(p);
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            feature.has_hp = true;
+            feature.hp = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_DESC {
+            advance(p);
+            optional_colon(p);
+            desc_tok, desc_ok := consume(p, .STRING, "Expected description");
+            if !desc_ok return false;
+            feature.has_desc = true;
+            feature.desc = extract_string_content(desc_tok.text);
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_XVAL {
+            advance(p);
+            optional_colon(p);
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            feature.has_xval = true;
+            feature.xval = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_MOVE || tok.type == .KW_MOV {
+            advance(p);
+            optional_colon(p);
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            // Skip move modifier for features (not stored)
+            match(p, .PERCENT);
+            match(p, .SEMICOLON);
         } else {
             advance(p);
         }
@@ -2299,6 +2535,41 @@ parse_terrain :: (p: *Parser) -> bool {
             if !parse_flags_list(p, *terrain.flags) return false;
         } else if tok.type == .KW_CONSTANTS {
             if !parse_constants_section(p, *terrain.constants) return false;
+        } else if tok.type == .KW_MAT {
+            advance(p);
+            optional_colon(p);
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            terrain.has_material = true;
+            terrain.material = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_MOVE || tok.type == .KW_MOV {
+            advance(p);
+            optional_colon(p);
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            terrain.has_move = true;
+            terrain.move_mod = val;
+            match(p, .PERCENT);
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_PENALTY {
+            advance(p);
+            optional_colon(p);
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            terrain.has_penalty = true;
+            terrain.penalty = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_DESC {
+            advance(p);
+            optional_colon(p);
+            desc_tok, desc_ok := consume(p, .STRING, "Expected description");
+            if !desc_ok return false;
+            terrain.has_desc = true;
+            terrain.desc = extract_string_content(desc_tok.text);
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_ON || tok.type == .KW_EVENT {
+            skip_event_handler(p);
         } else {
             advance(p);
         }

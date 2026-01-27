@@ -491,8 +491,28 @@ skip_whitespace_and_comments :: (lex: *Lexer) {
                 continue;
             }
             // Skip other preprocessor lines (#define, #include, etc.)
-            while !is_at_end(lex) && peek_char(lex) != #char "\n" {
-                advance_char(lex);
+            // Handle multi-line macros with backslash line continuation
+            while true {
+                // Track if line ends with backslash
+                last_non_ws := -1;
+                while !is_at_end(lex) && peek_char(lex) != #char "\n" {
+                    ch := peek_char(lex);
+                    if ch != #char " " && ch != #char "\t" && ch != #char "\r" {
+                        last_non_ws = lex.pos;
+                    }
+                    advance_char(lex);
+                }
+                // Check if line ended with backslash (continuation)
+                if last_non_ws >= 0 && lex.source[last_non_ws] == #char "\\" {
+                    // Skip the newline and continue to next line
+                    if !is_at_end(lex) && peek_char(lex) == #char "\n" {
+                        lex.line += 1;
+                        lex.column = 0;
+                        advance_char(lex);
+                    }
+                    continue;  // Continue skipping the next line
+                }
+                break;  // No continuation, done with this directive
             }
             continue;
         }
@@ -1045,7 +1065,7 @@ lookup_keyword :: (text: string, in_code: bool) -> TokenType {
     if lower_str == "pink" return .KW_PINK;
     if lower_str == "shadow" return .KW_SHADOW;
     if lower_str == "magenta" return .KW_MAGENTA;
-    if lower_str == "sky" return .KW_SKY;
+    if lower_str == "sky" || lower_str == "skyblue" return .KW_SKY;
     if lower_str == "azure" return .KW_AZURE;
     if lower_str == "emerald" return .KW_EMERALD;
     if lower_str == "bright" return .KW_BRIGHT;
@@ -1272,6 +1292,15 @@ scan_identifier :: (lex: *Lexer, start_pos: s64, start_line: s32, start_col: s32
             lex.grid_mode = true;
         }
         return make_token(lex, kw_type, text, start_line, start_col);
+    }
+
+    // Check for preprocessor alias (from main.irc #define macros)
+    // e.g., "Potion" -> AI_POTION, "Scroll" -> AI_SCROLL, etc.
+    alias_val, alias_found := lookup_preprocessor_alias(text);
+    if alias_found {
+        tok := make_token(lex, .CONSTANT, text, start_line, start_col);
+        tok.int_value = alias_val;
+        return tok;
     }
 
     // Plain identifier
