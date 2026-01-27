@@ -17,6 +17,7 @@ TokenType :: enum u16 {
     RES_REF     :: 21;   // $"name" or $123
     CRIT_MULT   :: 22;   // x2, x3, x4
     PERCENT     :: 23;   // number%
+    MODULO      :: 24;   // % operator
 
     // Punctuation (30-39)
     COLON     :: 30;
@@ -68,6 +69,16 @@ TokenType :: enum u16 {
     RSHIFT_EQ  :: 76;  // >>=
     OR_EQ      :: 77;  // |=
     AND_EQ     :: 78;  // &=
+    MOD_EQ     :: 79;  // %=
+    TILDE_EQ   :: 80;  // ~=
+    ELLIPSIS   :: 81;  // ...
+
+    // Semantic token types (90-99) - carry values
+    ATTRIBUTE  :: 90;  // Str, Dex, etc. - int_value = A_STR, A_DEX, etc.
+    COLOR      :: 91;  // red, blue, etc. - int_value = color constant
+    DIRECTION  :: 92;  // North, South, etc. - int_value = direction constant
+    WEP_TYPE   :: 93;  // slash, pierce, blunt - int_value = SLASH, PIERCE, BLUNT
+    STYPE      :: 94;  // fort, ref, will - int_value = FORT, REF, WILL
 
     // Control flow keywords (100-119)
     KW_IF      :: 100;
@@ -81,6 +92,30 @@ TokenType :: enum u16 {
     KW_DEFAULT :: 108;
     KW_DO      :: 109;
     KW_CONTINUE :: 110;
+
+    // Type keywords (120-139) - Keywords1
+    KW_VOID    :: 120;
+    KW_BOOL    :: 121;
+    KW_INT8    :: 122;
+    KW_INT16   :: 123;
+    KW_INT32   :: 124;
+    KW_UINT8   :: 125;
+    KW_UINT16  :: 126;
+    KW_HOBJ    :: 127;
+    KW_HTEXT   :: 128;
+    KW_RID     :: 129;
+    KW_STRING_TYPE :: 130;  // "string" as type (not literal)
+    KW_RECT    :: 131;
+
+    // Special words (140-159) - Keywords1
+    KW_ABS     :: 140;
+    KW_MEMBER  :: 141;
+    KW_STATIC  :: 142;
+    KW_TRUE    :: 143;
+    KW_FALSE   :: 144;
+    KW_NULL    :: 145;
+    KW_MAX     :: 146;
+    KW_MIN     :: 147;
 
     // Resource keywords (200-229)
     KW_MONSTER :: 200;
@@ -211,6 +246,109 @@ TokenType :: enum u16 {
     KW_MALE_NAMES :: 386;
     KW_FEMALE_NAMES :: 387;
     KW_FAMILY_NAMES :: 388;
+
+    // Additional keywords (390-449)
+    KW_POISON   :: 390;
+    KW_DISEASE  :: 391;
+    KW_SPELLS   :: 392;
+    KW_FLOOR    :: 393;
+    KW_PARTS    :: 394;
+    KW_ALIGN    :: 395;
+    KW_FEATS    :: 396;
+    KW_POWER    :: 397;
+    KW_SPECIALS :: 398;
+    KW_MTYPE    :: 399;
+    KW_IMMUNE   :: 400;
+
+    // More Keywords2 (410-449)
+    KW_GLYPH    :: 410;
+    KW_VALUE    :: 411;
+    KW_TYPE     :: 412;
+    KW_DAY      :: 413;
+    KW_WEEK     :: 414;
+    KW_TILE     :: 415;
+    KW_TILES    :: 416;
+    KW_ALL      :: 417;
+    KW_ALSO     :: 418;
+    KW_AND      :: 419;
+    KW_OR_KW    :: 420;  // "Or" keyword (distinct from || operator)
+    KW_WITH     :: 421;
+    KW_OF       :: 422;
+    KW_FROM     :: 423;
+    KW_TO       :: 424;
+    KW_PER      :: 425;
+    KW_FOR_KW   :: 426;  // "For" keyword in data (distinct from for loop)
+    KW_INNATE   :: 427;
+    KW_INVOKE   :: 428;
+    KW_BASE     :: 429;
+    KW_CHANCE   :: 430;
+    KW_WALLS    :: 431;
+    KW_DOOR     :: 432;
+    KW_GRID     :: 433;
+    KW_OBJECTS  :: 434;
+    KW_OBJECT   :: 435;
+    KW_EQUIP    :: 436;
+    KW_WIELD    :: 437;
+    KW_MODULE   :: 438;
+    KW_SLOT     :: 439;
+    KW_FILE     :: 440;
+    KW_CASTER   :: 441;
+    KW_RANDOM   :: 442;
+    KW_AS       :: 443;
+    KW_NEAR     :: 444;
+    KW_NONE     :: 445;
+    KW_NORMAL   :: 446;
+    KW_PARTIAL  :: 447;
+    KW_TURNS    :: 448;
+    KW_TIMEOUT  :: 449;
+
+    // Effect value keywords (450-469)
+    KW_SVAL     :: 450;
+    KW_DVAL     :: 451;
+    KW_AVAL     :: 452;
+    KW_LVAL     :: 453;
+    KW_TVAL     :: 454;
+    KW_RVAL     :: 455;
+    KW_EVAL     :: 456;
+    KW_PURPOSE  :: 457;
+
+    // Item/container keywords (470-489)
+    KW_LIFESPAN :: 470;
+    KW_FUEL     :: 471;
+    KW_CAPACITY :: 472;
+    KW_WEIGHTLIM :: 473;
+    KW_WEIGHTMOD :: 474;
+    KW_MAXSIZE  :: 475;
+    KW_CTYPE    :: 476;
+    KW_FIRES    :: 477;
+    KW_HITPOINTS :: 478;
+
+    // Combat keywords (490-509)
+    KW_MELEE    :: 490;
+    KW_ARCHERY  :: 491;
+    KW_BRAWL    :: 492;
+    KW_THROWING :: 493;
+    KW_HEAVY    :: 494;
+    KW_SAVES    :: 495;
+    KW_DMG      :: 496;
+    KW_DC       :: 497;
+
+    // Misc keywords (510-529)
+    KW_CURSED   :: 510;
+    KW_BLESSED  :: 511;
+    KW_QUALITIES :: 512;
+    KW_SUSTAINS :: 513;
+    KW_RESISTS  :: 514;
+    KW_EXPORT   :: 515;
+    KW_STOCK    :: 516;
+    KW_STORE    :: 517;
+    KW_GUILD    :: 518;
+    KW_ROOMTYPES :: 519;
+    KW_REGIONS  :: 520;
+    KW_ANY      :: 521;
+    KW_COLOUR   :: 522;  // British spelling
+    KW_MATERIAL :: 523;
+    KW_MOVE     :: 524;
 }
 
 Token :: struct {
@@ -534,6 +672,128 @@ strings_equal_nocase :: (a: string, b: string) -> bool {
     return true;
 }
 
+// Lookup semantic token types that carry values
+// Returns token type and value, or INVALID if not found
+lookup_attribute :: (text: string) -> TokenType, s64 {
+    lower: [8] u8;
+    len := min(text.count, 7);
+    for i: 0..len-1 {
+        c := text[i];
+        if c >= #char "A" && c <= #char "Z" lower[i] = c + 32;
+        else lower[i] = c;
+    }
+    lower_str: string;
+    lower_str.data = lower.data;
+    lower_str.count = len;
+
+    // A_STR=0, A_DEX=1, A_CON=2, A_INT=3, A_WIS=4, A_CHA=5, A_LUC=6, A_LOY=7
+    if lower_str == "str" return .ATTRIBUTE, 0;
+    if lower_str == "dex" return .ATTRIBUTE, 1;
+    if lower_str == "con" return .ATTRIBUTE, 2;
+    if lower_str == "int" return .ATTRIBUTE, 3;
+    if lower_str == "wis" return .ATTRIBUTE, 4;
+    if lower_str == "cha" return .ATTRIBUTE, 5;
+    if lower_str == "luc" return .ATTRIBUTE, 6;
+    if lower_str == "loy" return .ATTRIBUTE, 7;
+    return .INVALID, 0;
+}
+
+lookup_color :: (text: string) -> TokenType, s64 {
+    lower: [16] u8;
+    len := min(text.count, 15);
+    for i: 0..len-1 {
+        c := text[i];
+        if c >= #char "A" && c <= #char "Z" lower[i] = c + 32;
+        else lower[i] = c;
+    }
+    lower_str: string;
+    lower_str.data = lower.data;
+    lower_str.count = len;
+
+    // Color values from Defines.h
+    if lower_str == "black"   return .COLOR, 0;
+    if lower_str == "grey" || lower_str == "gray" return .COLOR, 1;
+    if lower_str == "white"   return .COLOR, 2;
+    if lower_str == "blue"    return .COLOR, 3;
+    if lower_str == "green"   return .COLOR, 4;
+    if lower_str == "red"     return .COLOR, 5;
+    if lower_str == "purple"  return .COLOR, 6;
+    if lower_str == "cyan"    return .COLOR, 7;
+    if lower_str == "magenta" return .COLOR, 8;
+    if lower_str == "yellow"  return .COLOR, 9;
+    if lower_str == "azure"   return .COLOR, 10;
+    if lower_str == "sky" || lower_str == "skyblue" return .COLOR, 11;
+    if lower_str == "pink"    return .COLOR, 12;
+    if lower_str == "brown"   return .COLOR, 13;
+    if lower_str == "shadow"  return .COLOR, 14;
+    return .INVALID, 0;
+}
+
+lookup_direction :: (text: string) -> TokenType, s64 {
+    lower: [16] u8;
+    len := min(text.count, 15);
+    for i: 0..len-1 {
+        c := text[i];
+        if c >= #char "A" && c <= #char "Z" lower[i] = c + 32;
+        else lower[i] = c;
+    }
+    lower_str: string;
+    lower_str.data = lower.data;
+    lower_str.count = len;
+
+    // Direction values from Defines.h
+    if lower_str == "north"     return .DIRECTION, 0;
+    if lower_str == "south"     return .DIRECTION, 1;
+    if lower_str == "east"      return .DIRECTION, 2;
+    if lower_str == "west"      return .DIRECTION, 3;
+    if lower_str == "northeast" return .DIRECTION, 4;
+    if lower_str == "northwest" return .DIRECTION, 5;
+    if lower_str == "southeast" return .DIRECTION, 6;
+    if lower_str == "southwest" return .DIRECTION, 7;
+    if lower_str == "up"        return .DIRECTION, 8;
+    if lower_str == "down"      return .DIRECTION, 9;
+    if lower_str == "center"    return .DIRECTION, 10;
+    return .INVALID, 0;
+}
+
+lookup_wep_type :: (text: string) -> TokenType, s64 {
+    lower: [16] u8;
+    len := min(text.count, 15);
+    for i: 0..len-1 {
+        c := text[i];
+        if c >= #char "A" && c <= #char "Z" lower[i] = c + 32;
+        else lower[i] = c;
+    }
+    lower_str: string;
+    lower_str.data = lower.data;
+    lower_str.count = len;
+
+    // Weapon type values: SLASH=0, PIERCE=1, BLUNT=2
+    if lower_str == "slash" || lower_str == "slashing" return .WEP_TYPE, 0;
+    if lower_str == "pierce" || lower_str == "piercing" return .WEP_TYPE, 1;
+    if lower_str == "blunt" return .WEP_TYPE, 2;
+    return .INVALID, 0;
+}
+
+lookup_stype :: (text: string) -> TokenType, s64 {
+    lower: [8] u8;
+    len := min(text.count, 7);
+    for i: 0..len-1 {
+        c := text[i];
+        if c >= #char "A" && c <= #char "Z" lower[i] = c + 32;
+        else lower[i] = c;
+    }
+    lower_str: string;
+    lower_str.data = lower.data;
+    lower_str.count = len;
+
+    // Save type values: FORT=0, REF=1, WILL=2
+    if lower_str == "fort" return .STYPE, 0;
+    if lower_str == "ref"  return .STYPE, 1;
+    if lower_str == "will" return .STYPE, 2;
+    return .INVALID, 0;
+}
+
 lookup_keyword :: (text: string, in_code: bool) -> TokenType {
     // Convert to lowercase for comparison
     lower: [64] u8;
@@ -553,7 +813,7 @@ lookup_keyword :: (text: string, in_code: bool) -> TokenType {
     // Resource keywords
     if lower_str == "monster" return .KW_MONSTER;
     if lower_str == "item" return .KW_ITEM;
-    if lower_str == "flavor" return .KW_FLAVOR;
+    if lower_str == "flavor" || lower_str == "flavour" return .KW_FLAVOR;
     if lower_str == "effect" return .KW_EFFECT;
     if lower_str == "spell" return .KW_SPELL;
     if lower_str == "feature" return .KW_FEATURE;
@@ -644,6 +904,17 @@ lookup_keyword :: (text: string, in_code: bool) -> TokenType {
     if lower_str == "proficiencies" return .KW_PROFICIENCIES;
     if lower_str == "gear" return .KW_GEAR;
     if lower_str == "domains" return .KW_DOMAINS;
+    if lower_str == "poison" return .KW_POISON;
+    if lower_str == "disease" return .KW_DISEASE;
+    if lower_str == "spells" return .KW_SPELLS;
+    if lower_str == "floor" return .KW_FLOOR;
+    if lower_str == "parts" return .KW_PARTS;
+    if lower_str == "align" return .KW_ALIGN;
+    if lower_str == "feats" return .KW_FEATS;
+    if lower_str == "power" return .KW_POWER;
+    if lower_str == "specials" return .KW_SPECIALS;
+    if lower_str == "mtype" return .KW_MTYPE;
+    if lower_str == "immune" return .KW_IMMUNE;
 
     // Color keywords
     if lower_str == "red" return .KW_RED;
@@ -666,14 +937,32 @@ lookup_keyword :: (text: string, in_code: bool) -> TokenType {
     if lower_str == "dark" return .KW_DARK;
     if lower_str == "light" return .KW_LIGHT;
 
-    // Attribute keywords
-    if lower_str == "str" return .KW_STR;
-    if lower_str == "dex" return .KW_DEX;
-    if lower_str == "con" return .KW_CON;
-    if lower_str == "int" return .KW_INT;
-    if lower_str == "wis" return .KW_WIS;
-    if lower_str == "cha" return .KW_CHA;
-    if lower_str == "luc" return .KW_LUC;
+    // Note: Attribute words (Str, Dex, etc.) are handled by lookup_attribute()
+    // and return ATTRIBUTE token type with value, not keywords
+
+    // Keywords1 - Type keywords (work everywhere)
+    if lower_str == "void" return .KW_VOID;
+    if lower_str == "bool" return .KW_BOOL;
+    if lower_str == "int8" return .KW_INT8;
+    if lower_str == "int16" return .KW_INT16;
+    if lower_str == "int32" return .KW_INT32;
+    if lower_str == "uint8" return .KW_UINT8;
+    if lower_str == "uint16" return .KW_UINT16;
+    if lower_str == "hobj" return .KW_HOBJ;
+    if lower_str == "htext" return .KW_HTEXT;
+    if lower_str == "rid" return .KW_RID;
+    if lower_str == "string" return .KW_STRING_TYPE;
+    if lower_str == "rect" return .KW_RECT;
+
+    // Keywords1 - Special words (work everywhere)
+    if lower_str == "abs" return .KW_ABS;
+    if lower_str == "member" return .KW_MEMBER;
+    if lower_str == "static" return .KW_STATIC;
+    if lower_str == "true" return .KW_TRUE;
+    if lower_str == "false" return .KW_FALSE;
+    if lower_str == "null" return .KW_NULL;
+    if lower_str == "max" return .KW_MAX;
+    if lower_str == "min" return .KW_MIN;
 
     // Control flow (only in code blocks)
     if in_code {
@@ -688,6 +977,99 @@ lookup_keyword :: (text: string, in_code: bool) -> TokenType {
         if lower_str == "default" return .KW_DEFAULT;
         if lower_str == "do" return .KW_DO;
         if lower_str == "continue" return .KW_CONTINUE;
+    }
+
+    // Keywords2 - only outside code blocks
+    if !in_code {
+        // More property keywords
+        if lower_str == "glyph" return .KW_GLYPH;
+        if lower_str == "value" return .KW_VALUE;
+        if lower_str == "type" return .KW_TYPE;
+        if lower_str == "day" return .KW_DAY;
+        if lower_str == "week" return .KW_WEEK;
+        if lower_str == "tile" return .KW_TILE;
+        if lower_str == "tiles" return .KW_TILES;
+        if lower_str == "all" return .KW_ALL;
+        if lower_str == "also" return .KW_ALSO;
+        if lower_str == "and" return .KW_AND;
+        if lower_str == "or" return .KW_OR_KW;
+        if lower_str == "with" return .KW_WITH;
+        if lower_str == "of" return .KW_OF;
+        if lower_str == "from" return .KW_FROM;
+        if lower_str == "to" return .KW_TO;
+        if lower_str == "per" return .KW_PER;
+        if lower_str == "for" return .KW_FOR_KW;
+        if lower_str == "innate" return .KW_INNATE;
+        if lower_str == "invoke" return .KW_INVOKE;
+        if lower_str == "base" return .KW_BASE;
+        if lower_str == "chance" return .KW_CHANCE;
+        if lower_str == "walls" return .KW_WALLS;
+        if lower_str == "door" return .KW_DOOR;
+        if lower_str == "grid" return .KW_GRID;
+        if lower_str == "objects" return .KW_OBJECTS;
+        if lower_str == "object" return .KW_OBJECT;
+        if lower_str == "equip" return .KW_EQUIP;
+        if lower_str == "wield" return .KW_WIELD;
+        if lower_str == "module" return .KW_MODULE;
+        if lower_str == "slot" return .KW_SLOT;
+        if lower_str == "file" return .KW_FILE;
+        if lower_str == "caster" return .KW_CASTER;
+        if lower_str == "random" return .KW_RANDOM;
+        if lower_str == "as" return .KW_AS;
+        if lower_str == "near" return .KW_NEAR;
+        if lower_str == "none" return .KW_NONE;
+        if lower_str == "normal" return .KW_NORMAL;
+        if lower_str == "partial" return .KW_PARTIAL;
+        if lower_str == "turns" return .KW_TURNS;
+        if lower_str == "timeout" return .KW_TIMEOUT;
+
+        // Effect value keywords
+        if lower_str == "sval" return .KW_SVAL;
+        if lower_str == "dval" return .KW_DVAL;
+        if lower_str == "aval" return .KW_AVAL;
+        if lower_str == "lval" return .KW_LVAL;
+        if lower_str == "tval" return .KW_TVAL;
+        if lower_str == "rval" return .KW_RVAL;
+        if lower_str == "eval" return .KW_EVAL;
+        if lower_str == "purpose" return .KW_PURPOSE;
+
+        // Item/container keywords
+        if lower_str == "lifespan" return .KW_LIFESPAN;
+        if lower_str == "fuel" return .KW_FUEL;
+        if lower_str == "capacity" return .KW_CAPACITY;
+        if lower_str == "weightlim" return .KW_WEIGHTLIM;
+        if lower_str == "weightmod" return .KW_WEIGHTMOD;
+        if lower_str == "maxsize" return .KW_MAXSIZE;
+        if lower_str == "ctype" return .KW_CTYPE;
+        if lower_str == "fires" return .KW_FIRES;
+        if lower_str == "hitpoints" return .KW_HITPOINTS;
+
+        // Combat keywords
+        if lower_str == "melee" return .KW_MELEE;
+        if lower_str == "archery" return .KW_ARCHERY;
+        if lower_str == "brawl" return .KW_BRAWL;
+        if lower_str == "throwing" || lower_str == "thrown" return .KW_THROWING;
+        if lower_str == "heavy" return .KW_HEAVY;
+        if lower_str == "saves" || lower_str == "sav" || lower_str == "save" return .KW_SAVES;
+        if lower_str == "dmg" || lower_str == "dam" || lower_str == "damage" return .KW_DMG;
+        if lower_str == "dc" return .KW_DC;
+
+        // Misc keywords
+        if lower_str == "cursed" return .KW_CURSED;
+        if lower_str == "blessed" return .KW_BLESSED;
+        if lower_str == "qualities" return .KW_QUALITIES;
+        if lower_str == "sustains" return .KW_SUSTAINS;
+        if lower_str == "resists" return .KW_RESISTS;
+        if lower_str == "export" return .KW_EXPORT;
+        if lower_str == "stock" return .KW_STOCK;
+        if lower_str == "store" return .KW_STORE;
+        if lower_str == "guild" return .KW_GUILD;
+        if lower_str == "roomtypes" return .KW_ROOMTYPES;
+        if lower_str == "regions" return .KW_REGIONS;
+        if lower_str == "any" return .KW_ANY;
+        if lower_str == "colour" || lower_str == "color" return .KW_COLOUR;
+        if lower_str == "material" return .KW_MATERIAL;
+        if lower_str == "move" return .KW_MOVE;
     }
 
     return .INVALID;
@@ -711,6 +1093,7 @@ scan_identifier :: (lex: *Lexer, start_pos: s64, start_line: s32, start_col: s32
     }
 
     text := slice(lex.source, start_pos, lex.pos - start_pos);
+    in_code := lex.brace_level >= 2;
 
     // Standalone 'd' is dice notation
     if text.count == 1 && text[0] == #char "d" {
@@ -728,8 +1111,46 @@ scan_identifier :: (lex: *Lexer, start_pos: s64, start_line: s32, start_col: s32
         }
     }
 
+    // Outside code blocks, check for semantic tokens (AttrWords, ColourWords, DirWords, etc.)
+    if !in_code {
+        // Check attribute words
+        attr_type, attr_val := lookup_attribute(text);
+        if attr_type != .INVALID {
+            tok := make_token(lex, attr_type, text, start_line, start_col);
+            tok.int_value = attr_val;
+            return tok;
+        }
+
+        // Check direction words
+        dir_type, dir_val := lookup_direction(text);
+        if dir_type != .INVALID {
+            tok := make_token(lex, dir_type, text, start_line, start_col);
+            tok.int_value = dir_val;
+            return tok;
+        }
+
+        // Check weapon types
+        wep_type, wep_val := lookup_wep_type(text);
+        if wep_type != .INVALID {
+            tok := make_token(lex, wep_type, text, start_line, start_col);
+            tok.int_value = wep_val;
+            return tok;
+        }
+
+        // Check save types
+        save_type, save_val := lookup_stype(text);
+        if save_type != .INVALID {
+            tok := make_token(lex, save_type, text, start_line, start_col);
+            tok.int_value = save_val;
+            return tok;
+        }
+
+        // Note: Color words are handled as keywords (KW_RED, KW_BLUE, etc.) for parser compatibility.
+        // The COLOR token type is available for future grammar alignment if needed.
+    }
+
     // Check for keyword
-    kw_type := lookup_keyword(text, lex.brace_level >= 2);
+    kw_type := lookup_keyword(text, in_code);
     if kw_type != .INVALID {
         return make_token(lex, kw_type, text, start_line, start_col);
     }
@@ -863,6 +1284,32 @@ scan_colon :: (lex: *Lexer, start_line: s32, start_col: s32) -> Token {
     return make_token(lex, .COLON, ":", start_line, start_col);
 }
 
+scan_percent :: (lex: *Lexer, start_line: s32, start_col: s32) -> Token {
+    if peek_char(lex) == #char "=" {
+        advance_char(lex);
+        return make_token(lex, .MOD_EQ, "%=", start_line, start_col);
+    }
+    // Standalone % is the modulo operator
+    return make_token(lex, .MODULO, "%", start_line, start_col);
+}
+
+scan_tilde :: (lex: *Lexer, start_line: s32, start_col: s32) -> Token {
+    if peek_char(lex) == #char "=" {
+        advance_char(lex);
+        return make_token(lex, .TILDE_EQ, "~=", start_line, start_col);
+    }
+    return make_token(lex, .TILDE, "~", start_line, start_col);
+}
+
+scan_dot :: (lex: *Lexer, start_line: s32, start_col: s32) -> Token {
+    if peek_char(lex) == #char "." && peek_next(lex) == #char "." {
+        advance_char(lex);
+        advance_char(lex);
+        return make_token(lex, .ELLIPSIS, "...", start_line, start_col);
+    }
+    return make_token(lex, .DOT, ".", start_line, start_col);
+}
+
 // Main tokenization function
 lexer_next_token :: (lex: *Lexer) -> Token {
     skip_whitespace_and_comments(lex);
@@ -893,14 +1340,14 @@ lexer_next_token :: (lex: *Lexer) -> Token {
     if c == #char ")" return make_token(lex, .RPAREN, ")", start_line, start_col);
     if c == #char "[" return make_token(lex, .LBRACKET, "[", start_line, start_col);
     if c == #char "]" return make_token(lex, .RBRACKET, "]", start_line, start_col);
-    if c == #char "." return make_token(lex, .DOT, ".", start_line, start_col);
+    if c == #char "." return scan_dot(lex, start_line, start_col);
     if c == #char "*" return scan_star(lex, start_line, start_col);
     if c == #char "/" return scan_slash(lex, start_line, start_col);
     if c == #char "+" return scan_plus(lex, start_line, start_col);
     if c == #char "-" return scan_minus(lex, start_line, start_col);
     if c == #char "|" return scan_pipe(lex, start_line, start_col);
     if c == #char "&" return scan_ampersand(lex, start_line, start_col);
-    if c == #char "~" return make_token(lex, .TILDE, "~", start_line, start_col);
+    if c == #char "~" return scan_tilde(lex, start_line, start_col);
     if c == #char "!" return scan_bang(lex, start_line, start_col);
     if c == #char "?" return make_token(lex, .QUESTION, "?", start_line, start_col);
     if c == #char "<" return scan_less(lex, start_line, start_col);
@@ -909,6 +1356,7 @@ lexer_next_token :: (lex: *Lexer) -> Token {
     if c == #char "^" return make_token(lex, .CARET, "^", start_line, start_col);
     if c == #char "@" return make_token(lex, .AT, "@", start_line, start_col);
     if c == #char "#" return make_token(lex, .HASH, "#", start_line, start_col);
+    if c == #char "%" return scan_percent(lex, start_line, start_col);
     if c == #char "$" return scan_res_ref(lex, start_pos, start_line, start_col);
     if c == #char "\"" return scan_string(lex, start_pos, start_line, start_col);
     if c == #char "'" return scan_char(lex, start_pos, start_line, start_col);

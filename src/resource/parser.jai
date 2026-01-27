@@ -145,6 +145,27 @@ ParsedItem :: struct {
     arm:          s64;
     has_def:      bool;
     def:          s64;
+    // Light source properties
+    has_lifespan: bool;
+    lifespan:     s64;
+    has_fuel:     bool;
+    fuel:         s64;
+    // Container properties
+    has_capacity: bool;
+    capacity:     s64;
+    has_weight_lim: bool;
+    weight_lim:   s64;
+    has_weight_mod: bool;
+    weight_mod:   s64;
+    has_max_size: bool;
+    max_size:     s64;
+    has_timeout:  bool;
+    timeout:      s64;
+    has_ctype:    bool;
+    ctype:        s64;
+    // Wand/charged item properties
+    has_fires:    bool;
+    fires:        [..] string;  // $"spell" references
     flags:        [..] s64;
     has_desc:     bool;
     desc:         string;
@@ -222,6 +243,27 @@ ParsedEffect :: struct {
     yval:         s64;
     has_pval:     bool;
     pval:         ParsedDice;
+    // Additional effect properties
+    has_sval:     bool;
+    sval:         s64;
+    has_dval:     bool;
+    dval:         s64;
+    has_aval:     bool;
+    aval:         s64;
+    has_lval:     bool;
+    lval:         s64;
+    has_tval:     bool;
+    tval:         s64;
+    has_rval:     bool;
+    rval:         s64;
+    has_eval:     bool;
+    eval:         s64;
+    has_base_chance: bool;
+    base_chance:  s64;
+    has_purpose:  bool;
+    purpose:      s64;
+    purpose_param: s64;
+    has_purpose_param: bool;
     flags:        [..] s64;
     has_desc:     bool;
     desc:         string;
@@ -324,6 +366,139 @@ ParsedClass :: struct {
     line, column:  s32;
 }
 
+// Template attribute modifier
+ParsedAttrMod :: struct {
+    is_percentage: bool;
+    value:         s64;      // Percentage value (e.g., 55 for 55%) or absolute modifier (e.g., +8)
+    has_min:       bool;
+    min_value:     s64;
+}
+
+ParsedTemplate :: struct {
+    name:         string;
+    ttype:        s64;           // TM_AGECAT, TM_CLASS, etc.
+    has_for:      bool;
+    for_mtype:    s64;           // MA_DRAGON, MA_ANIMAL, etc.
+    has_desc:     bool;
+    desc:         string;
+    has_cr:       bool;
+    cr:           s64;           // Can be +/- N
+    has_size:     bool;
+    size:         s64;           // Can be +/- N
+    has_power:    bool;
+    power:        s64;
+    has_depth:    bool;
+    depth:        s64;
+    // Attribute modifiers
+    has_str:      bool;
+    str_mod:      ParsedAttrMod;
+    has_dex:      bool;
+    dex_mod:      ParsedAttrMod;
+    has_con:      bool;
+    con_mod:      ParsedAttrMod;
+    has_int:      bool;
+    int_mod:      ParsedAttrMod;
+    has_wis:      bool;
+    wis_mod:      ParsedAttrMod;
+    has_cha:      bool;
+    cha_mod:      ParsedAttrMod;
+    // Percentage modifiers
+    has_mov:      bool;
+    mov:          s64;
+    has_arm:      bool;
+    arm:          s64;
+    has_hitdice:  bool;
+    hitdice:      s64;
+    has_hit:      bool;
+    hit:          s64;
+    has_caster_level: bool;
+    caster_level: s64;
+    // Lists
+    attacks:      [..] ParsedAttack;
+    flags:        [..] s64;
+    feats:        [..] s64;
+    immunities:   [..] s64;
+    mtypes:       [..] s64;
+    gear:         [..] ParsedGearEntry;
+    grants:       [..] ParsedGrant;
+    line, column: s32;
+}
+
+// Region
+ParsedRegion :: struct {
+    name:         string;
+    rtype:        s64;           // RF_RIVER, RF_CORRIDOR, etc.
+    has_floor:    bool;
+    floor:        string;        // $"shallow water"
+    has_depth:    bool;
+    depth:        s64;
+    lists:        [..] ParsedList;
+    line, column: s32;
+}
+
+// Encounter
+ParsedEncounter :: struct {
+    name:         string;
+    has_weight:   bool;
+    weight:       s64;
+    has_cr:       bool;
+    cr_min:       s64;
+    cr_max:       s64;
+    has_terrain:  bool;
+    terrain:      s64;
+    has_align:    bool;
+    align:        s64;
+    flags:        [..] s64;
+    lists:        [..] ParsedList;
+    constants:    [..] ParsedConstant;
+    line, column: s32;
+}
+
+// Domain
+ParsedDomain :: struct {
+    name:         string;
+    index:        s64;
+    has_desc:     bool;
+    desc:         string;
+    grants:       [..] ParsedGrant;
+    spells:       [..] string;   // $"spell name" references
+    line, column: s32;
+}
+
+// God
+ParsedGod :: struct {
+    name:         string;
+    has_desc:     bool;
+    desc:         string;
+    domains:      [..] string;   // $"domain name" references
+    grants:       [..] ParsedGrant;
+    lists:        [..] ParsedList;
+    constants:    [..] ParsedConstant;
+    line, column: s32;
+}
+
+// Text (simple help text)
+ParsedText :: struct {
+    name:         string;
+    content:      string;
+    line, column: s32;
+}
+
+// Dungeon
+ParsedSpecial :: struct {
+    room_ref:     string;        // $"room name"
+    at_level:     s64;
+}
+
+ParsedDungeon :: struct {
+    name:         string;
+    has_desc:     bool;
+    desc:         string;
+    constants:    [..] ParsedConstant;
+    specials:     [..] ParsedSpecial;
+    line, column: s32;
+}
+
 ParseError :: struct {
     line:    s32;
     column:  s32;
@@ -337,14 +512,21 @@ Parser :: struct {
     had_error: bool;
 
     // Parsed results
-    flavors:   [..] ParsedFlavor;
-    items:     [..] ParsedItem;
-    monsters:  [..] ParsedMonster;
-    effects:   [..] ParsedEffect;
-    features:  [..] ParsedFeature;
-    terrains:  [..] ParsedTerrain;
-    races:     [..] ParsedRace;
-    classes:   [..] ParsedClass;
+    flavors:    [..] ParsedFlavor;
+    items:      [..] ParsedItem;
+    monsters:   [..] ParsedMonster;
+    effects:    [..] ParsedEffect;
+    features:   [..] ParsedFeature;
+    terrains:   [..] ParsedTerrain;
+    races:      [..] ParsedRace;
+    classes:    [..] ParsedClass;
+    templates:  [..] ParsedTemplate;
+    regions:    [..] ParsedRegion;
+    encounters: [..] ParsedEncounter;
+    domains:    [..] ParsedDomain;
+    gods:       [..] ParsedGod;
+    texts:      [..] ParsedText;
+    dungeons:   [..] ParsedDungeon;
 }
 
 // Parser initialization
@@ -366,6 +548,13 @@ parser_free :: (p: *Parser) {
     array_free(p.terrains);
     array_free(p.races);
     array_free(p.classes);
+    array_free(p.templates);
+    array_free(p.regions);
+    array_free(p.encounters);
+    array_free(p.domains);
+    array_free(p.gods);
+    array_free(p.texts);
+    array_free(p.dungeons);
 }
 
 // Helper functions
@@ -923,15 +1112,22 @@ parser_parse :: (p: *Parser) -> bool {
 // Resource dispatch
 parse_resource :: (p: *Parser) -> bool {
     tok := peek(p);
-    if tok.type == .KW_FLAVOR   return parse_flavor(p);
-    if tok.type == .KW_MONSTER  return parse_monster(p);
-    if tok.type == .KW_ITEM     return parse_item(p);
-    if tok.type == .KW_EFFECT   return parse_effect(p, false);
-    if tok.type == .KW_SPELL    return parse_effect(p, true);
-    if tok.type == .KW_FEATURE  return parse_feature(p);
-    if tok.type == .KW_TERRAIN  return parse_terrain(p);
-    if tok.type == .KW_RACE     return parse_race(p);
-    if tok.type == .KW_CLASS    return parse_class(p);
+    if tok.type == .KW_FLAVOR    return parse_flavor(p);
+    if tok.type == .KW_MONSTER   return parse_monster(p);
+    if tok.type == .KW_ITEM      return parse_item(p);
+    if tok.type == .KW_EFFECT    return parse_effect(p, false);
+    if tok.type == .KW_SPELL     return parse_effect(p, true);
+    if tok.type == .KW_FEATURE   return parse_feature(p);
+    if tok.type == .KW_TERRAIN   return parse_terrain(p);
+    if tok.type == .KW_RACE      return parse_race(p);
+    if tok.type == .KW_CLASS     return parse_class(p);
+    if tok.type == .KW_TEMPLATE  return parse_template(p);
+    if tok.type == .KW_REGION    return parse_region(p);
+    if tok.type == .KW_ENCOUNTER return parse_encounter(p);
+    if tok.type == .KW_DOMAIN    return parse_domain(p);
+    if tok.type == .KW_GOD       return parse_god(p);
+    if tok.type == .KW_TEXT      return parse_text(p);
+    if tok.type == .KW_DUNGEON   return parse_dungeon(p);
 
     add_error(p, "Expected resource definition");
     return false;
@@ -989,6 +1185,16 @@ parse_flavor :: (p: *Parser) -> bool {
             flavor.weight = weight_val;
             match(p, .SEMICOLON);
         } else if tok.type == .KW_IMAGE {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            color, color_ok := parse_color(p);
+            if !color_ok return false;
+            flavor.has_color = true;
+            flavor.color = color;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_COLOUR {
+            // Colour: bright green;
             advance(p);
             _, colon2_ok := consume(p, .COLON, "Expected ':'");
             if !colon2_ok return false;
@@ -1055,8 +1261,22 @@ parse_monster :: (p: *Parser) -> bool {
             advance(p);
             _, colon2_ok := consume(p, .COLON, "Expected ':'");
             if !colon2_ok return false;
-            cr_val, cr_ok := parse_cexpr(p);
+
+            // Handle fractional CR (1/2, 1/4, 1/8, etc.) or regular CR
+            cr_val, cr_ok := parse_cexpr3(p);
             if !cr_ok return false;
+
+            // Check for fractional CR (e.g., 1/4)
+            if match(p, .SLASH) {
+                denom, denom_ok := parse_cexpr3(p);
+                if !denom_ok return false;
+                // Store fractional CR as negative value: 1/2 = -2, 1/4 = -4, 1/8 = -8
+                // This matches how Incursion encodes fractional CR internally
+                if cr_val == 1 && denom > 1 {
+                    cr_val = -denom;
+                }
+            }
+
             monster.has_cr = true;
             monster.cr = cr_val;
             match(p, .SEMICOLON);
@@ -1153,8 +1373,153 @@ parse_item :: (p: *Parser) -> bool {
             item.has_weight = true;
             item.weight = val;
             match(p, .SEMICOLON);
+        } else if tok.type == .KW_SIZE {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            item.has_size = true;
+            item.size = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_COST {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            item.has_cost = true;
+            item.cost = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_GROUP {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            item.has_group = true;
+            item.group = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_HP || tok.type == .KW_HITPOINTS {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            item.has_hp = true;
+            item.hp = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_DEPTH {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            item.has_depth = true;
+            item.depth = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_LIFESPAN {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            item.has_lifespan = true;
+            item.lifespan = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_FUEL {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            item.has_fuel = true;
+            item.fuel = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_CAPACITY {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            item.has_capacity = true;
+            item.capacity = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_WEIGHTLIM {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            item.has_weight_lim = true;
+            item.weight_lim = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_WEIGHTMOD {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            item.has_weight_mod = true;
+            item.weight_mod = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_MAXSIZE {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            item.has_max_size = true;
+            item.max_size = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_TIMEOUT {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            item.has_timeout = true;
+            item.timeout = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_CTYPE {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            item.has_ctype = true;
+            item.ctype = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_FIRES {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            item.has_fires = true;
+            // Parse list of $"spell" references
+            while true {
+                spell_tok := peek(p);
+                if spell_tok.type == .RES_REF {
+                    array_add(*item.fires, extract_res_ref_name(spell_tok.text));
+                    advance(p);
+                } else {
+                    break;
+                }
+                if !match(p, .COMMA) break;
+            }
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_DESC {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            desc_tok, desc_ok := consume(p, .STRING, "Expected description");
+            if !desc_ok return false;
+            item.has_desc = true;
+            item.desc = extract_string_content(desc_tok.text);
+            match(p, .SEMICOLON);
         } else if tok.type == .KW_FLAGS {
             if !parse_flags_list(p, *item.flags) return false;
+        } else if tok.type == .KW_ON || tok.type == .KW_EVENT {
+            skip_event_handler(p);
         } else {
             advance(p);
         }
@@ -1200,8 +1565,149 @@ parse_effect :: (p: *Parser, is_spell: bool) -> bool {
             effect.has_level = true;
             effect.level = val;
             match(p, .SEMICOLON);
+        } else if tok.type == .KW_QVAL {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            effect.has_qval = true;
+            effect.qval = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_XVAL {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            effect.has_xval = true;
+            effect.xval = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_YVAL {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            effect.has_yval = true;
+            effect.yval = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_SVAL {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            effect.has_sval = true;
+            effect.sval = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_DVAL {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            effect.has_dval = true;
+            effect.dval = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_AVAL {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            effect.has_aval = true;
+            effect.aval = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_LVAL {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            effect.has_lval = true;
+            effect.lval = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_TVAL {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            effect.has_tval = true;
+            effect.tval = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_RVAL {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            effect.has_rval = true;
+            effect.rval = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_EVAL {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            effect.has_eval = true;
+            effect.eval = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_BASE {
+            // Base Chance: N%;
+            advance(p);
+            // Optional "Chance" keyword
+            if check(p, .KW_CHANCE) advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            effect.has_base_chance = true;
+            effect.base_chance = val;
+            match(p, .MODULO);  // Optional % after value
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_PURPOSE {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            effect.has_purpose = true;
+            effect.purpose = val;
+            // Optional (param) after purpose
+            if match(p, .LPAREN) {
+                param, param_ok := parse_cexpr(p);
+                if !param_ok return false;
+                effect.has_purpose_param = true;
+                effect.purpose_param = param;
+                _, rparen_ok := consume(p, .RPAREN, "Expected ')'");
+                if !rparen_ok return false;
+            }
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_SCHOOLS {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            effect.has_schools = true;
+            effect.schools = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_DESC {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            desc_tok, desc_ok := consume(p, .STRING, "Expected description");
+            if !desc_ok return false;
+            effect.has_desc = true;
+            effect.desc = extract_string_content(desc_tok.text);
+            match(p, .SEMICOLON);
         } else if tok.type == .KW_FLAGS {
             if !parse_flags_list(p, *effect.flags) return false;
+        } else if tok.type == .KW_ON || tok.type == .KW_EVENT {
+            skip_event_handler(p);
         } else {
             advance(p);
         }
@@ -1372,30 +1878,45 @@ parse_race_entry :: (p: *Parser, race: *ParsedRace) -> bool {
     }
 
     // Attribute modifiers: STR +2, DEX -2, etc.
-    if tok.type == .KW_STR || tok.type == .KW_DEX || tok.type == .KW_CON ||
-       tok.type == .KW_INT || tok.type == .KW_WIS || tok.type == .KW_CHA ||
-       tok.type == .KW_LUC {
+    // Handle both KW_* tokens (in code) and ATTRIBUTE tokens (outside code)
+    if tok.type == .ATTRIBUTE || tok.type == .KW_STR || tok.type == .KW_DEX ||
+       tok.type == .KW_CON || tok.type == .KW_INT || tok.type == .KW_WIS ||
+       tok.type == .KW_CHA || tok.type == .KW_LUC {
         race.has_attrs = true;
         while true {
             attr_tok := peek(p);
-            attr_type := attr_tok.type;
-            if attr_type != .KW_STR && attr_type != .KW_DEX && attr_type != .KW_CON &&
-               attr_type != .KW_INT && attr_type != .KW_WIS && attr_type != .KW_CHA &&
-               attr_type != .KW_LUC {
+            if attr_tok.type != .ATTRIBUTE && attr_tok.type != .KW_STR &&
+               attr_tok.type != .KW_DEX && attr_tok.type != .KW_CON &&
+               attr_tok.type != .KW_INT && attr_tok.type != .KW_WIS &&
+               attr_tok.type != .KW_CHA && attr_tok.type != .KW_LUC {
                 break;
+            }
+
+            // Get attribute index (0=STR, 1=DEX, 2=CON, 3=INT, 4=WIS, 5=CHA, 6=LUC)
+            attr_index: s64 = -1;
+            if attr_tok.type == .ATTRIBUTE {
+                attr_index = attr_tok.int_value;
+            } else {
+                if attr_tok.type == .KW_STR attr_index = 0;
+                else if attr_tok.type == .KW_DEX attr_index = 1;
+                else if attr_tok.type == .KW_CON attr_index = 2;
+                else if attr_tok.type == .KW_INT attr_index = 3;
+                else if attr_tok.type == .KW_WIS attr_index = 4;
+                else if attr_tok.type == .KW_CHA attr_index = 5;
+                else if attr_tok.type == .KW_LUC attr_index = 6;
             }
             advance(p);
 
             val, ok := parse_cexpr(p);
             if !ok return false;
 
-            if attr_type == .KW_STR race.str_mod = val;
-            else if attr_type == .KW_DEX race.dex_mod = val;
-            else if attr_type == .KW_CON race.con_mod = val;
-            else if attr_type == .KW_INT race.int_mod = val;
-            else if attr_type == .KW_WIS race.wis_mod = val;
-            else if attr_type == .KW_CHA race.cha_mod = val;
-            else if attr_type == .KW_LUC race.luc_mod = val;
+            if attr_index == 0 race.str_mod = val;
+            else if attr_index == 1 race.dex_mod = val;
+            else if attr_index == 2 race.con_mod = val;
+            else if attr_index == 3 race.int_mod = val;
+            else if attr_index == 4 race.wis_mod = val;
+            else if attr_index == 5 race.cha_mod = val;
+            else if attr_index == 6 race.luc_mod = val;
 
             if !match(p, .COMMA) break;
         }
@@ -1598,5 +2119,844 @@ parse_class_entry :: (p: *Parser, cls: *ParsedClass) -> bool {
 
     // Skip unknown
     advance(p);
+    return true;
+}
+
+// ============================================================================
+// Template parser
+// ============================================================================
+parse_template :: (p: *Parser) -> bool {
+    start_tok := advance(p);  // consume 'Template'
+
+    name_tok, name_ok := consume(p, .STRING, "Expected template name");
+    if !name_ok return false;
+
+    _, colon_ok := consume(p, .COLON, "Expected ':'");
+    if !colon_ok return false;
+
+    // Parse template type (TM_AGECAT, TM_CLASS, etc.)
+    type_val, type_ok := parse_cexpr(p);
+    if !type_ok return false;
+
+    tmpl: ParsedTemplate;
+    tmpl.name = extract_string_content(name_tok.text);
+    tmpl.ttype = type_val;
+    tmpl.line = start_tok.line;
+    tmpl.column = start_tok.column;
+
+    // Check for "for MA_*" clause
+    tok := peek(p);
+    if tok.type == .IDENTIFIER && strings_equal_nocase(tok.text, "for") {
+        advance(p);
+        for_val, for_ok := parse_cexpr(p);
+        if !for_ok return false;
+        tmpl.has_for = true;
+        tmpl.for_mtype = for_val;
+    }
+
+    _, lbrace_ok := consume(p, .LBRACE, "Expected '{'");
+    if !lbrace_ok return false;
+
+    while !check(p, .RBRACE) && !parser_is_at_end(p) {
+        if !parse_template_entry(p, *tmpl) return false;
+    }
+
+    _, rbrace_ok := consume(p, .RBRACE, "Expected '}'");
+    if !rbrace_ok return false;
+
+    array_add(*p.templates, tmpl);
+    return true;
+}
+
+parse_template_entry :: (p: *Parser, tmpl: *ParsedTemplate) -> bool {
+    tok := peek(p);
+
+    if tok.type == .KW_DESC {
+        advance(p);
+        _, colon_ok := consume(p, .COLON, "Expected ':'");
+        if !colon_ok return false;
+        desc_tok, desc_ok := consume(p, .STRING, "Expected description");
+        if !desc_ok return false;
+        tmpl.has_desc = true;
+        tmpl.desc = extract_string_content(desc_tok.text);
+        match(p, .SEMICOLON);
+        return true;
+    }
+
+    if tok.type == .KW_CR {
+        advance(p);
+        _, colon_ok := consume(p, .COLON, "Expected ':'");
+        if !colon_ok return false;
+        val, ok := parse_cexpr(p);
+        if !ok return false;
+        tmpl.has_cr = true;
+        tmpl.cr = val;
+        match(p, .SEMICOLON);
+        return true;
+    }
+
+    if tok.type == .KW_SIZE {
+        advance(p);
+        _, colon_ok := consume(p, .COLON, "Expected ':'");
+        if !colon_ok return false;
+        val, ok := parse_cexpr(p);
+        if !ok return false;
+        tmpl.has_size = true;
+        tmpl.size = val;
+        match(p, .SEMICOLON);
+        return true;
+    }
+
+    if tok.type == .KW_POWER {
+        advance(p);
+        _, colon_ok := consume(p, .COLON, "Expected ':'");
+        if !colon_ok return false;
+        val, ok := parse_cexpr(p);
+        if !ok return false;
+        tmpl.has_power = true;
+        tmpl.power = val;
+        match(p, .SEMICOLON);
+        return true;
+    }
+
+    if tok.type == .KW_DEPTH {
+        advance(p);
+        _, colon_ok := consume(p, .COLON, "Expected ':'");
+        if !colon_ok return false;
+        val, ok := parse_cexpr(p);
+        if !ok return false;
+        tmpl.has_depth = true;
+        tmpl.depth = val;
+        match(p, .SEMICOLON);
+        return true;
+    }
+
+    if tok.type == .KW_FLAGS {
+        return parse_flags_list(p, *tmpl.flags);
+    }
+
+    if tok.type == .KW_FEATS {
+        advance(p);
+        _, colon_ok := consume(p, .COLON, "Expected ':'");
+        if !colon_ok return false;
+        while true {
+            feat_tok := peek(p);
+            if feat_tok.type == .CONSTANT {
+                array_add(*tmpl.feats, feat_tok.int_value);
+                advance(p);
+            } else {
+                break;
+            }
+            if !match(p, .COMMA) break;
+        }
+        match(p, .SEMICOLON);
+        return true;
+    }
+
+    if tok.type == .KW_IMMUNE {
+        advance(p);
+        _, colon_ok := consume(p, .COLON, "Expected ':'");
+        if !colon_ok return false;
+        while true {
+            imm_tok := peek(p);
+            if imm_tok.type == .CONSTANT {
+                array_add(*tmpl.immunities, imm_tok.int_value);
+                advance(p);
+            } else {
+                break;
+            }
+            if !match(p, .COMMA) break;
+        }
+        match(p, .SEMICOLON);
+        return true;
+    }
+
+    if tok.type == .KW_MTYPE {
+        advance(p);
+        _, colon_ok := consume(p, .COLON, "Expected ':'");
+        if !colon_ok return false;
+        mtype_val, ok := parse_cexpr(p);
+        if !ok return false;
+        array_add(*tmpl.mtypes, mtype_val);
+        match(p, .SEMICOLON);
+        return true;
+    }
+
+    if tok.type == .KW_ATTK {
+        // Skip attack definitions for now (complex)
+        advance(p);
+        _, colon_ok := consume(p, .COLON, "Expected ':'");
+        if !colon_ok return false;
+        // Skip until semicolon
+        while !check(p, .SEMICOLON) && !check(p, .RBRACE) && !parser_is_at_end(p) {
+            advance(p);
+        }
+        match(p, .SEMICOLON);
+        return true;
+    }
+
+    if tok.type == .KW_GEAR {
+        // Skip gear definitions for now (complex)
+        advance(p);
+        _, colon_ok := consume(p, .COLON, "Expected ':'");
+        if !colon_ok return false;
+        // Skip until semicolon
+        while !check(p, .SEMICOLON) && !check(p, .RBRACE) && !parser_is_at_end(p) {
+            advance(p);
+        }
+        match(p, .SEMICOLON);
+        return true;
+    }
+
+    if tok.type == .KW_GRANTS {
+        advance(p);
+        _, colon_ok := consume(p, .COLON, "Expected ':'");
+        if !colon_ok return false;
+
+        while true {
+            grant_tok := peek(p);
+            if grant_tok.type == .KW_FEAT {
+                if !parse_grant_feat(p, *tmpl.grants) return false;
+            } else if grant_tok.type == .KW_ABILITY {
+                if !parse_grant_ability(p, *tmpl.grants) return false;
+            } else if grant_tok.type == .KW_STATI {
+                if !parse_grant_stati(p, *tmpl.grants) return false;
+            } else {
+                break;
+            }
+            if !match(p, .COMMA) break;
+        }
+        match(p, .SEMICOLON);
+        return true;
+    }
+
+    // Handle attribute modifiers (Str, Dex, Con, etc.) with mval syntax
+    // e.g., Str: +8; or Str: 55% (min 10);
+    if tok.type == .ATTRIBUTE || tok.type == .KW_STR || tok.type == .KW_DEX ||
+       tok.type == .KW_CON || tok.type == .KW_INT || tok.type == .KW_WIS ||
+       tok.type == .KW_CHA {
+
+        // Get attribute index
+        attr_index: s64 = -1;
+        if tok.type == .ATTRIBUTE {
+            attr_index = tok.int_value;
+        } else {
+            if tok.type == .KW_STR attr_index = 0;
+            else if tok.type == .KW_DEX attr_index = 1;
+            else if tok.type == .KW_CON attr_index = 2;
+            else if tok.type == .KW_INT attr_index = 3;
+            else if tok.type == .KW_WIS attr_index = 4;
+            else if tok.type == .KW_CHA attr_index = 5;
+        }
+        advance(p);
+
+        _, colon_ok := consume(p, .COLON, "Expected ':'");
+        if !colon_ok return false;
+
+        // Parse mval: could be +N, -N, =N, N%, or N% (min M)
+        attr_mod: ParsedAttrMod;
+
+        // Check for percentage value (N% format - lexer returns PERCENT token)
+        if check(p, .PERCENT) {
+            pct_tok := advance(p);
+            attr_mod.is_percentage = true;
+            attr_mod.value = pct_tok.int_value;
+
+            // Check for (min N) or (max N)
+            if match(p, .LPAREN) {
+                next := peek(p);
+                if next.type == .KW_MIN || (next.type == .IDENTIFIER && strings_equal_nocase(next.text, "min")) {
+                    advance(p);
+                    min_val, min_ok := parse_cexpr3(p);
+                    if !min_ok return false;
+                    attr_mod.has_min = true;
+                    attr_mod.min_value = min_val;
+                }
+                _, rparen_ok := consume(p, .RPAREN, "Expected ')'");
+                if !rparen_ok return false;
+            }
+        } else {
+            // Parse as regular expression (+N, -N, =N, or just N)
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            attr_mod.is_percentage = false;
+            attr_mod.value = val;
+
+            // Check if followed by % (N% format without combined token)
+            if match(p, .MODULO) {
+                attr_mod.is_percentage = true;
+                // Check for (min N)
+                if match(p, .LPAREN) {
+                    next := peek(p);
+                    if next.type == .KW_MIN || (next.type == .IDENTIFIER && strings_equal_nocase(next.text, "min")) {
+                        advance(p);
+                        min_val, min_ok := parse_cexpr3(p);
+                        if !min_ok return false;
+                        attr_mod.has_min = true;
+                        attr_mod.min_value = min_val;
+                    }
+                    _, rparen_ok := consume(p, .RPAREN, "Expected ')'");
+                    if !rparen_ok return false;
+                }
+            }
+        }
+
+        // Store in template
+        if attr_index == 0 { tmpl.has_str = true; tmpl.str_mod = attr_mod; }
+        else if attr_index == 1 { tmpl.has_dex = true; tmpl.dex_mod = attr_mod; }
+        else if attr_index == 2 { tmpl.has_con = true; tmpl.con_mod = attr_mod; }
+        else if attr_index == 3 { tmpl.has_int = true; tmpl.int_mod = attr_mod; }
+        else if attr_index == 4 { tmpl.has_wis = true; tmpl.wis_mod = attr_mod; }
+        else if attr_index == 5 { tmpl.has_cha = true; tmpl.cha_mod = attr_mod; }
+
+        match(p, .COMMA);  // Attributes can be comma-separated
+        match(p, .SEMICOLON);
+        return true;
+    }
+
+    // Handle Mov, Arm, HitDice, Hit, Caster Level
+    if tok.type == .KW_MOV {
+        advance(p);
+        _, colon_ok := consume(p, .COLON, "Expected ':'");
+        if !colon_ok return false;
+        val, ok := parse_cexpr(p);
+        if !ok return false;
+        tmpl.has_mov = true;
+        tmpl.mov = val;
+        // Skip trailing % if present
+        match(p, .PERCENT);
+        match(p, .SEMICOLON);
+        return true;
+    }
+
+    if tok.type == .KW_ARM {
+        advance(p);
+        _, colon_ok := consume(p, .COLON, "Expected ':'");
+        if !colon_ok return false;
+        val, ok := parse_cexpr(p);
+        if !ok return false;
+        tmpl.has_arm = true;
+        tmpl.arm = val;
+        match(p, .SEMICOLON);
+        return true;
+    }
+
+    if tok.type == .KW_HITDICE {
+        advance(p);
+        _, colon_ok := consume(p, .COLON, "Expected ':'");
+        if !colon_ok return false;
+        val, ok := parse_cexpr(p);
+        if !ok return false;
+        tmpl.has_hitdice = true;
+        tmpl.hitdice = val;
+        match(p, .SEMICOLON);
+        return true;
+    }
+
+    if tok.type == .KW_HIT {
+        advance(p);
+        _, colon_ok := consume(p, .COLON, "Expected ':'");
+        if !colon_ok return false;
+        val, ok := parse_cexpr(p);
+        if !ok return false;
+        tmpl.has_hit = true;
+        tmpl.hit = val;
+        match(p, .SEMICOLON);
+        return true;
+    }
+
+    if tok.type == .KW_ON || tok.type == .KW_EVENT {
+        return skip_event_handler(p);
+    }
+
+    // Skip unknown tokens
+    advance(p);
+    return true;
+}
+
+// ============================================================================
+// Region parser
+// ============================================================================
+parse_region :: (p: *Parser) -> bool {
+    start_tok := advance(p);  // consume 'Region'
+
+    name_tok, name_ok := consume(p, .STRING, "Expected region name");
+    if !name_ok return false;
+
+    _, colon_ok := consume(p, .COLON, "Expected ':'");
+    if !colon_ok return false;
+
+    // Parse region type (RF_RIVER, RF_CORRIDOR, etc.)
+    type_val, type_ok := parse_cexpr(p);
+    if !type_ok return false;
+
+    region: ParsedRegion;
+    region.name = extract_string_content(name_tok.text);
+    region.rtype = type_val;
+    region.line = start_tok.line;
+    region.column = start_tok.column;
+
+    _, lbrace_ok := consume(p, .LBRACE, "Expected '{'");
+    if !lbrace_ok return false;
+
+    while !check(p, .RBRACE) && !parser_is_at_end(p) {
+        tok := peek(p);
+
+        if tok.type == .KW_FLOOR {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            floor_tok, floor_ok := consume(p, .RES_REF, "Expected $\"terrain\" reference");
+            if !floor_ok return false;
+            region.has_floor = true;
+            region.floor = extract_res_ref_name(floor_tok.text);
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_DEPTH {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            region.has_depth = true;
+            region.depth = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_LISTS {
+            // Skip Lists for now (complex encounter list syntax)
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            // Skip until semicolon or rbrace
+            while !check(p, .SEMICOLON) && !check(p, .RBRACE) && !parser_is_at_end(p) {
+                advance(p);
+            }
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_ON || tok.type == .KW_EVENT {
+            skip_event_handler(p);
+        } else {
+            advance(p);
+        }
+    }
+
+    _, rbrace_ok := consume(p, .RBRACE, "Expected '}'");
+    if !rbrace_ok return false;
+
+    array_add(*p.regions, region);
+    return true;
+}
+
+// ============================================================================
+// Encounter parser
+// ============================================================================
+parse_encounter :: (p: *Parser) -> bool {
+    start_tok := advance(p);  // consume 'Encounter'
+
+    name_tok, name_ok := consume(p, .STRING, "Expected encounter name");
+    if !name_ok return false;
+
+    enc: ParsedEncounter;
+    enc.name = extract_string_content(name_tok.text);
+    enc.line = start_tok.line;
+    enc.column = start_tok.column;
+
+    _, lbrace_ok := consume(p, .LBRACE, "Expected '{'");
+    if !lbrace_ok return false;
+
+    while !check(p, .RBRACE) && !parser_is_at_end(p) {
+        tok := peek(p);
+
+        if tok.type == .KW_WEIGHT {
+            advance(p);
+            _, colon_ok := consume(p, .COLON, "Expected ':'");
+            if !colon_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            enc.has_weight = true;
+            enc.weight = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_CR {
+            advance(p);
+            _, colon_ok := consume(p, .COLON, "Expected ':'");
+            if !colon_ok return false;
+            // Parse CR: N+ or N-M format (must handle as simple numbers, not expressions)
+            num_tok := peek(p);
+            min_val: s64 = 0;
+            if num_tok.type == .NUMBER {
+                min_val = num_tok.int_value;
+                advance(p);
+            } else {
+                // Fall back to expression parsing for complex cases
+                parsed_val, ok := parse_cexpr(p);
+                if !ok return false;
+                min_val = parsed_val;
+            }
+            enc.has_cr = true;
+            enc.cr_min = min_val;
+            enc.cr_max = min_val;
+
+            // Check for + (open ended) or - (range)
+            if match(p, .PLUS) {
+                enc.cr_max = 99;  // Open-ended
+            } else if match(p, .MINUS) {
+                max_tok := peek(p);
+                if max_tok.type == .NUMBER {
+                    enc.cr_max = max_tok.int_value;
+                    advance(p);
+                } else {
+                    max_val, max_ok := parse_cexpr(p);
+                    if !max_ok return false;
+                    enc.cr_max = max_val;
+                }
+            }
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_TERRAIN {
+            advance(p);
+            _, colon_ok := consume(p, .COLON, "Expected ':'");
+            if !colon_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            enc.has_terrain = true;
+            enc.terrain = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_ALIGN {
+            advance(p);
+            _, colon_ok := consume(p, .COLON, "Expected ':'");
+            if !colon_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            enc.has_align = true;
+            enc.align = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_FLAGS {
+            parse_flags_list(p, *enc.flags);
+        } else if tok.type == .KW_PARTS {
+            // Skip Parts for now (very complex syntax)
+            advance(p);
+            _, colon_ok := consume(p, .COLON, "Expected ':'");
+            if !colon_ok return false;
+            while !check(p, .SEMICOLON) && !check(p, .KW_FLAGS) &&
+                  !check(p, .KW_LISTS) && !check(p, .KW_CONSTANTS) &&
+                  !check(p, .KW_ON) && !check(p, .RBRACE) && !parser_is_at_end(p) {
+                advance(p);
+            }
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_LISTS {
+            // Skip Lists for now
+            advance(p);
+            _, colon_ok := consume(p, .COLON, "Expected ':'");
+            if !colon_ok return false;
+            while !check(p, .SEMICOLON) && !check(p, .KW_FLAGS) &&
+                  !check(p, .KW_CONSTANTS) && !check(p, .KW_ON) &&
+                  !check(p, .RBRACE) && !parser_is_at_end(p) {
+                advance(p);
+            }
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_CONSTANTS {
+            parse_constants_section(p, *enc.constants);
+        } else if tok.type == .KW_ON || tok.type == .KW_EVENT {
+            skip_event_handler(p);
+        } else {
+            advance(p);
+        }
+    }
+
+    _, rbrace_ok := consume(p, .RBRACE, "Expected '}'");
+    if !rbrace_ok return false;
+
+    array_add(*p.encounters, enc);
+    return true;
+}
+
+// ============================================================================
+// Domain parser
+// ============================================================================
+parse_domain :: (p: *Parser) -> bool {
+    start_tok := advance(p);  // consume 'Domain'
+
+    name_tok, name_ok := consume(p, .STRING, "Expected domain name");
+    if !name_ok return false;
+
+    _, colon_ok := consume(p, .COLON, "Expected ':'");
+    if !colon_ok return false;
+
+    // Parse index (usually 0)
+    index, ok := parse_cexpr(p);
+    if !ok return false;
+
+    domain: ParsedDomain;
+    domain.name = extract_string_content(name_tok.text);
+    domain.index = index;
+    domain.line = start_tok.line;
+    domain.column = start_tok.column;
+
+    _, lbrace_ok := consume(p, .LBRACE, "Expected '{'");
+    if !lbrace_ok return false;
+
+    while !check(p, .RBRACE) && !parser_is_at_end(p) {
+        tok := peek(p);
+
+        if tok.type == .KW_DESC {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            desc_tok, desc_ok := consume(p, .STRING, "Expected description");
+            if !desc_ok return false;
+            domain.has_desc = true;
+            domain.desc = extract_string_content(desc_tok.text);
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_GRANTS {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+
+            while true {
+                grant_tok := peek(p);
+                if grant_tok.type == .KW_FEAT {
+                    if !parse_grant_feat(p, *domain.grants) return false;
+                } else if grant_tok.type == .KW_ABILITY {
+                    if !parse_grant_ability(p, *domain.grants) return false;
+                } else if grant_tok.type == .KW_STATI {
+                    if !parse_grant_stati(p, *domain.grants) return false;
+                } else {
+                    break;
+                }
+                if !match(p, .COMMA) break;
+            }
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_SPELLS {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            // Parse list of $"spell" references
+            while true {
+                spell_tok := peek(p);
+                if spell_tok.type == .RES_REF {
+                    array_add(*domain.spells, extract_res_ref_name(spell_tok.text));
+                    advance(p);
+                } else {
+                    break;
+                }
+                if !match(p, .COMMA) break;
+            }
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_ON || tok.type == .KW_EVENT {
+            skip_event_handler(p);
+        } else {
+            advance(p);
+        }
+    }
+
+    _, rbrace_ok := consume(p, .RBRACE, "Expected '}'");
+    if !rbrace_ok return false;
+
+    array_add(*p.domains, domain);
+    return true;
+}
+
+// ============================================================================
+// God parser
+// ============================================================================
+parse_god :: (p: *Parser) -> bool {
+    start_tok := advance(p);  // consume 'God'
+
+    name_tok, name_ok := consume(p, .STRING, "Expected god name");
+    if !name_ok return false;
+
+    god: ParsedGod;
+    god.name = extract_string_content(name_tok.text);
+    god.line = start_tok.line;
+    god.column = start_tok.column;
+
+    _, lbrace_ok := consume(p, .LBRACE, "Expected '{'");
+    if !lbrace_ok return false;
+
+    while !check(p, .RBRACE) && !parser_is_at_end(p) {
+        tok := peek(p);
+
+        if tok.type == .KW_DESC {
+            advance(p);
+            _, colon_ok := consume(p, .COLON, "Expected ':'");
+            if !colon_ok return false;
+            desc_tok, desc_ok := consume(p, .STRING, "Expected description");
+            if !desc_ok return false;
+            god.has_desc = true;
+            god.desc = extract_string_content(desc_tok.text);
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_DOMAINS {
+            advance(p);
+            _, colon_ok := consume(p, .COLON, "Expected ':'");
+            if !colon_ok return false;
+            // Parse list of $"domain" references
+            while true {
+                domain_tok := peek(p);
+                if domain_tok.type == .RES_REF {
+                    array_add(*god.domains, extract_res_ref_name(domain_tok.text));
+                    advance(p);
+                } else {
+                    break;
+                }
+                if !match(p, .COMMA) break;
+            }
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_GRANTS {
+            advance(p);
+            _, colon_ok := consume(p, .COLON, "Expected ':'");
+            if !colon_ok return false;
+
+            while true {
+                grant_tok := peek(p);
+                if grant_tok.type == .KW_FEAT {
+                    if !parse_grant_feat(p, *god.grants) return false;
+                } else if grant_tok.type == .KW_ABILITY {
+                    if !parse_grant_ability(p, *god.grants) return false;
+                } else if grant_tok.type == .KW_STATI {
+                    if !parse_grant_stati(p, *god.grants) return false;
+                } else {
+                    break;
+                }
+                if !match(p, .COMMA) break;
+            }
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_LISTS {
+            // Skip Lists for now (complex)
+            advance(p);
+            _, colon_ok := consume(p, .COLON, "Expected ':'");
+            if !colon_ok return false;
+            // Skip until we hit a keyword we recognize
+            while !check(p, .KW_DESC) && !check(p, .KW_DOMAINS) &&
+                  !check(p, .KW_GRANTS) && !check(p, .KW_CONSTANTS) &&
+                  !check(p, .KW_ON) && !check(p, .RBRACE) && !parser_is_at_end(p) {
+                advance(p);
+            }
+        } else if tok.type == .KW_CONSTANTS {
+            parse_constants_section(p, *god.constants);
+        } else if tok.type == .KW_ON || tok.type == .KW_EVENT {
+            skip_event_handler(p);
+        } else {
+            advance(p);
+        }
+    }
+
+    _, rbrace_ok := consume(p, .RBRACE, "Expected '}'");
+    if !rbrace_ok return false;
+
+    array_add(*p.gods, god);
+    return true;
+}
+
+// ============================================================================
+// Text parser
+// ============================================================================
+parse_text :: (p: *Parser) -> bool {
+    start_tok := advance(p);  // consume 'Text'
+
+    name_tok, name_ok := consume(p, .STRING, "Expected text name");
+    if !name_ok return false;
+
+    text: ParsedText;
+    text.name = extract_string_content(name_tok.text);
+    text.line = start_tok.line;
+    text.column = start_tok.column;
+
+    _, lbrace_ok := consume(p, .LBRACE, "Expected '{'");
+    if !lbrace_ok return false;
+
+    // Text resources just contain a single string
+    content_tok := peek(p);
+    if content_tok.type == .STRING {
+        text.content = extract_string_content(content_tok.text);
+        advance(p);
+    }
+
+    // Skip anything else until rbrace
+    while !check(p, .RBRACE) && !parser_is_at_end(p) {
+        advance(p);
+    }
+
+    _, rbrace_ok := consume(p, .RBRACE, "Expected '}'");
+    if !rbrace_ok return false;
+
+    array_add(*p.texts, text);
+    return true;
+}
+
+// ============================================================================
+// Dungeon parser
+// ============================================================================
+parse_dungeon :: (p: *Parser) -> bool {
+    start_tok := advance(p);  // consume 'Dungeon'
+
+    name_tok, name_ok := consume(p, .STRING, "Expected dungeon name");
+    if !name_ok return false;
+
+    dungeon: ParsedDungeon;
+    dungeon.name = extract_string_content(name_tok.text);
+    dungeon.line = start_tok.line;
+    dungeon.column = start_tok.column;
+
+    _, lbrace_ok := consume(p, .LBRACE, "Expected '{'");
+    if !lbrace_ok return false;
+
+    while !check(p, .RBRACE) && !parser_is_at_end(p) {
+        tok := peek(p);
+
+        if tok.type == .KW_DESC {
+            advance(p);
+            _, colon_ok := consume(p, .COLON, "Expected ':'");
+            if !colon_ok return false;
+            desc_tok, desc_ok := consume(p, .STRING, "Expected description");
+            if !desc_ok return false;
+            dungeon.has_desc = true;
+            dungeon.desc = extract_string_content(desc_tok.text);
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_CONSTANTS {
+            parse_constants_section(p, *dungeon.constants);
+        } else if tok.type == .KW_SPECIALS {
+            advance(p);
+            _, colon_ok := consume(p, .COLON, "Expected ':'");
+            if !colon_ok return false;
+            // Parse: * $"room" at level N, ...
+            while check(p, .STAR) {
+                advance(p);  // consume '*'
+
+                room_tok := peek(p);
+                if room_tok.type == .RES_REF {
+                    advance(p);
+
+                    special: ParsedSpecial;
+                    special.room_ref = extract_res_ref_name(room_tok.text);
+
+                    // Expect "at level N"
+                    at_tok := peek(p);
+                    if at_tok.type == .KW_AT ||
+                       (at_tok.type == .IDENTIFIER && strings_equal_nocase(at_tok.text, "at")) {
+                        advance(p);
+                        level_tok := peek(p);
+                        if level_tok.type == .KW_LEVEL ||
+                           (level_tok.type == .IDENTIFIER && strings_equal_nocase(level_tok.text, "level")) {
+                            advance(p);
+                        }
+                        level_val, ok := parse_cexpr(p);
+                        if ok {
+                            special.at_level = level_val;
+                        }
+                    }
+
+                    array_add(*dungeon.specials, special);
+                }
+
+                if !match(p, .COMMA) break;
+            }
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_ON || tok.type == .KW_EVENT {
+            skip_event_handler(p);
+        } else {
+            advance(p);
+        }
+    }
+
+    _, rbrace_ok := consume(p, .RBRACE, "Expected '}'");
+    if !rbrace_ok return false;
+
+    array_add(*p.dungeons, dungeon);
     return true;
 }

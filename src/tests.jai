@@ -576,4 +576,139 @@ END;
         test_assert(ok, "parse class ok");
         test_assert_eq(p.classes.count, 1, "one class parsed");
     }
+
+    // Template
+    {
+        source := #string END
+Template "hatchling" : TM_AGECAT for MA_DRAGON {
+    Desc: "Young dragons.";
+    CR: +0;
+    Size: -4;
+    Power: +1;
+    Flags: TMF_OBVIOUS, TMF_NOGEN;
+}
+END;
+        lex := lexer_init(source);
+        tokens := lexer_tokenize_all(*lex);
+        p := parser_init(tokens);
+        ok := parser_parse(*p);
+        test_assert(ok, "parse template ok");
+        test_assert_eq(p.templates.count, 1, "one template parsed");
+        test_assert(p.templates[0].has_for, "template has for clause");
+        test_assert(p.templates[0].has_cr, "template has cr");
+        test_assert_eq(p.templates[0].cr, 0, "template cr is 0");
+    }
+
+    // Region
+    {
+        source := #string END
+Region "Underground River" : RF_RIVER {
+    Floor: $"shallow water";
+    Depth: 3;
+}
+END;
+        lex := lexer_init(source);
+        tokens := lexer_tokenize_all(*lex);
+        p := parser_init(tokens);
+        ok := parser_parse(*p);
+        test_assert(ok, "parse region ok");
+        test_assert_eq(p.regions.count, 1, "one region parsed");
+        test_assert(p.regions[0].has_floor, "region has floor");
+        test_assert(p.regions[0].has_depth, "region has depth");
+    }
+
+    // Encounter
+    {
+        source := #string END
+Encounter "goblin warband" {
+    Weight: 40;
+    CR: 1-10;
+    Flags: NF_UNIFORM;
+}
+END;
+        lex := lexer_init(source);
+        tokens := lexer_tokenize_all(*lex);
+        p := parser_init(tokens);
+        ok := parser_parse(*p);
+        test_assert(ok, "parse encounter ok");
+        test_assert_eq(p.encounters.count, 1, "one encounter parsed");
+        test_assert(p.encounters[0].has_weight, "encounter has weight");
+        test_assert_eq(p.encounters[0].weight, 40, "encounter weight is 40");
+        test_assert(p.encounters[0].has_cr, "encounter has cr");
+        test_assert_eq(p.encounters[0].cr_min, 1, "encounter cr min is 1");
+        test_assert_eq(p.encounters[0].cr_max, 10, "encounter cr max is 10");
+    }
+
+    // Domain
+    {
+        source := #string END
+Domain "Fire" : 0 {
+    Desc: "The domain of fire.";
+    Spells: $"burning hands", $"fireball";
+}
+END;
+        lex := lexer_init(source);
+        tokens := lexer_tokenize_all(*lex);
+        p := parser_init(tokens);
+        ok := parser_parse(*p);
+        test_assert(ok, "parse domain ok");
+        test_assert_eq(p.domains.count, 1, "one domain parsed");
+        test_assert(p.domains[0].has_desc, "domain has desc");
+        test_assert_eq(p.domains[0].spells.count, 2, "domain has 2 spells");
+    }
+
+    // God
+    {
+        source := #string END
+God "Aiswin" {
+    Domains: $"Fate", $"Knowledge", $"Night";
+    Desc: "God of Secrets.";
+}
+END;
+        lex := lexer_init(source);
+        tokens := lexer_tokenize_all(*lex);
+        p := parser_init(tokens);
+        ok := parser_parse(*p);
+        test_assert(ok, "parse god ok");
+        test_assert_eq(p.gods.count, 1, "one god parsed");
+        test_assert_eq(p.gods[0].domains.count, 3, "god has 3 domains");
+        test_assert(p.gods[0].has_desc, "god has desc");
+    }
+
+    // Text
+    {
+        source := #string END
+Text "help::intro" {
+    "Welcome to Incursion!";
+}
+END;
+        lex := lexer_init(source);
+        tokens := lexer_tokenize_all(*lex);
+        p := parser_init(tokens);
+        ok := parser_parse(*p);
+        test_assert(ok, "parse text ok");
+        test_assert_eq(p.texts.count, 1, "one text parsed");
+    }
+
+    // Dungeon
+    {
+        source := #string END
+Dungeon "The Goblin Caves" {
+    Desc: "The goblin caves.";
+    Constants:
+        * DUN_DEPTH 10;
+    Specials:
+        * $"entry chamber" at level 1,
+        * $"ancient library" at level 2;
+}
+END;
+        lex := lexer_init(source);
+        tokens := lexer_tokenize_all(*lex);
+        p := parser_init(tokens);
+        ok := parser_parse(*p);
+        test_assert(ok, "parse dungeon ok");
+        test_assert_eq(p.dungeons.count, 1, "one dungeon parsed");
+        test_assert(p.dungeons[0].has_desc, "dungeon has desc");
+        test_assert_eq(p.dungeons[0].specials.count, 2, "dungeon has 2 specials");
+    }
 }

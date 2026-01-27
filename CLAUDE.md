@@ -5,6 +5,7 @@
 1. **Document discoveries** - Add learnings about the Incursion codebase to this file
 2. **Link to detail files** - For extensive details, create separate files (e.g., RECONSTRUCTION*.md) and link from here
 3. **Keep this file scannable** - Use headers and bullet points; move large content to linked files
+4. **Lexer/Parser: Implement from grammar spec, test against .irh files** - The authoritative reference for lexer/parser implementation is in `lang/Tokens.lex` and `lang/Grammar.acc`. Implement to match these specifications, then validate against actual `.irh` resource files.
 
 ## Environment
 
@@ -52,7 +53,8 @@ incursion-port/
 | `inc/Defines.h` | 4700 lines of #define constants |
 | `inc/Res.h` | Resource template structures |
 | `lib/*.irh` | Resource definition files (monsters, items, spells, etc.) |
-| `modaccent/Grammar.acc` | Original parser grammar |
+| `lang/Tokens.lex` | **Authoritative** lexer spec (FLex format) - Keywords1, Keywords2, AttrWords, ColourWords, DirWords |
+| `lang/Grammar.acc` | **Authoritative** parser grammar (ACCENT format) - BNF+ with semantic actions |
 
 ### Resource File Format (.irh/.irc)
 
@@ -98,26 +100,38 @@ py extract_constants.py
 
 ### Next Steps - Parsing Real .irh Files
 
-**Quick fixes needed:**
-- Add "Flavour" (British spelling) to lexer - 883 occurrences in source files
-- Add "Poison" keyword - 54 occurrences
-- Add "Disease" keyword - 13 occurrences
-
 **Resource types needing parser implementation:**
 | Type | Count | Priority |
 |------|-------|----------|
-| Template | 113 | High - monster/item variants |
-| Region | 94 | Medium - dungeon generation |
-| Encounter | 88 | Medium - spawn tables |
-| Text | 61 | Low - help text |
-| Domain | 44 | Medium - god powers |
-| God | 17 | Medium - religion system |
-| Dungeon | 3 | Low |
+| Artifact | 0 | High - powerful items |
 
 **Major work:**
 - Event handler translation (currently skipped) - This is the bulk of game logic
 - Resource file loading and linking
 - Game loop integration
+
+### Grammar Alignment (Tokens.lex / Grammar.acc)
+
+**Completed (2026-01-27):**
+- ✓ Token types: ATTRIBUTE, COLOR, DIRECTION, WEP_TYPE, STYPE (with values)
+- ✓ Keywords1: Type keywords (`void`, `bool`, `int8`, etc.) and special words (`abs`, `true`, `false`, `null`, etc.)
+- ✓ Keywords2: ~60 property keywords (`Glyph`, `Value`, `Colour`, `Material`, etc.)
+- ✓ Direction words with values (North, South, etc.)
+- ✓ Weapon types (slash/slashing, pierce/piercing, blunt) with values
+- ✓ Save types (fort, ref, will) with values
+- ✓ Missing operators: `%=`, `~=`, `...`
+- ✓ `mval` parsing for template attribute modifiers (percentage and min syntax)
+- ✓ Fractional CR support (1/2, 1/4, etc.)
+- ✓ Effect properties: sval, dval, aval, lval, tval, rval, Base Chance, Purpose
+- ✓ Item properties: Lifespan, Fuel, Capacity, WeightLim, WeightMod, MaxSize, Timeout, CType, Fires
+- ✓ British spelling "Colour" for flavor resources
+
+**Remaining gaps:**
+- Map grid syntax `{:...:}` not implemented
+- Full `gear_entry` syntax: `IF (cond)`, `N%` chance, dice quantity, `CURSED`/`BLESSED`, `WITH [qualities]`, `OF effect`, `AT (x,y)`
+- `Artifact` resource type with power system (`Equip FOR`, `Wield FOR`, `Hit FOR`, `Invoke FOR`)
+- Module header: `Module "name";`, `Slot N;`, `File "path";`
+- `abil_level` variations: `every level`, `every N level` (without starting at)
 
 ## Key Technical Decisions
 
