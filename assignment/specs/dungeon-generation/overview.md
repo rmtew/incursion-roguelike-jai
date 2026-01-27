@@ -120,6 +120,12 @@ Uses flood-fill to ensure full map connectivity:
    - Avoid placing multiple stairs in same region
 3. Place dungeon specials (monsters, items, features) at their designated depths
 
+### Step 7: Deallocation & Return (line 2262)
+
+Cleanup of temporary generation structures:
+1. Free `FloodArray` and `EmptyArray` used for connectivity testing
+2. Return control to caller
+
 ## Key Data Structures
 
 ### Panel System

@@ -28,6 +28,7 @@ Create human-readable markdown documentation that fully specifies how Incursion 
 | `feature-placement.md` | Doors, traps, stairs, portals | **Draft complete** |
 | `population.md` | Monster, item, feature placement by depth | **Draft complete** |
 | `regions.md` | Region system, themed areas | **Draft complete** |
+| `edge-cases.md` | Error handling, boundary conditions, limits | **Draft complete** |
 
 ## Source Files to Analyze
 
@@ -66,11 +67,29 @@ Primary sources in `C:\Data\R\roguelike - incursion\repo-work\`:
 ## Verification Passes
 
 After specs are written, verification can check:
-- [ ] Spec accurately describes original algorithm
-- [ ] All generation phases are documented
-- [ ] Constants and parameters are correct
-- [ ] Edge cases are covered
-- [ ] Implementation matches spec
+- [x] Spec accurately describes original algorithm (Pass #1: 2026-01-28)
+- [x] All generation phases are documented (Pass #1: 2026-01-28)
+- [x] Constants and parameters are correct (Pass #1: 2026-01-28)
+- [x] Edge cases are covered (Pass #2: 2026-01-28)
+- [x] Implementation reviewed against spec (Pass #3: 2026-01-28)
+
+## Implementation Status
+
+See `implementation-review.md` for detailed comparison.
+
+### High Priority Gaps
+- Population system not implemented
+- RM_SHAPED rooms missing
+- Region terrain not applied
+- Traps not implemented
+- Stairs oversimplified
+
+### What Matches
+- 7-step generation structure
+- Fix-up tunneling (26 trials)
+- Room type weighted selection
+- Most basic room types
+- Cellular automata caves
 
 ## Success Criteria
 

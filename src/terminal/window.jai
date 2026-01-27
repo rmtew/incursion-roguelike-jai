@@ -1,13 +1,8 @@
 // Terminal Window - Glyph-based display using Simp
 //
 // Renders a grid of colored characters using bitmap fonts.
-
-#import "Window_Creation";
-#import "Basic";
-#import "Math";
-
-Simp  :: #import "Simp";
-Input :: #import "Input";
+//
+// Note: Simp and Input are imported by the main file that #loads this.
 
 // Terminal dimensions (in cells)
 TERM_WIDTH  :: 80;
@@ -37,26 +32,26 @@ Color :: struct {
     r, g, b: float32;
 }
 
-// Standard roguelike colors
-BLACK   :: Color.{0.0, 0.0, 0.0};
-WHITE   :: Color.{0.75, 0.75, 0.75};
-GREY    :: Color.{0.5, 0.5, 0.5};
-RED     :: Color.{0.8, 0.0, 0.0};
-GREEN   :: Color.{0.0, 0.8, 0.0};
-BLUE    :: Color.{0.0, 0.0, 0.8};
-YELLOW  :: Color.{0.8, 0.8, 0.0};
-CYAN    :: Color.{0.0, 0.8, 0.8};
-MAGENTA :: Color.{0.8, 0.0, 0.8};
-BROWN   :: Color.{0.6, 0.3, 0.0};
+// Standard roguelike colors (TC_ prefix to avoid collision with defines.jai)
+TC_BLACK   :: Color.{0.0, 0.0, 0.0};
+TC_WHITE   :: Color.{0.75, 0.75, 0.75};
+TC_GREY    :: Color.{0.5, 0.5, 0.5};
+TC_RED     :: Color.{0.8, 0.0, 0.0};
+TC_GREEN   :: Color.{0.0, 0.8, 0.0};
+TC_BLUE    :: Color.{0.0, 0.0, 0.8};
+TC_YELLOW  :: Color.{0.8, 0.8, 0.0};
+TC_CYAN    :: Color.{0.0, 0.8, 0.8};
+TC_MAGENTA :: Color.{0.8, 0.0, 0.8};
+TC_BROWN   :: Color.{0.6, 0.3, 0.0};
 
 // Bright variants
-BRIGHT_WHITE   :: Color.{1.0, 1.0, 1.0};
-BRIGHT_RED     :: Color.{1.0, 0.2, 0.2};
-BRIGHT_GREEN   :: Color.{0.2, 1.0, 0.2};
-BRIGHT_BLUE    :: Color.{0.4, 0.4, 1.0};
-BRIGHT_YELLOW  :: Color.{1.0, 1.0, 0.2};
-BRIGHT_CYAN    :: Color.{0.2, 1.0, 1.0};
-BRIGHT_MAGENTA :: Color.{1.0, 0.2, 1.0};
+TC_BRIGHT_WHITE   :: Color.{1.0, 1.0, 1.0};
+TC_BRIGHT_RED     :: Color.{1.0, 0.2, 0.2};
+TC_BRIGHT_GREEN   :: Color.{0.2, 1.0, 0.2};
+TC_BRIGHT_BLUE    :: Color.{0.4, 0.4, 1.0};
+TC_BRIGHT_YELLOW  :: Color.{1.0, 1.0, 0.2};
+TC_BRIGHT_CYAN    :: Color.{0.2, 1.0, 1.0};
+TC_BRIGHT_MAGENTA :: Color.{1.0, 0.2, 1.0};
 
 // A single cell in the terminal
 TermCell :: struct {
@@ -123,8 +118,8 @@ terminal_init :: (font_size: FontSize = .F12x16) -> *Terminal, bool {
     // Initialize cells to empty
     for *cell: term.cells {
         cell.char = #char " ";
-        cell.fg = WHITE;
-        cell.bg = BLACK;
+        cell.fg = TC_WHITE;
+        cell.bg = TC_BLACK;
     }
 
     term.running = true;
@@ -148,10 +143,10 @@ terminal_set :: (term: *Terminal, x: s32, y: s32, char: u8, fg: Color, bg: Color
 }
 
 // Clear the terminal
-terminal_clear :: (term: *Terminal, bg: Color = BLACK) {
+terminal_clear :: (term: *Terminal, bg: Color = TC_BLACK) {
     for *cell: term.cells {
         cell.char = #char " ";
-        cell.fg = WHITE;
+        cell.fg = TC_WHITE;
         cell.bg = bg;
     }
 }

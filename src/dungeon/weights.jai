@@ -20,10 +20,14 @@ RuntimeRegion :: struct {
     depth: s32;            // Minimum CR requirement
     flags: u32;            // RF_VAULT, RF_CORRIDOR, RF_STAPLE, RF_NOGEN, etc.
 
-    // Terrain references (resolved later)
-    floor_ref: string;     // $"terrain" reference
-    wall_ref: string;      // $"terrain" reference
-    door_ref: string;      // $"feature" reference
+    // Terrain references (string names for resolution)
+    floor_ref: string;     // $"terrain" reference name
+    wall_ref: string;      // $"terrain" reference name
+    door_ref: string;      // $"feature" reference name
+
+    // Resolved terrain pointers (set by resolve_region_terrains)
+    floor_terrain: *RuntimeTerrain;
+    wall_terrain: *RuntimeTerrain;
 
     // Grid data for RM_SHAPED regions
     has_grid: bool;
@@ -372,6 +376,78 @@ init_dungeon_weights :: (weights: *DungeonWeights) {
     array_reset(*weights.corridor_regions);
     array_reset(*weights.vault_regions);
     array_reset(*weights.corridor_weights);
+
+    // Add test regions for visual variety demonstration
+    add_test_regions(weights);
+}
+
+// Add test regions with different terrain for demonstration
+add_test_regions :: (weights: *DungeonWeights) {
+    // Standard stone room (most common)
+    stone_room: RuntimeRegion;
+    stone_room.name = "Stone Room";
+    stone_room.index = 0;
+    stone_room.room_types = 0;  // All room types
+    stone_room.depth = 0;
+    stone_room.flags = RF_STAPLE;  // Can be reused
+    stone_room.floor_ref = "floor";
+    stone_room.wall_ref = "wall";
+    array_add(*weights.room_regions, stone_room);
+
+    // Icy chamber
+    ice_room: RuntimeRegion;
+    ice_room.name = "Icy Chamber";
+    ice_room.index = 1;
+    ice_room.room_types = 0;
+    ice_room.depth = 0;
+    ice_room.flags = RF_STAPLE;
+    ice_room.floor_ref = "ice floor";
+    ice_room.wall_ref = "ice wall";
+    array_add(*weights.room_regions, ice_room);
+
+    // Flooded room
+    flooded_room: RuntimeRegion;
+    flooded_room.name = "Flooded Chamber";
+    flooded_room.index = 2;
+    flooded_room.room_types = 0;
+    flooded_room.depth = 0;
+    flooded_room.flags = RF_STAPLE;
+    flooded_room.floor_ref = "shallow water";
+    flooded_room.wall_ref = "stone wall";
+    array_add(*weights.room_regions, flooded_room);
+
+    // Moss-covered room
+    moss_room: RuntimeRegion;
+    moss_room.name = "Overgrown Chamber";
+    moss_room.index = 3;
+    moss_room.room_types = 0;
+    moss_room.depth = 0;
+    moss_room.flags = RF_STAPLE;
+    moss_room.floor_ref = "moss-covered floor";
+    moss_room.wall_ref = "granite wall";
+    array_add(*weights.room_regions, moss_room);
+
+    // Marble hall
+    marble_room: RuntimeRegion;
+    marble_room.name = "Marble Hall";
+    marble_room.index = 4;
+    marble_room.room_types = 0;
+    marble_room.depth = 0;
+    marble_room.flags = RF_STAPLE;
+    marble_room.floor_ref = "marble floor";
+    marble_room.wall_ref = "granite wall";
+    array_add(*weights.room_regions, marble_room);
+
+    // Dirt cavern
+    dirt_room: RuntimeRegion;
+    dirt_room.name = "Dirt Cavern";
+    dirt_room.index = 5;
+    dirt_room.room_types = 0;
+    dirt_room.depth = 0;
+    dirt_room.flags = RF_STAPLE;
+    dirt_room.floor_ref = "dirt floor";
+    dirt_room.wall_ref = "stone wall";
+    array_add(*weights.room_regions, dirt_room);
 }
 
 free_dungeon_weights :: (weights: *DungeonWeights) {
@@ -395,4 +471,55 @@ parse_room_types_mask :: (types: [] s64) -> u32 {
         mask |= room_type_to_bit(t);
     }
     return mask;
+}
+
+// ============================================================================
+// Terrain Resolution
+// ============================================================================
+
+// Resolve terrain references for all regions in weights
+resolve_region_terrains :: (weights: *DungeonWeights, terrain_reg: *TerrainRegistry) {
+    // Resolve room regions
+    for *region: weights.room_regions {
+        resolve_single_region_terrain(region, terrain_reg);
+    }
+
+    // Resolve corridor regions
+    for *region: weights.corridor_regions {
+        resolve_single_region_terrain(region, terrain_reg);
+    }
+
+    // Resolve vault regions
+    for *region: weights.vault_regions {
+        resolve_single_region_terrain(region, terrain_reg);
+    }
+}
+
+// Resolve terrain for a single region
+resolve_single_region_terrain :: (region: *RuntimeRegion, terrain_reg: *TerrainRegistry) {
+    // Resolve floor terrain
+    if region.floor_ref.count > 0 {
+        region.floor_terrain = terrain_registry_get(terrain_reg, region.floor_ref);
+    }
+
+    // Resolve wall terrain
+    if region.wall_ref.count > 0 {
+        region.wall_terrain = terrain_registry_get(terrain_reg, region.wall_ref);
+    }
+}
+
+// Get floor terrain for region (with fallback to default)
+get_region_floor :: (region: *RuntimeRegion, default_terrain: *RuntimeTerrain) -> *RuntimeTerrain {
+    if region != null && region.floor_terrain != null {
+        return region.floor_terrain;
+    }
+    return default_terrain;
+}
+
+// Get wall terrain for region (with fallback to default)
+get_region_wall :: (region: *RuntimeRegion, default_terrain: *RuntimeTerrain) -> *RuntimeTerrain {
+    if region != null && region.wall_terrain != null {
+        return region.wall_terrain;
+    }
+    return default_terrain;
 }

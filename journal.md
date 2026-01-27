@@ -779,3 +779,110 @@ dungeon.irh fails due to:
 - `src/resource/lexer.jai`:
   - Added "skyblue" alias for KW_SKY
   - Fixed preprocessor handling for multi-line macros with backslash continuation
+
+---
+
+## Session: 2026-01-28 (Dungeon Generation Phase 1 Complete)
+
+### Summary
+
+Implemented missing dungeon generation features and got the dungeon test demo working.
+
+### Changes
+
+**Priority values (makelev.jai):**
+- Fixed PRIO_ROCK_STREAMER: 10 → 5
+- Fixed PRIO_CORRIDOR_WALL: 20 → 10
+- Fixed PRIO_ROOM_FLOOR: 50 → 70
+- Added PRIO_DEPOSIT: 110
+
+**Stair placement (makelev.jai):**
+- Added StairPos struct for tracking stair positions
+- Added place_up_stairs() - carves up-stairs at previous level's down-stair positions
+- Added place_down_stairs() - places MIN_STAIRS to MAX_STAIRS down-stairs
+- Updated generate_makelev signature to accept/return stair positions
+
+**Trap placement (makelev.jai, map.jai):**
+- Added TRAP and TRAP_HIDDEN terrain types
+- Added place_traps() - places traps at doors and corridor bottlenecks
+- Door trap chance: random(73) <= DepthCR + 10
+- Bottleneck trap chance: random(73) <= (DepthCR + 2) / 3
+
+**Population system (makelev.jai, map.jai):**
+- Added EntityPos struct and monsters/items arrays to GenMap
+- Monster density: OpenC/30 (depth>2), OpenC/50 (depth=2), OpenC/75 (depth=1)
+- Monster count caps by CR: 5/7/10/12/15/50
+- Item placement: 1 per 100 tiles + room bonus
+- 22% out-of-depth monster chance
+
+**Dungeon test demo (dungeon_test.jai, window.jai):**
+- Fixed color constant collision (TC_ prefix for terminal colors)
+- Monsters displayed as 'M' (bright red)
+- Items displayed as '*' (bright yellow)
+- Status bar shows room/monster/item counts
+
+### Test Results
+
+```
+Placed 12 traps on level 1
+Populated level 1: 5 monsters, 32 items (3003 open tiles)
+Generated dungeon (ORIGINAL MakeLev) depth 1 with 8 rooms, 0 up-stairs, 1 down-stairs
+```
+
+All 166 tests pass. Dungeon test executable runs and displays populated dungeon.
+
+## 2026-01-28: Phase 2 - Region Terrain Visual Variety
+
+### Goal
+Rooms use terrain from their region instead of hardcoded defaults, producing correct visual variety.
+
+### Implementation
+
+**New file: `src/dungeon/terrain_registry.jai`**
+- `RuntimeTerrain` struct: name, glyph, fg_color, is_solid, is_opaque
+- `TerrainRegistry` with `Table(string, *RuntimeTerrain)` for lookup by name
+- `create_default_terrains()` - creates 14 default terrain types (floor, wall, shallow water, ice wall, etc.)
+- `terrain_color_to_rgb()` - converts ANSI color constants to RGB Color
+
+**Modified `src/dungeon/weights.jai`**
+- Added `floor_terrain` and `wall_terrain` pointers to `RuntimeRegion`
+- Added `resolve_region_terrains()` to resolve terrain name references to pointers
+- Added `get_region_floor()` and `get_region_wall()` helpers with fallback to default
+- Added `add_test_regions()` with 6 test regions for variety demonstration:
+  - Stone Room (default)
+  - Icy Chamber (ice floor + ice wall)
+  - Flooded Chamber (shallow water + stone wall)
+  - Overgrown Chamber (moss-covered floor + granite wall)
+  - Marble Hall (marble floor + granite wall)
+  - Dirt Cavern (dirt floor + stone wall)
+
+**Modified `src/dungeon/map.jai`**
+- Added `TileDisplay` struct: glyph, fg_color, use_custom flag
+- Added `tile_display` array to `GenMap` (parallel to tiles)
+- Added `map_set_with_display()` and `map_get_display()` functions
+
+**Modified `src/dungeon/makelev.jai`**
+- Added `terrain_registry`, `default_floor`, `default_wall` to `GenState`
+- Added `write_at_with_terrain()` function
+- Updated all write_* functions (write_room, write_circle, write_octagon, etc.) to use region terrain
+- Call `resolve_region_terrains()` in `gen_state_init()`
+
+**Modified `src/dungeon_test.jai`**
+- Added `#load "dungeon/terrain_registry.jai"`
+- Rendering now checks `tile_display.use_custom` and uses custom glyph/color when set
+
+### Verification
+
+Test output shows different regions being selected for each panel:
+```
+Panel (0,0) uses region: Overgrown Chamber
+Panel (1,0) uses region: Marble Hall
+Panel (2,0) uses region: Icy Chamber
+Panel (3,0) uses region: Dirt Cavern
+Panel (0,1) uses region: Overgrown Chamber
+Panel (1,1) uses region: Stone Room
+Panel (2,1) uses region: Flooded Chamber
+Panel (3,1) uses region: Icy Chamber
+```
+
+Each room now renders with the correct terrain appearance based on its selected region.

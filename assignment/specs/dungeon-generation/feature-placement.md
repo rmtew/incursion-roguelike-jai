@@ -73,14 +73,18 @@ void Map::MakeSecretDoor(uint8 x, uint8 y, rID fID) {
 
 ### Door Flags
 
-**Source:** `Defines.h:2231-2236`
+**Source:** `Defines.h:2231-2239`
 
 ```cpp
 #define DF_VERTICAL 0x01
 #define DF_OPEN     0x02
 #define DF_STUCK    0x04
 #define DF_LOCKED   0x08
+#define DF_TRAPPED  0x10
 #define DF_SECRET   0x20
+#define DF_BROKEN   0x40
+#define DF_SEARCHED 0x80
+#define DF_PICKED   0x80  /* Same as DF_SEARCHED */
 ```
 
 ### Door Constructor

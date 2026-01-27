@@ -2,25 +2,79 @@
 //
 // Creates a dungeon using BSP and renders it in the terminal.
 
-#load "terminal/window.jai";
+#import "Basic";
+#import "Math";
+#import "Random";
+#import "File";
+#import "Window_Creation";
+
+Input :: #import "Input";
+Simp  :: #import "Simp";
+
+// Core modules needed by dungeon generation
+#load "defines.jai";
+#load "dice.jai";
+#load "object.jai";
+#load "map.jai";
+#load "creature.jai";
+#load "item.jai";
+#load "feature.jai";
+#load "vision.jai";
+#load "registry.jai";
+#load "event.jai";
+#load "resource.jai";
+
+// Resource parser (needed for WeightListEntry in weights.jai)
+#load "resource/constants.jai";
+#load "resource/lexer.jai";
+#load "resource/parser.jai";
+
+// RNG and dungeon generation
+#load "rng.jai";
+#load "dungeon/map.jai";
+#load "dungeon/terrain_registry.jai";
+#load "dungeon/weights.jai";
+#load "dungeon/makelev.jai";
 #load "dungeon/generator.jai";
+
+// Terminal rendering
+#load "terminal/window.jai";
 
 // Color mapping for terrain
 get_terrain_color :: (t: Terrain) -> Color {
     if t == {
-        case .ROCK;         return BLACK;
-        case .WALL;         return GREY;
-        case .FLOOR;        return BROWN;
+        case .ROCK;         return TC_BLACK;
+        case .WALL;         return TC_GREY;
+        case .FLOOR;        return TC_BROWN;
         case .CORRIDOR;     return Color.{0.4, 0.25, 0.1};  // Darker brown
-        case .DOOR_CLOSED;  return YELLOW;
-        case .DOOR_OPEN;    return BROWN;
-        case .DOOR_SECRET;  return GREY;
-        case .STAIRS_UP;    return BRIGHT_WHITE;
-        case .STAIRS_DOWN;  return BRIGHT_WHITE;
-        case .WATER;        return BRIGHT_BLUE;
-        case .CHASM;        return BLACK;
+        case .DOOR_CLOSED;  return TC_YELLOW;
+        case .DOOR_OPEN;    return TC_BROWN;
+        case .DOOR_SECRET;  return TC_GREY;
+        case .STAIRS_UP;    return TC_BRIGHT_WHITE;
+        case .STAIRS_DOWN;  return TC_BRIGHT_WHITE;
+        case .WATER;        return TC_BRIGHT_BLUE;
+        case .CHASM;        return TC_BLACK;
+        case .LAVA;         return TC_BRIGHT_RED;
+        case .TRAP;         return TC_BRIGHT_RED;
+        case .TRAP_HIDDEN;  return TC_BROWN;  // Looks like floor
     }
-    return WHITE;
+    return TC_WHITE;
+}
+
+// Check if there's a monster at this position
+monster_at :: (m: *GenMap, x: s32, y: s32) -> bool {
+    for mon: m.monsters {
+        if mon.x == x && mon.y == y return true;
+    }
+    return false;
+}
+
+// Check if there's an item at this position
+item_at :: (m: *GenMap, x: s32, y: s32) -> bool {
+    for item: m.items {
+        if item.x == x && item.y == y return true;
+    }
+    return false;
 }
 
 main :: () {
@@ -36,7 +90,7 @@ main :: () {
     defer terminal_shutdown(term);
 
     // Generate dungeon
-    dungeon: Map;
+    dungeon: GenMap;
     seed: u64 = 12345;  // Fixed seed for reproducibility
     mode := GeneratorMode.ORIGINAL;  // Start in ORIGINAL to test MakeLev rooms
     generate_dungeon(*dungeon, seed, mode);
@@ -118,11 +172,11 @@ main :: () {
     }
 }
 
-render_dungeon_to_terminal :: (term: *Terminal, m: *Map, view_x: s32, view_y: s32, mode: GeneratorMode) {
+render_dungeon_to_terminal :: (term: *Terminal, m: *GenMap, view_x: s32, view_y: s32, mode: GeneratorMode) {
     terminal_clear(term);
 
     // Draw visible portion of map
-    for ty: 0..TERM_HEIGHT-1 {
+    for ty: 0..TERM_HEIGHT-2 {  // Leave room for status line
         for tx: 0..TERM_WIDTH-1 {
             mx := view_x + cast(s32)tx;
             my := view_y + cast(s32)ty;
@@ -130,13 +184,35 @@ render_dungeon_to_terminal :: (term: *Terminal, m: *Map, view_x: s32, view_y: s3
             terrain := map_get(m, mx, my);
             glyph := terrain_glyph(terrain);
             fg := get_terrain_color(terrain);
-            bg := BLACK;
+            bg := TC_BLACK;
 
-            // Special background for water/chasm
+            // Check for custom tile display (from region terrain)
+            td := map_get_display(m, mx, my);
+            if td != null && td.use_custom {
+                glyph = td.glyph;
+                fg = terrain_color_to_rgb(td.fg_color);
+            }
+
+            // Special background for water/chasm/lava
             if terrain == .WATER {
-                bg = BLUE;
+                bg = TC_BLUE;
             } else if terrain == .CHASM {
                 bg = Color.{0.1, 0.1, 0.1};
+            } else if terrain == .LAVA {
+                bg = TC_RED;
+            }
+
+            // Check for monsters (override terrain display)
+            if monster_at(m, mx, my) {
+                glyph = #char "M";  // Monster
+                fg = TC_BRIGHT_RED;
+                // Keep terrain background
+            }
+            // Check for items (only if no monster)
+            else if item_at(m, mx, my) {
+                glyph = #char "*";  // Item
+                fg = TC_BRIGHT_YELLOW;
+                // Keep terrain background
             }
 
             terminal_set(term, cast(s32)tx, cast(s32)ty, glyph, fg, bg);
@@ -145,9 +221,9 @@ render_dungeon_to_terminal :: (term: *Terminal, m: *Map, view_x: s32, view_y: s3
 
     // Draw status line
     mode_str := ifx mode == .EXTENDED then "EXT" else "ORI";
-    status := tprint("Mode:% Rooms:% [Arrows:scroll R:regen M:mode ESC:quit]",
-                     mode_str, m.rooms.count);
+    status := tprint("D:% %  Rooms:% Monsters:% Items:% [R:regen M:mode ESC:quit]",
+                     m.depth, mode_str, m.rooms.count, m.monsters.count, m.items.count);
     for i: 0..min(status.count-1, TERM_WIDTH-1) {
-        terminal_set(term, cast(s32)i, TERM_HEIGHT - 1, status[i], BRIGHT_WHITE, Color.{0.2, 0.2, 0.2});
+        terminal_set(term, cast(s32)i, TERM_HEIGHT - 1, status[i], TC_BRIGHT_WHITE, Color.{0.2, 0.2, 0.2});
     }
 }

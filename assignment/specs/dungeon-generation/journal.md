@@ -456,4 +456,352 @@ Documented:
 
 ---
 
+## 2026-01-28: Verification Pass #1
+
+### Methodology
+
+Systematic review of each spec document against original source code:
+1. Cross-reference line numbers
+2. Verify constant values and flags
+3. Check for missing information
+4. Confirm algorithm descriptions
+
+### Issues Found & Fixed
+
+| Spec | Issue | Fix |
+|------|-------|-----|
+| `overview.md` | Missing Step 7 (Deallocation & Return at line 2262) | Added Step 7 section |
+| `feature-placement.md` | Door flags incomplete (missing DF_TRAPPED, DF_BROKEN, DF_SEARCHED, DF_PICKED) | Updated flags table with all values |
+
+### Verified Correct
+
+| Spec | Item Verified |
+|------|--------------|
+| `overview.md` | Generate() signature at line 1330 |
+| `overview.md` | Step comments match source lines (1349, 1419, 1494, 1607, 1616, 1745, 1876) |
+| `overview.md` | Fix-up tunneling uses 26 trials (line 1779) |
+| `room-placement.md` | All 25 RM_* constants match Defines.h:869-895 |
+| `corridor-generation.md` | PRIO_* constants match Defines.h:4307-4320 |
+| `corridor-generation.md` | Corridor constants at correct lines (3593-3596, 3619, 4331) |
+| `terrain-assignment.md` | WriteAt at line 232, TF_* flags at 677-703 |
+| `population.md` | maxAmtByCR function matches Encounter.cpp:500-512 |
+| `population.md` | OpenC division ratios (30/50/75) match lines 545-549 |
+| `regions.md` | RF_STAPLE weight=16 confirmed at Annot.cpp:390 |
+
+### Verification Status Update
+
+All 7 specs now pass verification:
+- Line references validated against source
+- Constant values confirmed from Defines.h
+- Algorithm descriptions match implementation
+
+### Remaining Work
+
+For future verification passes:
+- [ ] Run mental test scenarios against specs
+- [ ] Check edge cases (empty panels, max depth, etc.)
+- [ ] Verify interaction between subsystems
+
+---
+
+## 2026-01-28: Verification Pass #2 - Edge Cases
+
+### Methodology
+
+Systematic review of error handling, boundary conditions, and failure recovery:
+1. Search for Fatal(), Error() calls
+2. Identify retry loops and their limits
+3. Document graceful degradation patterns
+4. Map resource limits
+
+### Edge Cases Documented
+
+| Category | Behavior | Source |
+|----------|----------|--------|
+| Region exhaustion (first) | Reset usedInThisLevel[], retry | MakeLev.cpp:2364-2377 |
+| Region exhaustion (second) | Fatal error | MakeLev.cpp:2364-2377 |
+| Room type exhaustion | Disable type, retry | MakeLev.cpp:2412-2416 |
+| 200 room tries | Log error, continue | MakeLev.cpp:2353 |
+| Stair placement (500 tries) | Skip stair | MakeLev.cpp:1882-1887 |
+| Connectivity (26 trials) | Accept disconnected | MakeLev.cpp:1779, 1865 |
+| Map edge write | Silent skip | MakeLev.cpp:255-257 |
+| Corridor at edge | Force turn/clamp | MakeLev.cpp:3489-3541 |
+| Too many terrains (255) | Fatal error | MakeLev.cpp:282 |
+| Too many regions (255) | Fatal error | MakeLev.cpp:297, 1260 |
+| Panel overflow (32x32) | Fatal error | MakeLev.cpp:1378 |
+| Size mismatch | Fatal error | MakeLev.cpp:1368-1371 |
+
+### Key Findings
+
+**Graceful Degradation:**
+- Stair placement failure: Dungeon may have fewer stairs than intended
+- Connectivity failure: Dungeon may have isolated areas (26 trial limit)
+- Room generation failure: Logs error but continues
+
+**Fatal Conditions:**
+- Complete region exhaustion (no regions ever worked)
+- Resource limits exceeded (terrains, regions, panels)
+- Level/panel size mismatch
+
+**Boundary Protection:**
+- Map edges protected from most writes (unless Force or PRIO_MAX)
+- Corridors force turn within 4 tiles of edge
+- Corridors hard-clamp direction within 2-3 tiles of edge
+
+### Created Files
+
+- `edge-cases.md` - Comprehensive edge case specification with code snippets
+
+### Verification Status Update
+
+All edge cases now documented with source references. The "Edge cases are covered" verification item is complete.
+
+---
+
+## 2026-01-28: Implementation Review
+
+### Files Analyzed
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `src/dungeon/generator.jai` | 310 | BSP-based EXTENDED mode (not original) |
+| `src/dungeon/makelev.jai` | 2474 | Original-style panel-based generation |
+| `src/dungeon/map.jai` | 583 | Terrain types, map operations |
+| `src/dungeon/weights.jai` | 399 | Room type and region weighted selection |
+
+### Implementation Structure
+
+The code has two generation modes:
+- **EXTENDED**: BSP-based generation (not matching original)
+- **ORIGINAL**: Panel-based generation via `generate_makelev()`
+
+The ORIGINAL mode follows the correct 7-step structure from the spec.
+
+### Key Findings
+
+**What Matches the Spec:**
+- 7-step generation structure (init, streamers, specials, panels, connect, fix-up, stairs)
+- Fix-up tunneling with 26 trials
+- Room type weighted selection algorithm
+- Region selection with constraint filtering
+- Cellular automata caves (WriteLifeCave)
+- Most basic room types (RM_NORMAL, RM_CIRCLE, RM_CROSS, etc.)
+
+**Critical Gaps:**
+1. **Population system not implemented** - No monsters, items, or features
+2. **RM_SHAPED rooms missing** - Can't render predefined room layouts
+3. **Region terrain not applied** - All rooms use same floor/wall
+4. **Traps not implemented** - Missing hazards
+5. **Stairs oversimplified** - Single stair per room vs MIN/MAX_STAIRS
+
+**Medium Priority Gaps:**
+- Priority values differ from spec
+- Corridor regions not used
+- Door states incomplete (no locked/trapped)
+- Some room types missing (RM_DESTROYED, RM_RANDTOWN, etc.)
+
+### Created Files
+
+- `implementation-review.md` - Comprehensive comparison table
+
+### Next Steps
+
+1. ~~Fix priority values to match spec exactly~~ **DONE**
+2. Implement population system (basic monster placement first)
+3. Add RM_SHAPED room type
+4. Apply region terrain to rooms
+
+---
+
+## 2026-01-28: Priority Values Fixed
+
+### Changes Made
+
+Updated `src/dungeon/makelev.jai` priority constants to match Defines.h:4307-4320:
+
+| Constant | Before | After |
+|----------|--------|-------|
+| PRIO_ROCK_STREAMER | 10 | 5 |
+| PRIO_CORRIDOR_WALL | 20 | 10 |
+| PRIO_ROOM_FLOOR | 50 | 70 |
+| PRIO_VAULT | 80 | 90 |
+| PRIO_FEATURE_FLOOR | 90 | 100 |
+| PRIO_MAX | 100 | 120 |
+
+Also added:
+- PRIO_DEPOSIT = 110 (for treasure deposits)
+- PRIO_RIVER_STREAMER moved to 90 (same as PRIO_VAULT, rivers cut through rooms)
+
+### Verification
+
+Code compiles successfully.
+
+---
+
+## 2026-01-28: Stair Placement Fixed
+
+### Changes Made
+
+Updated `src/dungeon/makelev.jai` to implement proper stair placement per MakeLev.cpp:1706-1743 and 1879-1900.
+
+**Added structures and functions:**
+- `StairPos` struct - tracks stair x, y, and room_index
+- `find_room_at()` - find which room contains a position
+- `place_up_stairs()` - place up-stairs at positions from level above
+- `is_valid_stair_pos()` - check if position valid for down-stairs
+- `place_down_stairs()` - place MIN_STAIRS to MAX_STAIRS down-stairs
+
+**Updated `generate_makelev()` signature:**
+```jai
+generate_makelev :: (m: *GenMap, seed: u32,
+                    above_down_stairs: [] StairPos = .[],
+                    depth: s32 = 1,
+                    max_depth: s32 = 10) -> down_stairs: [..] StairPos
+```
+
+**Behavior now matches spec:**
+- Up-stairs placed at same coordinates as down-stairs from level above
+- If up-stair position is in solid rock, carves 3x3 area (floor + walls)
+- Down-stairs: MIN_STAIRS to MAX_STAIRS count (default 1-3)
+- Valid down-stair location must be:
+  - Not solid
+  - Priority <= PRIO_ROOM_FLOOR
+  - Not water, chasm, or lava
+  - Not in a room that already has a stair
+- 500 tries per stair, skip if can't place (graceful degradation)
+- No down-stairs on last level (depth >= max_depth)
+
+### Verification
+
+Code compiles and tests pass.
+
+---
+
+## 2026-01-28: Trap Placement Implemented
+
+### Changes Made
+
+**Added to `src/dungeon/map.jai`:**
+- `TRAP` terrain type (visible trap, glyph '^')
+- `TRAP_HIDDEN` terrain type (hidden trap, looks like floor '.')
+
+**Added to `src/dungeon/makelev.jai`:**
+- `TRAP_CHANCE :: 73` constant (from Defines.h:3643)
+- `is_door()` helper function
+- `is_solid_not_door()` helper function
+- `place_traps()` function implementing MakeLev.cpp:2155-2192
+
+**Trap placement algorithm (per spec):**
+
+1. **At doors:** `random(TRAP_CHANCE) <= DepthCR + 10`
+   - Higher chance at deeper levels
+   - In full implementation would set DF_TRAPPED flag
+
+2. **At corridor bottlenecks:** `random(TRAP_CHANCE) <= (DepthCR + 2) / 3`
+   - Bottleneck = walls on two opposite sides, open on other two
+   - Places TRAP_HIDDEN terrain
+   - Much lower chance than door traps (~1/3 base CR contribution)
+
+**Called in generate_makelev as Step 6b** (after doors, before stairs).
+
+### Notes
+
+- DepthCR calculation simplified to just `depth` for now
+- Full version uses: `INITIAL_CR + (Depth * DUN_SPEED) / 100 - 1`
+- Door traps currently just counted (would need door flags support)
+- Bottleneck traps place TRAP_HIDDEN terrain
+
+### Verification
+
+Code compiles and tests pass.
+
+---
+
+## 2026-01-28: Population System Implemented
+
+### Changes Made
+
+**Added to `src/dungeon/map.jai`:**
+- `EntityPos` struct - tracks entity x, y, cr, and type_id
+- `monsters: [..] EntityPos` array in GenMap
+- `items: [..] EntityPos` array in GenMap
+- Updated `map_init()` to reset new arrays
+- Updated `map_free()` to free new arrays
+
+**Added to `src/dungeon/makelev.jai`:**
+- `max_monsters_by_cr()` - CR-based monster count caps (from Encounter.cpp:500-512)
+- `monster_density_divisor()` - density calculation (from Encounter.cpp:545-549)
+- `is_valid_entity_pos()` - validate placement position
+- `has_monster_at()` / `has_item_at()` - check for existing entities
+- `count_open_tiles()` - count walkable tiles
+- `populate_dungeon()` - main population function
+
+**Monster density formula (per spec):**
+| Depth | Divisor | Monsters per N tiles |
+|-------|---------|---------------------|
+| 1 | 75 | 1 per 75 tiles |
+| 2 | 50 | 1 per 50 tiles |
+| 3+ | 30 | 1 per 30 tiles |
+
+**Monster count caps by CR (maxAmtByCR):**
+| CR | Max |
+|----|-----|
+| 1 | 5 |
+| 2 | 7 |
+| 3 | 10 |
+| 4 | 12 |
+| 5 | 15 |
+| >5 | 50 |
+
+**Out-of-depth monsters:** 22% chance, CR +1 to +3 above normal
+
+**Item placement:**
+- Base: 1 item per 100 open tiles (minimum 2)
+- Rooms: 30% chance for 1-3 additional items per room
+
+**Called in generate_makelev as Step 8** (after stairs).
+
+### Verification
+
+Code compiles and all 166 tests pass.
+
+---
+
+## Entry 17: Dungeon Test Demo (2026-01-28)
+
+### Summary
+
+Updated `src/dungeon_test.jai` to display the population system (monsters and items).
+
+### Changes
+
+**Color constant collision fix:**
+- `src/terminal/window.jai` and `src/defines.jai` both defined color constants (BLACK, WHITE, etc.)
+- Renamed terminal colors to use `TC_` prefix (TC_BLACK, TC_WHITE, TC_BRIGHT_RED, etc.)
+- Removed redundant `#import` statements from window.jai (now provided by parent file)
+
+**Display updates in dungeon_test.jai:**
+- Added `monster_at()` and `item_at()` helper functions
+- Monsters displayed as `M` in bright red
+- Items displayed as `*` in bright yellow
+- Added TRAP and LAVA terrain colors
+- Status bar shows room/monster/item counts
+
+### Test Results
+
+```
+Incursion Dungeon Test
+======================
+Loaded font: ../fonts/8x8.png (8x8 glyphs)
+  Placed 12 traps on level 1
+  Populated level 1: 5 monsters, 32 items (3003 open tiles)
+Generated dungeon (ORIGINAL MakeLev) depth 1 with 8 rooms, 0 up-stairs, 1 down-stairs, 5 monsters, 32 items
+Terminal: 80x25 cells
+Dungeon: 80x50 tiles
+```
+
+**Phase 1 Complete:** Dungeons now have stairs, traps, monsters, and items.
+
+---
+
 *Future entries should be appended below*

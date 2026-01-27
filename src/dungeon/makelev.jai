@@ -18,17 +18,19 @@ TT_WANDER    :: 0x20;  // Chance to end after touching 2 rooms
 TT_NATURAL   :: 0x40;  // Curved, natural, non-horizontal tunnels
 
 // Priority levels for terrain writing (higher priority overwrites lower)
+// Source: Defines.h:4307-4320
 PRIO_EMPTY          :: 0;
-PRIO_ROCK_STREAMER  :: 10;
-PRIO_RIVER_STREAMER :: 15;   // Rivers/chasms have higher priority than rock streamers
-PRIO_CORRIDOR_WALL  :: 20;
+PRIO_ROCK_STREAMER  :: 5;    // Rock veins, mineral deposits
+PRIO_CORRIDOR_WALL  :: 10;
 PRIO_CORRIDOR_FLOOR :: 30;
 PRIO_ROOM_WALL      :: 40;
-PRIO_ROOM_FLOOR     :: 50;
-PRIO_ROOM_FURNITURE :: 60;
-PRIO_VAULT          :: 80;
-PRIO_FEATURE_FLOOR  :: 90;
-PRIO_MAX            :: 100;
+PRIO_ROOM_FLOOR     :: 70;
+PRIO_ROOM_FURNITURE :: 75;   // Between floor and vault
+PRIO_VAULT          :: 90;
+PRIO_RIVER_STREAMER :: 90;   // Rivers/chasms cut through rooms
+PRIO_FEATURE_FLOOR  :: 100;
+PRIO_DEPOSIT        :: 110;  // Treasure deposits in walls
+PRIO_MAX            :: 120;
 
 // Streamer types (matching original regions with RF_RIVER, RF_CHASM, etc.)
 StreamerType :: enum {
@@ -340,6 +342,11 @@ GenState :: struct {
     dungeon_weights: DungeonWeights;
     selection: SelectionState;
     current_region: *RuntimeRegion;  // Currently selected region for room appearance
+
+    // Terrain registry for visual variety
+    terrain_registry: TerrainRegistry;
+    default_floor: *RuntimeTerrain;
+    default_wall: *RuntimeTerrain;
 }
 
 // Initialize generation state
@@ -368,6 +375,14 @@ gen_state_init :: (gs: *GenState, con: DungeonConstants = DEFAULT_CON, depth: s3
     init_dungeon_weights(*gs.dungeon_weights);
     init_selection_state(*gs.selection, *gs.dungeon_weights, depth);
     gs.current_region = null;
+
+    // Initialize terrain registry with defaults
+    create_default_terrains(*gs.terrain_registry);
+    gs.default_floor = terrain_registry_get(*gs.terrain_registry, "floor");
+    gs.default_wall = terrain_registry_get(*gs.terrain_registry, "wall");
+
+    // Resolve terrain references for all regions
+    resolve_region_terrains(*gs.dungeon_weights, *gs.terrain_registry);
 }
 
 // Get cell info at position
@@ -521,6 +536,26 @@ write_at :: (m: *GenMap, gs: *GenState, x: s32, y: s32, terrain: Terrain, priori
     cell.solid = terrain_solid(terrain);
 }
 
+// Write terrain at position with custom display from RuntimeTerrain
+write_at_with_terrain :: (m: *GenMap, gs: *GenState, x: s32, y: s32, terrain: Terrain, rt: *RuntimeTerrain, priority: u8 = PRIO_ROOM_FLOOR, force: bool = false) {
+    if !map_in_bounds(m, x, y) return;
+
+    cell := get_cell(gs, m, x, y);
+    if cell == null return;
+
+    // Only write if force or higher priority
+    if !force && cell.priority > priority return;
+
+    // Write terrain with custom display info
+    if rt != null {
+        map_set_with_display(m, x, y, terrain, rt.glyph, rt.fg_color);
+    } else {
+        map_set(m, x, y, terrain);
+    }
+    cell.priority = priority;
+    cell.solid = terrain_solid(terrain);
+}
+
 // Convenience version without GenState for simple cases
 write_at :: (m: *GenMap, x: s32, y: s32, terrain: Terrain, priority: s32 = 0, force: bool = false) {
     if !map_in_bounds(m, x, y) return;
@@ -533,21 +568,25 @@ write_room :: (m: *GenMap, gs: *GenState, r: Rect) {
     floor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
 
+    // Get region terrain (with fallback to defaults)
+    floor_terrain := get_region_floor(gs.current_region, gs.default_floor);
+    wall_terrain := get_region_wall(gs.current_region, gs.default_wall);
+
     // Fill interior with floor
     for y: r.y1..r.y2 {
         for x: r.x1..r.x2 {
-            write_at(m, gs, x, y, floor, PRIO_ROOM_FLOOR);
+            write_at_with_terrain(m, gs, x, y, floor, floor_terrain, PRIO_ROOM_FLOOR);
         }
     }
 
     // Draw walls around it
     for x: r.x1-1..r.x2+1 {
-        if map_get(m, x, r.y1-1) == .ROCK  write_at(m, gs, x, r.y1-1, wall, PRIO_ROOM_WALL);
-        if map_get(m, x, r.y2+1) == .ROCK  write_at(m, gs, x, r.y2+1, wall, PRIO_ROOM_WALL);
+        if map_get(m, x, r.y1-1) == .ROCK  write_at_with_terrain(m, gs, x, r.y1-1, wall, wall_terrain, PRIO_ROOM_WALL);
+        if map_get(m, x, r.y2+1) == .ROCK  write_at_with_terrain(m, gs, x, r.y2+1, wall, wall_terrain, PRIO_ROOM_WALL);
     }
     for y: r.y1-1..r.y2+1 {
-        if map_get(m, r.x1-1, y) == .ROCK  write_at(m, gs, r.x1-1, y, wall, PRIO_ROOM_WALL);
-        if map_get(m, r.x2+1, y) == .ROCK  write_at(m, gs, r.x2+1, y, wall, PRIO_ROOM_WALL);
+        if map_get(m, r.x1-1, y) == .ROCK  write_at_with_terrain(m, gs, r.x1-1, y, wall, wall_terrain, PRIO_ROOM_WALL);
+        if map_get(m, r.x2+1, y) == .ROCK  write_at_with_terrain(m, gs, r.x2+1, y, wall, wall_terrain, PRIO_ROOM_WALL);
     }
 
     // Record center for corridors
@@ -587,6 +626,10 @@ write_circle :: (m: *GenMap, gs: *GenState, r: Rect) {
     floor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
 
+    // Get region terrain (with fallback to defaults)
+    floor_terrain := get_region_floor(gs.current_region, gs.default_floor);
+    wall_terrain := get_region_wall(gs.current_region, gs.default_wall);
+
     for y: r.y1-1..r.y2+1 {
         for x: r.x1-1..r.x2+1 {
             dx := x - cx;
@@ -594,10 +637,10 @@ write_circle :: (m: *GenMap, gs: *GenState, r: Rect) {
             dist_sq := dx*dx + dy*dy;
 
             if dist_sq <= radius * radius {
-                write_at(m, x, y, floor);
+                write_at_with_terrain(m, gs, x, y, floor, floor_terrain, PRIO_ROOM_FLOOR);
             } else if dist_sq <= (radius+1) * (radius+1) {
                 if map_get(m, x, y) == .ROCK {
-                    write_at(m, x, y, wall);
+                    write_at_with_terrain(m, gs, x, y, wall, wall_terrain, PRIO_ROOM_WALL);
                 }
             }
         }
@@ -619,10 +662,11 @@ write_circle :: (m: *GenMap, gs: *GenState, r: Rect) {
 // Write an octagonal room
 // In original: void Map::WriteOctagon(Rect &r, rID regID)
 write_octagon :: (m: *GenMap, gs: *GenState, r: Rect) {
-    // Start with rectangular room
+    // Start with rectangular room (uses region terrain)
     write_room(m, gs, r);
 
     wall := gs.con.TERRAIN_WALL;
+    wall_terrain := get_region_wall(gs.current_region, gs.default_wall);
 
     // Cut corners
     corner_size := min(rect_width(r), rect_height(r)) / 4;
@@ -631,25 +675,25 @@ write_octagon :: (m: *GenMap, gs: *GenState, r: Rect) {
     // Top-left
     for i: 0..corner_size-1 {
         for j: 0..corner_size-1-i {
-            write_at(m, r.x1 + j, r.y1 + i, wall);
+            write_at_with_terrain(m, gs, r.x1 + j, r.y1 + i, wall, wall_terrain, PRIO_ROOM_WALL);
         }
     }
     // Top-right
     for i: 0..corner_size-1 {
         for j: 0..corner_size-1-i {
-            write_at(m, r.x2 - j, r.y1 + i, wall);
+            write_at_with_terrain(m, gs, r.x2 - j, r.y1 + i, wall, wall_terrain, PRIO_ROOM_WALL);
         }
     }
     // Bottom-left
     for i: 0..corner_size-1 {
         for j: 0..corner_size-1-i {
-            write_at(m, r.x1 + j, r.y2 - i, wall);
+            write_at_with_terrain(m, gs, r.x1 + j, r.y2 - i, wall, wall_terrain, PRIO_ROOM_WALL);
         }
     }
     // Bottom-right
     for i: 0..corner_size-1 {
         for j: 0..corner_size-1-i {
-            write_at(m, r.x2 - j, r.y2 - i, wall);
+            write_at_with_terrain(m, gs, r.x2 - j, r.y2 - i, wall, wall_terrain, PRIO_ROOM_WALL);
         }
     }
 }
@@ -661,7 +705,7 @@ write_cross :: (m: *GenMap, gs: *GenState, r: Rect) {
     w := rect_width(r);
     h := rect_height(r);
 
-    // Horizontal bar
+    // Horizontal bar (uses region terrain via write_room)
     bar_h := max(h / 3, 3);
     h_rect := Rect.{r.x1, cy - bar_h/2, r.x2, cy + bar_h/2};
     write_room(m, gs, h_rect);
@@ -672,22 +716,24 @@ write_cross :: (m: *GenMap, gs: *GenState, r: Rect) {
 
     floor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
+    floor_terrain := get_region_floor(gs.current_region, gs.default_floor);
+    wall_terrain := get_region_wall(gs.current_region, gs.default_wall);
 
     // Fill vertical bar
     for y: v_rect.y1..v_rect.y2 {
         for x: v_rect.x1..v_rect.x2 {
-            write_at(m, x, y, floor);
+            write_at_with_terrain(m, gs, x, y, floor, floor_terrain, PRIO_ROOM_FLOOR);
         }
     }
 
     // Add walls around vertical bar
     for y: v_rect.y1-1..v_rect.y2+1 {
-        if map_get(m, v_rect.x1-1, y) == .ROCK  write_at(m, v_rect.x1-1, y, wall);
-        if map_get(m, v_rect.x2+1, y) == .ROCK  write_at(m, v_rect.x2+1, y, wall);
+        if map_get(m, v_rect.x1-1, y) == .ROCK  write_at_with_terrain(m, gs, v_rect.x1-1, y, wall, wall_terrain, PRIO_ROOM_WALL);
+        if map_get(m, v_rect.x2+1, y) == .ROCK  write_at_with_terrain(m, gs, v_rect.x2+1, y, wall, wall_terrain, PRIO_ROOM_WALL);
     }
     for x: v_rect.x1..v_rect.x2 {
-        if map_get(m, x, v_rect.y1-1) == .ROCK  write_at(m, x, v_rect.y1-1, wall);
-        if map_get(m, x, v_rect.y2+1) == .ROCK  write_at(m, x, v_rect.y2+1, wall);
+        if map_get(m, x, v_rect.y1-1) == .ROCK  write_at_with_terrain(m, gs, x, v_rect.y1-1, wall, wall_terrain, PRIO_ROOM_WALL);
+        if map_get(m, x, v_rect.y2+1) == .ROCK  write_at_with_terrain(m, gs, x, v_rect.y2+1, wall, wall_terrain, PRIO_ROOM_WALL);
     }
 }
 
@@ -696,6 +742,8 @@ write_cross :: (m: *GenMap, gs: *GenState, r: Rect) {
 write_lifecave :: (m: *GenMap, gs: *GenState, r: Rect) {
     floor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
+    floor_terrain := get_region_floor(gs.current_region, gs.default_floor);
+    wall_terrain := get_region_wall(gs.current_region, gs.default_wall);
 
     LIFE_PERCENT :: 45;  // Initial rock probability
     BUFFER :: 3;         // Border buffer (always rock)
@@ -769,7 +817,7 @@ write_lifecave :: (m: *GenMap, gs: *GenState, r: Rect) {
             my := r.y1 + cast(s32)gy - 1;
 
             if grid[idx] == 0 {
-                write_at(m, mx, my, floor);
+                write_at_with_terrain(m, gs, mx, my, floor, floor_terrain, PRIO_ROOM_FLOOR);
             }
         }
     }
@@ -786,7 +834,7 @@ write_lifecave :: (m: *GenMap, gs: *GenState, r: Rect) {
                     for dx: -1..1 {
                         if dx == 0 && dy == 0 continue;
                         if map_get(m, mx + cast(s32)dx, my + cast(s32)dy) == .ROCK {
-                            write_at(m, mx + cast(s32)dx, my + cast(s32)dy, wall);
+                            write_at_with_terrain(m, gs, mx + cast(s32)dx, my + cast(s32)dy, wall, wall_terrain, PRIO_ROOM_WALL);
                         }
                     }
                 }
@@ -813,6 +861,8 @@ write_lifecave :: (m: *GenMap, gs: *GenState, r: Rect) {
 write_overlap :: (m: *GenMap, gs: *GenState, panel: Rect) {
     floor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
+    floor_terrain := get_region_floor(gs.current_region, gs.default_floor);
+    wall_terrain := get_region_wall(gs.current_region, gs.default_wall);
 
     // Draw 2-4 overlapping rectangles
     num_boxes := 2 + random(3);  // 2, 3, or 4 boxes
@@ -834,7 +884,7 @@ write_overlap :: (m: *GenMap, gs: *GenState, panel: Rect) {
         // Fill with floor
         for y: r.y1..r.y2 {
             for x: r.x1..r.x2 {
-                write_at(m, x, y, floor);
+                write_at_with_terrain(m, gs, x, y, floor, floor_terrain, PRIO_ROOM_FLOOR);
             }
         }
     }
@@ -850,7 +900,7 @@ write_overlap :: (m: *GenMap, gs: *GenState, panel: Rect) {
                         nx := x + cast(s32)dx;
                         ny := y + cast(s32)dy;
                         if map_get(m, nx, ny) == .ROCK {
-                            write_at(m, nx, ny, wall);
+                            write_at_with_terrain(m, gs, nx, ny, wall, wall_terrain, PRIO_ROOM_WALL);
                         }
                     }
                 }
@@ -967,10 +1017,11 @@ write_adjacent :: (m: *GenMap, gs: *GenState, panel: Rect, use_circles: bool = f
 // Helper for write_adjacent
 write_box :: (m: *GenMap, gs: *GenState, r: Rect) {
     floor := gs.con.TERRAIN_FLOOR;
+    floor_terrain := get_region_floor(gs.current_region, gs.default_floor);
 
     for y: r.y1..r.y2 {
         for x: r.x1..r.x2 {
-            write_at(m, x, y, floor);
+            write_at_with_terrain(m, gs, x, y, floor, floor_terrain, PRIO_ROOM_FLOOR);
         }
     }
 
@@ -986,6 +1037,7 @@ write_box :: (m: *GenMap, gs: *GenState, r: Rect) {
 write_walls :: (m: *GenMap, gs: *GenState, r: Rect) {
     wall := gs.con.TERRAIN_WALL;
     floor := gs.con.TERRAIN_FLOOR;
+    wall_terrain := get_region_wall(gs.current_region, gs.default_wall);
 
     for y: r.y1..r.y2 {
         for x: r.x1..r.x2 {
@@ -997,7 +1049,7 @@ write_walls :: (m: *GenMap, gs: *GenState, r: Rect) {
                         nx := x + cast(s32)dx;
                         ny := y + cast(s32)dy;
                         if map_get(m, nx, ny) == .ROCK {
-                            write_at(m, nx, ny, wall);
+                            write_at_with_terrain(m, gs, nx, ny, wall, wall_terrain, PRIO_ROOM_WALL);
                         }
                     }
                 }
@@ -1015,10 +1067,11 @@ write_walls :: (m: *GenMap, gs: *GenState, r: Rect) {
 // Write a room with pillars
 // In original: case RM_PILLARS
 write_pillars :: (m: *GenMap, gs: *GenState, r: Rect) {
-    // First create normal room
+    // First create normal room (uses region terrain)
     write_room(m, gs, r);
 
     wall := gs.con.TERRAIN_WALL;
+    wall_terrain := get_region_wall(gs.current_region, gs.default_wall);
 
     // Add pillars in a grid pattern (every 2 tiles)
     for y: r.y1+1..r.y2-1 {
@@ -1029,7 +1082,7 @@ write_pillars :: (m: *GenMap, gs: *GenState, r: Rect) {
             if (x_offset % 2 == 0) && (y_offset % 2 == 0) {
                 // 95% chance of pillar (5% missing for variety)
                 if random(100) < 95 {
-                    write_at(m, x, y, wall);
+                    write_at_with_terrain(m, gs, x, y, wall, wall_terrain, PRIO_ROOM_FURNITURE);
                 }
             }
         }
@@ -1039,11 +1092,13 @@ write_pillars :: (m: *GenMap, gs: *GenState, r: Rect) {
 // Write a double room (room within a room)
 // In original: case RM_DOUBLE
 write_double :: (m: *GenMap, gs: *GenState, r: Rect) {
-    // Outer room
+    // Outer room (uses region terrain)
     write_room(m, gs, r);
 
     wall := gs.con.TERRAIN_WALL;
     floor := gs.con.TERRAIN_FLOOR;
+    wall_terrain := get_region_wall(gs.current_region, gs.default_wall);
+    floor_terrain := get_region_floor(gs.current_region, gs.default_floor);
 
     // Inner room (inset by 2)
     inner := Rect.{r.x1 + 2, r.y1 + 2, r.x2 - 2, r.y2 - 2};
@@ -1053,12 +1108,12 @@ write_double :: (m: *GenMap, gs: *GenState, r: Rect) {
 
     // Draw inner walls
     for x: inner.x1..inner.x2 {
-        write_at(m, x, inner.y1, wall);
-        write_at(m, x, inner.y2, wall);
+        write_at_with_terrain(m, gs, x, inner.y1, wall, wall_terrain, PRIO_ROOM_FURNITURE);
+        write_at_with_terrain(m, gs, x, inner.y2, wall, wall_terrain, PRIO_ROOM_FURNITURE);
     }
     for y: inner.y1..inner.y2 {
-        write_at(m, inner.x1, y, wall);
-        write_at(m, inner.x2, y, wall);
+        write_at_with_terrain(m, gs, inner.x1, y, wall, wall_terrain, PRIO_ROOM_FURNITURE);
+        write_at_with_terrain(m, gs, inner.x2, y, wall, wall_terrain, PRIO_ROOM_FURNITURE);
     }
 
     // Add 1-3 doors in the inner wall
@@ -1068,12 +1123,12 @@ write_double :: (m: *GenMap, gs: *GenState, r: Rect) {
             // Door on horizontal wall
             x := inner.x1 + 1 + random(rect_width(inner) - 2);
             y := ifx random(2) == 0 then inner.y1 else inner.y2;
-            write_at(m, x, cast(s32)y, floor);
+            write_at_with_terrain(m, gs, x, cast(s32)y, floor, floor_terrain, PRIO_ROOM_FURNITURE);
         } else {
             // Door on vertical wall
             x := ifx random(2) == 0 then inner.x1 else inner.x2;
             y := inner.y1 + 1 + random(rect_height(inner) - 2);
-            write_at(m, cast(s32)x, y, floor);
+            write_at_with_terrain(m, gs, cast(s32)x, y, floor, floor_terrain, PRIO_ROOM_FURNITURE);
         }
     }
 }
@@ -1083,11 +1138,13 @@ write_double :: (m: *GenMap, gs: *GenState, r: Rect) {
 write_maze :: (m: *GenMap, gs: *GenState, r: Rect) {
     floor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
+    floor_terrain := get_region_floor(gs.current_region, gs.default_floor);
+    wall_terrain := get_region_wall(gs.current_region, gs.default_wall);
 
     // First fill with walls
     for y: r.y1..r.y2 {
         for x: r.x1..r.x2 {
-            write_at(m, x, y, wall);
+            write_at_with_terrain(m, gs, x, y, wall, wall_terrain, PRIO_ROOM_WALL);
         }
     }
 
@@ -1112,7 +1169,7 @@ write_maze :: (m: *GenMap, gs: *GenState, r: Rect) {
     // Mark start as visited and carve
     idx := (start_y - r.y1) * maze_w + (start_x - r.x1);
     visited[idx] = true;
-    write_at(m, start_x, start_y, floor);
+    write_at_with_terrain(m, gs, start_x, start_y, floor, floor_terrain, PRIO_ROOM_FLOOR);
     array_add(*stack, .{start_x, start_y});
 
     // Maze directions (2 steps to leave wall between cells)
@@ -1156,8 +1213,8 @@ write_maze :: (m: *GenMap, gs: *GenState, r: Rect) {
             // Carve path to neighbor (including wall between)
             wall_x := cx + DIRS[dir * 2] / 2;
             wall_y := cy + DIRS[dir * 2 + 1] / 2;
-            write_at(m, wall_x, wall_y, floor);
-            write_at(m, nx, ny, floor);
+            write_at_with_terrain(m, gs, wall_x, wall_y, floor, floor_terrain, PRIO_ROOM_FLOOR);
+            write_at_with_terrain(m, gs, nx, ny, floor, floor_terrain, PRIO_ROOM_FLOOR);
 
             // Mark as visited and push to stack
             nidx := (ny - r.y1) * maze_w + (nx - r.x1);
@@ -1188,11 +1245,13 @@ write_maze :: (m: *GenMap, gs: *GenState, r: Rect) {
 write_checker :: (m: *GenMap, gs: *GenState, r: Rect) {
     floor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
+    floor_terrain := get_region_floor(gs.current_region, gs.default_floor);
+    wall_terrain := get_region_wall(gs.current_region, gs.default_wall);
 
     // Fill with floor first
     for y: r.y1..r.y2 {
         for x: r.x1..r.x2 {
-            write_at(m, x, y, floor);
+            write_at_with_terrain(m, gs, x, y, floor, floor_terrain, PRIO_ROOM_FLOOR);
         }
     }
 
@@ -1202,19 +1261,19 @@ write_checker :: (m: *GenMap, gs: *GenState, r: Rect) {
             x_even := ((x - r.x1) % 2) == 0;
             y_even := ((y - r.y1) % 2) == 0;
             if x_even == y_even {
-                write_at(m, x, y, wall);
+                write_at_with_terrain(m, gs, x, y, wall, wall_terrain, PRIO_ROOM_FURNITURE);
             }
         }
     }
 
     // Add walls around the perimeter
     for x: r.x1-1..r.x2+1 {
-        if map_get(m, x, r.y1-1) == .ROCK  write_at(m, x, r.y1-1, wall);
-        if map_get(m, x, r.y2+1) == .ROCK  write_at(m, x, r.y2+1, wall);
+        if map_get(m, x, r.y1-1) == .ROCK  write_at_with_terrain(m, gs, x, r.y1-1, wall, wall_terrain, PRIO_ROOM_WALL);
+        if map_get(m, x, r.y2+1) == .ROCK  write_at_with_terrain(m, gs, x, r.y2+1, wall, wall_terrain, PRIO_ROOM_WALL);
     }
     for y: r.y1-1..r.y2+1 {
-        if map_get(m, r.x1-1, y) == .ROCK  write_at(m, r.x1-1, y, wall);
-        if map_get(m, r.x2+1, y) == .ROCK  write_at(m, r.x2+1, y, wall);
+        if map_get(m, r.x1-1, y) == .ROCK  write_at_with_terrain(m, gs, r.x1-1, y, wall, wall_terrain, PRIO_ROOM_WALL);
+        if map_get(m, r.x2+1, y) == .ROCK  write_at_with_terrain(m, gs, r.x2+1, y, wall, wall_terrain, PRIO_ROOM_WALL);
     }
 
     // Track as room
@@ -1236,11 +1295,13 @@ write_checker :: (m: *GenMap, gs: *GenState, r: Rect) {
 write_diamonds :: (m: *GenMap, gs: *GenState, r: Rect) {
     floor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
+    floor_terrain := get_region_floor(gs.current_region, gs.default_floor);
+    wall_terrain := get_region_wall(gs.current_region, gs.default_wall);
 
     // Fill with floor first
     for y: r.y1..r.y2 {
         for x: r.x1..r.x2 {
-            write_at(m, x, y, floor);
+            write_at_with_terrain(m, gs, x, y, floor, floor_terrain, PRIO_ROOM_FLOOR);
         }
     }
 
@@ -1256,19 +1317,19 @@ write_diamonds :: (m: *GenMap, gs: *GenState, r: Rect) {
             // Draw diamond outline around center
             for dist: 1..DIAMOND_SIZE-1 {
                 // Top
-                write_at(m, center_x, center_y - cast(s32)dist, wall);
+                write_at_with_terrain(m, gs, center_x, center_y - cast(s32)dist, wall, wall_terrain, PRIO_ROOM_FURNITURE);
                 // Bottom
-                write_at(m, center_x, center_y + cast(s32)dist, wall);
+                write_at_with_terrain(m, gs, center_x, center_y + cast(s32)dist, wall, wall_terrain, PRIO_ROOM_FURNITURE);
                 // Left
-                write_at(m, center_x - cast(s32)dist, center_y, wall);
+                write_at_with_terrain(m, gs, center_x - cast(s32)dist, center_y, wall, wall_terrain, PRIO_ROOM_FURNITURE);
                 // Right
-                write_at(m, center_x + cast(s32)dist, center_y, wall);
+                write_at_with_terrain(m, gs, center_x + cast(s32)dist, center_y, wall, wall_terrain, PRIO_ROOM_FURNITURE);
             }
             // Corners
-            write_at(m, center_x - 1, center_y - 1, wall);
-            write_at(m, center_x + 1, center_y - 1, wall);
-            write_at(m, center_x - 1, center_y + 1, wall);
-            write_at(m, center_x + 1, center_y + 1, wall);
+            write_at_with_terrain(m, gs, center_x - 1, center_y - 1, wall, wall_terrain, PRIO_ROOM_FURNITURE);
+            write_at_with_terrain(m, gs, center_x + 1, center_y - 1, wall, wall_terrain, PRIO_ROOM_FURNITURE);
+            write_at_with_terrain(m, gs, center_x - 1, center_y + 1, wall, wall_terrain, PRIO_ROOM_FURNITURE);
+            write_at_with_terrain(m, gs, center_x + 1, center_y + 1, wall, wall_terrain, PRIO_ROOM_FURNITURE);
 
             center_x += DIAMOND_SPACING;
         }
@@ -1277,12 +1338,12 @@ write_diamonds :: (m: *GenMap, gs: *GenState, r: Rect) {
 
     // Add walls around the perimeter
     for x: r.x1-1..r.x2+1 {
-        if map_get(m, x, r.y1-1) == .ROCK  write_at(m, x, r.y1-1, wall);
-        if map_get(m, x, r.y2+1) == .ROCK  write_at(m, x, r.y2+1, wall);
+        if map_get(m, x, r.y1-1) == .ROCK  write_at_with_terrain(m, gs, x, r.y1-1, wall, wall_terrain, PRIO_ROOM_WALL);
+        if map_get(m, x, r.y2+1) == .ROCK  write_at_with_terrain(m, gs, x, r.y2+1, wall, wall_terrain, PRIO_ROOM_WALL);
     }
     for y: r.y1-1..r.y2+1 {
-        if map_get(m, r.x1-1, y) == .ROCK  write_at(m, r.x1-1, y, wall);
-        if map_get(m, r.x2+1, y) == .ROCK  write_at(m, r.x2+1, y, wall);
+        if map_get(m, r.x1-1, y) == .ROCK  write_at_with_terrain(m, gs, r.x1-1, y, wall, wall_terrain, PRIO_ROOM_WALL);
+        if map_get(m, r.x2+1, y) == .ROCK  write_at_with_terrain(m, gs, r.x2+1, y, wall, wall_terrain, PRIO_ROOM_WALL);
     }
 
     // Track as room
@@ -1304,6 +1365,8 @@ write_diamonds :: (m: *GenMap, gs: *GenState, r: Rect) {
 write_castle :: (m: *GenMap, gs: *GenState, r: Rect, depth: s32 = 0) {
     floor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
+    floor_terrain := get_region_floor(gs.current_region, gs.default_floor);
+    wall_terrain := get_region_wall(gs.current_region, gs.default_wall);
 
     sx := rect_width(r);
     sy := rect_height(r);
@@ -1313,7 +1376,7 @@ write_castle :: (m: *GenMap, gs: *GenState, r: Rect, depth: s32 = 0) {
         // Just fill with floor
         for y: r.y1..r.y2 {
             for x: r.x1..r.x2 {
-                write_at(m, x, y, floor);
+                write_at_with_terrain(m, gs, x, y, floor, floor_terrain, PRIO_ROOM_FLOOR);
             }
         }
         return;
@@ -1322,7 +1385,7 @@ write_castle :: (m: *GenMap, gs: *GenState, r: Rect, depth: s32 = 0) {
     // Fill base with floor first
     for y: r.y1..r.y2 {
         for x: r.x1..r.x2 {
-            write_at(m, x, y, floor);
+            write_at_with_terrain(m, gs, x, y, floor, floor_terrain, PRIO_ROOM_FLOOR);
         }
     }
 
@@ -1339,7 +1402,7 @@ write_castle :: (m: *GenMap, gs: *GenState, r: Rect, depth: s32 = 0) {
         // Draw vertical wall with door
         for y: r.y1..r.y2 {
             if y != door_y {
-                write_at(m, d, y, wall);
+                write_at_with_terrain(m, gs, d, y, wall, wall_terrain, PRIO_ROOM_FURNITURE);
             }
         }
 
@@ -1358,7 +1421,7 @@ write_castle :: (m: *GenMap, gs: *GenState, r: Rect, depth: s32 = 0) {
         // Draw horizontal wall with door
         for x: r.x1..r.x2 {
             if x != door_x {
-                write_at(m, x, d, wall);
+                write_at_with_terrain(m, gs, x, d, wall, wall_terrain, PRIO_ROOM_FURNITURE);
             }
         }
 
@@ -1373,12 +1436,12 @@ write_castle :: (m: *GenMap, gs: *GenState, r: Rect, depth: s32 = 0) {
     if depth == 0 {
         // Add outer walls
         for x: r.x1-1..r.x2+1 {
-            if map_get(m, x, r.y1-1) == .ROCK  write_at(m, x, r.y1-1, wall);
-            if map_get(m, x, r.y2+1) == .ROCK  write_at(m, x, r.y2+1, wall);
+            if map_get(m, x, r.y1-1) == .ROCK  write_at_with_terrain(m, gs, x, r.y1-1, wall, wall_terrain, PRIO_ROOM_WALL);
+            if map_get(m, x, r.y2+1) == .ROCK  write_at_with_terrain(m, gs, x, r.y2+1, wall, wall_terrain, PRIO_ROOM_WALL);
         }
         for y: r.y1-1..r.y2+1 {
-            if map_get(m, r.x1-1, y) == .ROCK  write_at(m, r.x1-1, y, wall);
-            if map_get(m, r.x2+1, y) == .ROCK  write_at(m, r.x2+1, y, wall);
+            if map_get(m, r.x1-1, y) == .ROCK  write_at_with_terrain(m, gs, r.x1-1, y, wall, wall_terrain, PRIO_ROOM_WALL);
+            if map_get(m, r.x2+1, y) == .ROCK  write_at_with_terrain(m, gs, r.x2+1, y, wall, wall_terrain, PRIO_ROOM_WALL);
         }
 
         // Track as room
@@ -1401,13 +1464,15 @@ write_castle :: (m: *GenMap, gs: *GenState, r: Rect, depth: s32 = 0) {
 write_rcavern :: (m: *GenMap, gs: *GenState, r: Rect) {
     floor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
+    floor_terrain := get_region_floor(gs.current_region, gs.default_floor);
+    wall_terrain := get_region_wall(gs.current_region, gs.default_wall);
 
     BUFFER :: 3;
     sx := rect_width(r) - BUFFER;
     sy := rect_height(r) - BUFFER;
 
     if sx < 12 || sy < 12 {
-        // Too small, just make a regular room
+        // Too small, just make a regular room (uses region terrain)
         write_room(m, gs, r);
         return;
     }
@@ -1427,26 +1492,26 @@ write_rcavern :: (m: *GenMap, gs: *GenState, r: Rect) {
         if direction == 0 {
             // Right and up
             for j: 0..L_LEN-1 {
-                write_at(m, x + cast(s32)j, y, floor);
-                write_at(m, x, y - cast(s32)j, floor);
+                write_at_with_terrain(m, gs, x + cast(s32)j, y, floor, floor_terrain, PRIO_ROOM_FLOOR);
+                write_at_with_terrain(m, gs, x, y - cast(s32)j, floor, floor_terrain, PRIO_ROOM_FLOOR);
             }
         } else if direction == 1 {
             // Right and down
             for j: 0..L_LEN-1 {
-                write_at(m, x + cast(s32)j, y, floor);
-                write_at(m, x, y + cast(s32)j, floor);
+                write_at_with_terrain(m, gs, x + cast(s32)j, y, floor, floor_terrain, PRIO_ROOM_FLOOR);
+                write_at_with_terrain(m, gs, x, y + cast(s32)j, floor, floor_terrain, PRIO_ROOM_FLOOR);
             }
         } else if direction == 2 {
             // Left and up
             for j: 0..L_LEN-1 {
-                write_at(m, x - cast(s32)j, y, floor);
-                write_at(m, x, y - cast(s32)j, floor);
+                write_at_with_terrain(m, gs, x - cast(s32)j, y, floor, floor_terrain, PRIO_ROOM_FLOOR);
+                write_at_with_terrain(m, gs, x, y - cast(s32)j, floor, floor_terrain, PRIO_ROOM_FLOOR);
             }
         } else {
             // Left and down
             for j: 0..L_LEN-1 {
-                write_at(m, x - cast(s32)j, y, floor);
-                write_at(m, x, y + cast(s32)j, floor);
+                write_at_with_terrain(m, gs, x - cast(s32)j, y, floor, floor_terrain, PRIO_ROOM_FLOOR);
+                write_at_with_terrain(m, gs, x, y + cast(s32)j, floor, floor_terrain, PRIO_ROOM_FLOOR);
             }
         }
     }
@@ -1462,7 +1527,7 @@ write_rcavern :: (m: *GenMap, gs: *GenState, r: Rect) {
                         nx := x + cast(s32)dx;
                         ny := y + cast(s32)dy;
                         if map_get(m, nx, ny) == .ROCK {
-                            write_at(m, nx, ny, wall);
+                            write_at_with_terrain(m, gs, nx, ny, wall, wall_terrain, PRIO_ROOM_WALL);
                         }
                     }
                 }
@@ -2295,6 +2360,288 @@ place_doors_makelev :: (m: *GenMap) {
     }
 }
 
+// ============================================================================
+// Trap Placement
+// Source: MakeLev.cpp:2155-2192
+// ============================================================================
+
+// Trap chance constant (from Defines.h:3643)
+TRAP_CHANCE :: 73;
+
+// Check if a tile is a door
+is_door :: (t: Terrain) -> bool {
+    return t == .DOOR_CLOSED || t == .DOOR_OPEN || t == .DOOR_SECRET;
+}
+
+// Check if a tile is solid (wall or rock) but not a door
+is_solid_not_door :: (m: *GenMap, x: s32, y: s32) -> bool {
+    t := map_get(m, x, y);
+    return (t == .WALL || t == .ROCK) && !is_door(t);
+}
+
+// Place traps at doors and corridor bottlenecks
+// Source: MakeLev.cpp:2155-2192
+place_traps :: (m: *GenMap, depth: s32) {
+    // Calculate DepthCR (simplified - full version uses INITIAL_CR + Depth * DUN_SPEED / 100 - 1)
+    // For now, use depth directly as CR approximation
+    depth_cr := depth;
+
+    traps_placed := 0;
+
+    for y: 1..m.height-2 {
+        for x: 1..m.width-2 {
+            t := map_get(m, x, y);
+
+            // Case 1: Trap at door
+            // Chance: random(TRAP_CHANCE) <= DepthCR + 10
+            if is_door(t) {
+                if random(TRAP_CHANCE) <= depth_cr + 10 {
+                    // Place trap (door becomes trapped door - for now just mark the tile)
+                    // In full implementation, this would set DF_TRAPPED flag on the door
+                    // For visualization, we'll place a hidden trap adjacent to the door
+                    // (Real traps on doors would need door flag support)
+                    traps_placed += 1;
+                }
+                continue;
+            }
+
+            // Case 2: Trap at corridor bottleneck
+            // Must be non-solid, non-door floor/corridor
+            if t != .FLOOR && t != .CORRIDOR continue;
+
+            // Check for bottleneck pattern:
+            // Pattern 1: walls left and right, open above and below
+            // Pattern 2: walls above and below, open left and right
+            up := map_get(m, x, y - 1);
+            down := map_get(m, x, y + 1);
+            left := map_get(m, x - 1, y);
+            right := map_get(m, x + 1, y);
+
+            up_solid := is_solid_not_door(m, x, y - 1);
+            down_solid := is_solid_not_door(m, x, y + 1);
+            left_solid := is_solid_not_door(m, x - 1, y);
+            right_solid := is_solid_not_door(m, x + 1, y);
+
+            up_open := !terrain_solid(up) || is_door(up);
+            down_open := !terrain_solid(down) || is_door(down);
+            left_open := !terrain_solid(left) || is_door(left);
+            right_open := !terrain_solid(right) || is_door(right);
+
+            is_bottleneck := false;
+
+            // Horizontal corridor (walls above and below, open left and right)
+            if up_solid && down_solid && left_open && right_open {
+                is_bottleneck = true;
+            }
+            // Vertical corridor (walls left and right, open above and below)
+            if left_solid && right_solid && up_open && down_open {
+                is_bottleneck = true;
+            }
+
+            if is_bottleneck {
+                // Chance: random(TRAP_CHANCE) <= (DepthCR + 2) / 3
+                if random(TRAP_CHANCE) <= (depth_cr + 2) / 3 {
+                    // Place hidden trap
+                    map_set(m, x, y, .TRAP_HIDDEN);
+                    traps_placed += 1;
+                }
+            }
+        }
+    }
+
+    if traps_placed > 0 {
+        print("  Placed % traps on level %\n", traps_placed, depth);
+    }
+}
+
+// ============================================================================
+// Population System
+// Source: MakeLev.cpp:3269-3301 (PopulatePanel)
+//         Encounter.cpp:514-1125 (enGenerate)
+//         Encounter.cpp:500-512 (maxAmtByCR)
+// ============================================================================
+
+// Monster count caps by CR (from Encounter.cpp:500-512)
+// maxAmtByCR limits how many monsters of a given CR can appear
+max_monsters_by_cr :: (cr: s32) -> s32 {
+    if cr <= 1 return 5;
+    if cr == 2 return 7;
+    if cr == 3 return 10;
+    if cr == 4 return 12;
+    if cr == 5 return 15;
+    return 50;  // CR > 5
+}
+
+// Calculate monster density based on depth
+// Source: Encounter.cpp:545-549
+// Returns divisor for open tile count
+monster_density_divisor :: (depth: s32) -> s32 {
+    if depth > 2 return 30;   // 1 monster per 30 open tiles
+    if depth == 2 return 50;  // 1 monster per 50 open tiles
+    return 75;                // Depth 1: 1 monster per 75 open tiles
+}
+
+// Check if a position is valid for monster/item placement
+is_valid_entity_pos :: (m: *GenMap, x: s32, y: s32) -> bool {
+    if x <= 0 || y <= 0 || x >= m.width - 1 || y >= m.height - 1 {
+        return false;
+    }
+
+    t := map_get(m, x, y);
+
+    // Must be walkable floor or corridor
+    if t != .FLOOR && t != .CORRIDOR {
+        return false;
+    }
+
+    return true;
+}
+
+// Check if position already has a monster
+has_monster_at :: (m: *GenMap, x: s32, y: s32) -> bool {
+    for mon: m.monsters {
+        if mon.x == x && mon.y == y return true;
+    }
+    return false;
+}
+
+// Check if position already has an item
+has_item_at :: (m: *GenMap, x: s32, y: s32) -> bool {
+    for item: m.items {
+        if item.x == x && item.y == y return true;
+    }
+    return false;
+}
+
+// Count open (walkable) tiles on the map
+count_open_tiles :: (m: *GenMap) -> s32 {
+    count: s32 = 0;
+    for y: 1..m.height-2 {
+        for x: 1..m.width-2 {
+            t := map_get(m, x, y);
+            if t == .FLOOR || t == .CORRIDOR {
+                count += 1;
+            }
+        }
+    }
+    return count;
+}
+
+// Populate dungeon with monsters and items
+// Source: MakeLev.cpp:3269-3301, Encounter.cpp:514-1125
+populate_dungeon :: (m: *GenMap, depth: s32) {
+    // Calculate DepthCR (simplified)
+    depth_cr := depth;
+
+    // Count open tiles
+    open_count := count_open_tiles(m);
+    if open_count == 0 return;
+
+    // Calculate base monster count from density
+    divisor := monster_density_divisor(depth);
+    base_monster_count := open_count / divisor;
+
+    // Apply CR-based cap
+    max_monsters := max_monsters_by_cr(depth_cr);
+    monster_count := min(base_monster_count, max_monsters);
+
+    // Ensure at least some monsters on each level
+    if monster_count < 3 && depth > 0 {
+        monster_count = cast(s32) min(3, max_monsters);
+    }
+
+    // Place monsters
+    MAX_PLACEMENT_TRIES :: 50;
+    monsters_placed := 0;
+
+    for i: 0..monster_count-1 {
+        for try: 0..MAX_PLACEMENT_TRIES-1 {
+            x := 1 + random(m.width - 2);
+            y := 1 + random(m.height - 2);
+
+            if is_valid_entity_pos(m, x, y) && !has_monster_at(m, x, y) {
+                // Determine monster CR
+                // Base CR is depth_cr, with small chance of out-of-depth
+                mon_cr := depth_cr;
+
+                // 22% chance of out-of-depth monster (simplified from spec)
+                if random(100) < 22 {
+                    mon_cr = depth_cr + 1 + random(3);  // 1-3 levels higher
+                }
+
+                // Place the monster
+                mon: EntityPos;
+                mon.x = x;
+                mon.y = y;
+                mon.cr = mon_cr;
+                mon.type_id = 0;  // Would be monster type in full implementation
+                array_add(*m.monsters, mon);
+
+                monsters_placed += 1;
+                break;
+            }
+        }
+    }
+
+    // Place items (roughly 1 item per 100 open tiles, minimum 2)
+    item_count := max(2, open_count / 100);
+    items_placed := 0;
+
+    for i: 0..item_count-1 {
+        for try: 0..MAX_PLACEMENT_TRIES-1 {
+            x := 1 + random(m.width - 2);
+            y := 1 + random(m.height - 2);
+
+            if is_valid_entity_pos(m, x, y) && !has_item_at(m, x, y) && !has_monster_at(m, x, y) {
+                // Place the item
+                item: EntityPos;
+                item.x = x;
+                item.y = y;
+                item.cr = depth_cr;  // Item value tier based on depth
+                item.type_id = 0;    // Would be item type in full implementation
+                array_add(*m.items, item);
+
+                items_placed += 1;
+                break;
+            }
+        }
+    }
+
+    // Place items in rooms (furniture-style placement)
+    // Each room has a chance for additional items
+    for room: m.rooms {
+        // 30% chance for room to have extra items
+        if random(100) < 30 {
+            num_items := 1 + random(3);  // 1-3 items
+            for i: 0..num_items-1 {
+                // Random position within room bounds
+                room_w := rect_width(room.bounds);
+                room_h := rect_height(room.bounds);
+                if room_w <= 0 || room_h <= 0 continue;
+
+                for try: 0..MAX_PLACEMENT_TRIES-1 {
+                    x := room.bounds.x1 + random(room_w);
+                    y := room.bounds.y1 + random(room_h);
+
+                    if is_valid_entity_pos(m, x, y) && !has_item_at(m, x, y) && !has_monster_at(m, x, y) {
+                        item: EntityPos;
+                        item.x = x;
+                        item.y = y;
+                        item.cr = depth_cr;
+                        item.type_id = 0;
+                        array_add(*m.items, item);
+                        items_placed += 1;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    print("  Populated level %: % monsters, % items (% open tiles)\n",
+          depth, monsters_placed, items_placed, open_count);
+}
+
 // Fix-up tunneling: ensure all regions are connected
 // In original: "Step 5: Final, Fix-Up Tunneling" in Map::Generate
 fixup_tunneling :: (m: *GenMap, gs: *GenState) {
@@ -2364,17 +2711,190 @@ fixup_tunneling :: (m: *GenMap, gs: *GenState) {
     }
 }
 
+// ============================================================================
+// Stair Placement
+// Source: MakeLev.cpp:1706-1743 (up-stairs), 1879-1900 (down-stairs)
+// ============================================================================
+
+// Stair position for passing between levels
+StairPos :: struct {
+    x: s32;
+    y: s32;
+    room_index: s32;  // Which room this stair is in (-1 if not in a room)
+}
+
+// Find which room contains a position (returns -1 if none)
+find_room_at :: (m: *GenMap, x: s32, y: s32) -> s32 {
+    for room, idx: m.rooms {
+        if rect_contains(room.bounds, x, y) {
+            return cast(s32) idx;
+        }
+    }
+    return -1;
+}
+
+// Place up-stairs at positions from level above's down-stairs
+// Source: MakeLev.cpp:1706-1743
+// If position is in solid rock, carve a 3x3 area around it
+place_up_stairs :: (m: *GenMap, gs: *GenState, above_stairs: [] StairPos) -> stairs_placed: [..] StairPos {
+    stairs_placed: [..] StairPos;
+
+    for stair: above_stairs {
+        x := stair.x;
+        y := stair.y;
+
+        // Check if position is valid
+        if !map_in_bounds(m, x, y) continue;
+
+        // If in solid rock, carve out space
+        if is_solid(gs, m, x, y) {
+            // Carve floor at stair position
+            write_at(m, gs, x, y, gs.con.TERRAIN_FLOOR, PRIO_FEATURE_FLOOR, force = true);
+
+            // Carve walls around it (3x3 area)
+            for dy: s32.[-1, 0, 1] {
+                for dx: s32.[-1, 0, 1] {
+                    if dx == 0 && dy == 0 continue;
+                    nx := x + dx;
+                    ny := y + dy;
+                    if map_in_bounds(m, nx, ny) && map_get(m, nx, ny) == .ROCK {
+                        write_at(m, gs, nx, ny, gs.con.TERRAIN_WALL, PRIO_CORRIDOR_WALL);
+                    }
+                }
+            }
+        }
+
+        // Place the up-stair
+        map_set(m, x, y, .STAIRS_UP);
+
+        // Track this stair
+        placed: StairPos;
+        placed.x = x;
+        placed.y = y;
+        placed.room_index = find_room_at(m, x, y);
+        array_add(*stairs_placed, placed);
+    }
+
+    return stairs_placed;
+}
+
+// Check if a position is valid for down-stairs
+// Source: MakeLev.cpp:1879-1900
+is_valid_stair_pos :: (m: *GenMap, gs: *GenState, x: s32, y: s32, stairs_at: [] StairPos) -> bool {
+    // Must be in bounds (not on edge)
+    if x <= 0 || y <= 0 || x >= m.width - 1 || y >= m.height - 1 {
+        return false;
+    }
+
+    // Must not be solid
+    if is_solid(gs, m, x, y) {
+        return false;
+    }
+
+    // Check priority - must be <= PRIO_ROOM_FLOOR
+    cell := get_cell(gs, m, x, y);
+    if cell != null && cell.priority > PRIO_ROOM_FLOOR {
+        return false;
+    }
+
+    // Must not be water or chasm (fall terrain)
+    t := map_get(m, x, y);
+    if t == .WATER || t == .CHASM || t == .LAVA {
+        return false;
+    }
+
+    // Must not already have a stair
+    if t == .STAIRS_UP || t == .STAIRS_DOWN {
+        return false;
+    }
+
+    // Check if this room already has stairs
+    room_idx := find_room_at(m, x, y);
+    if room_idx >= 0 {
+        for stair: stairs_at {
+            if stair.room_index == room_idx {
+                return false;  // This room already has a stair
+            }
+        }
+    }
+
+    return true;
+}
+
+// Place down-stairs (MIN_STAIRS to MAX_STAIRS)
+// Source: MakeLev.cpp:1879-1900
+// Returns positions for next level's up-stairs
+place_down_stairs :: (m: *GenMap, gs: *GenState, up_stairs: [] StairPos, depth: s32, max_depth: s32) -> down_stairs: [..] StairPos {
+    down_stairs: [..] StairPos;
+
+    // Don't place down-stairs on the last level
+    if depth >= max_depth {
+        return down_stairs;
+    }
+
+    // Determine number of stairs to place
+    min_stairs := gs.con.MIN_STAIRS;
+    max_stairs := gs.con.MAX_STAIRS;
+    num_stairs := min_stairs + random(max_stairs - min_stairs + 1);
+
+    // Combine up_stairs into our tracking array for room avoidance
+    all_stairs: [..] StairPos;
+    all_stairs.allocator = temp;
+    for s: up_stairs {
+        array_add(*all_stairs, s);
+    }
+
+    // Place each stair
+    MAX_TRIES :: 500;
+
+    for i: 0..num_stairs-1 {
+        placed := false;
+
+        for try: 0..MAX_TRIES-1 {
+            // Random position
+            x := 1 + random(m.width - 2);
+            y := 1 + random(m.height - 2);
+
+            // Check if valid (including room avoidance)
+            if is_valid_stair_pos(m, gs, x, y, all_stairs) {
+                // Place the stair
+                map_set(m, x, y, .STAIRS_DOWN);
+
+                // Track it
+                stair: StairPos;
+                stair.x = x;
+                stair.y = y;
+                stair.room_index = find_room_at(m, x, y);
+                array_add(*down_stairs, stair);
+                array_add(*all_stairs, stair);
+
+                placed = true;
+                break;
+            }
+        }
+
+        // If we couldn't place after MAX_TRIES, skip this stair (graceful degradation)
+        if !placed {
+            // This is expected behavior per spec - dungeon may have fewer stairs than intended
+        }
+    }
+
+    return down_stairs;
+}
+
 // Main generation function - matches Map::Generate structure
-generate_makelev :: (m: *GenMap, seed: u32) {
+// Extended to support multi-level generation with stair continuity
+generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[], depth: s32 = 1, max_depth: s32 = 10) -> down_stairs: [..] StairPos {
     // Initialize RNG
     random_init(seed);
 
     // Initialize map
     map_init(m);
+    m.depth = depth;
 
     // Initialize generation state
     gs: GenState;
-    gen_state_init(*gs);
+    gen_state_init(*gs, depth = depth);
 
     // Step 1: Fill with rock, edges with wall
     for y: 0..m.height-1 {
@@ -2455,19 +2975,52 @@ generate_makelev :: (m: *GenMap, seed: u32) {
     // Step 6: Place doors where corridors meet rooms
     place_doors_makelev(m);
 
+    // Step 6b: Place traps at doors and bottlenecks
+    // Source: MakeLev.cpp:2155-2192
+    place_traps(m, depth);
+
     // Step 7: Place stairs
-    if m.rooms.count >= 2 {
-        // Stairs up in first room
+    // Source: MakeLev.cpp:1706-1743 (up), 1879-1900 (down)
+
+    // Place up-stairs at positions from level above
+    up_stairs := place_up_stairs(m, *gs, above_down_stairs);
+
+    // Place down-stairs (MIN_STAIRS to MAX_STAIRS)
+    down_stairs := place_down_stairs(m, *gs, up_stairs, depth, max_depth);
+
+    // If no stairs were placed at all (empty dungeon?), place at least one of each in rooms
+    if up_stairs.count == 0 && above_down_stairs.count == 0 && m.rooms.count >= 1 {
+        // First level with no above - place up-stair in first room
         first_room := m.rooms[0];
         cx, cy := rect_center(first_room.bounds);
-        map_set(m, cx, cy, .STAIRS_UP);
-
-        // Stairs down in last room
-        last_room := m.rooms[m.rooms.count - 1];
-        cx, cy = rect_center(last_room.bounds);
-        map_set(m, cx, cy, .STAIRS_DOWN);
+        if !is_solid(*gs, m, cx, cy) {
+            map_set(m, cx, cy, .STAIRS_UP);
+        }
     }
 
-    print("Generated dungeon (ORIGINAL MakeLev) with % rooms, % panels\n",
-          m.rooms.count, gs.panels_x * gs.panels_y);
+    if down_stairs.count == 0 && depth < max_depth && m.rooms.count >= 1 {
+        // Failed to place any down-stairs - try room centers as fallback
+        for room, idx: m.rooms {
+            cx, cy := rect_center(room.bounds);
+            empty_stairs: [0] StairPos;
+            if is_valid_stair_pos(m, *gs, cx, cy, empty_stairs) {
+                map_set(m, cx, cy, .STAIRS_DOWN);
+                stair: StairPos;
+                stair.x = cx;
+                stair.y = cy;
+                stair.room_index = cast(s32) idx;
+                array_add(*down_stairs, stair);
+                break;  // Just need one
+            }
+        }
+    }
+
+    // Step 8: Populate dungeon with monsters and items
+    // Source: MakeLev.cpp:3269-3301, Encounter.cpp:514-1125
+    populate_dungeon(m, depth);
+
+    print("Generated dungeon (ORIGINAL MakeLev) depth % with % rooms, % up-stairs, % down-stairs, % monsters, % items\n",
+          depth, m.rooms.count, up_stairs.count, down_stairs.count, m.monsters.count, m.items.count);
+
+    return down_stairs;
 }

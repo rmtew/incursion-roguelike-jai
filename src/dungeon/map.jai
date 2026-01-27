@@ -22,6 +22,8 @@ Terrain :: enum u8 {
     WATER;          // Water
     CHASM;          // Bottomless pit
     LAVA;           // Molten lava
+    TRAP;           // Visible trap ('^')
+    TRAP_HIDDEN;    // Hidden trap (looks like floor until triggered)
 }
 
 // Get the glyph character for a terrain type
@@ -39,6 +41,8 @@ terrain_glyph :: (t: Terrain) -> u8 {
         case .WATER;        return #char "~";
         case .CHASM;        return #char " ";
         case .LAVA;         return #char "~";
+        case .TRAP;         return #char "^";
+        case .TRAP_HIDDEN;  return #char ".";  // Looks like floor until found
     }
     return #char "?";
 }
@@ -82,13 +86,33 @@ Room :: struct {
     connected: bool;    // Has this room been connected to the dungeon?
 }
 
+// Entity position for monsters/items
+EntityPos :: struct {
+    x: s32;
+    y: s32;
+    cr: s32;            // Challenge rating (monsters) or value tier (items)
+    type_id: s32;       // Monster/item type identifier (for future use)
+}
+
+// Tile display info (for visual variety via regions)
+TileDisplay :: struct {
+    glyph: u8;          // Character to display (overrides terrain default)
+    fg_color: s64;      // Foreground color constant
+    use_custom: bool;   // If true, use glyph/fg_color instead of terrain default
+}
+
 // Map structure
 GenMap :: struct {
     width: s32;
     height: s32;
     tiles: [MAP_WIDTH * MAP_HEIGHT] Terrain;
+    tile_display: [MAP_WIDTH * MAP_HEIGHT] TileDisplay;  // Visual info per tile
     rooms: [..] Room;
     depth: s32;         // Dungeon depth level
+
+    // Population (filled by populate_dungeon)
+    monsters: [..] EntityPos;
+    items: [..] EntityPos;
 }
 
 // Initialize a new map filled with rock
@@ -102,13 +126,24 @@ map_init :: (m: *GenMap, width: s32 = MAP_WIDTH, height: s32 = MAP_HEIGHT) {
         tile.* = .ROCK;
     }
 
-    // Clear rooms array
+    // Clear tile display info
+    for *td: m.tile_display {
+        td.glyph = 0;
+        td.fg_color = 0;
+        td.use_custom = false;
+    }
+
+    // Clear arrays
     array_reset(*m.rooms);
+    array_reset(*m.monsters);
+    array_reset(*m.items);
 }
 
 // Free map resources
 map_free :: (m: *GenMap) {
     array_free(m.rooms);
+    array_free(m.monsters);
+    array_free(m.items);
 }
 
 // Get terrain at position (returns ROCK if out of bounds)
@@ -125,6 +160,26 @@ map_set :: (m: *GenMap, x: s32, y: s32, terrain: Terrain) {
         return;
     }
     m.tiles[y * m.width + x] = terrain;
+}
+
+// Set terrain with custom display info (for region terrain variety)
+map_set_with_display :: (m: *GenMap, x: s32, y: s32, terrain: Terrain, glyph: u8, fg_color: s64) {
+    if x < 0 || x >= m.width || y < 0 || y >= m.height {
+        return;
+    }
+    idx := y * m.width + x;
+    m.tiles[idx] = terrain;
+    m.tile_display[idx].glyph = glyph;
+    m.tile_display[idx].fg_color = fg_color;
+    m.tile_display[idx].use_custom = true;
+}
+
+// Get tile display info at position
+map_get_display :: (m: *GenMap, x: s32, y: s32) -> *TileDisplay {
+    if x < 0 || x >= m.width || y < 0 || y >= m.height {
+        return null;
+    }
+    return *m.tile_display[y * m.width + x];
 }
 
 // Check if position is in bounds
