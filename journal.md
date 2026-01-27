@@ -510,5 +510,50 @@ Added basic vault (special room) placement system:
 - [x] More streamer types based on region definitions
 - [x] Vault placement (basic system)
 - [ ] Weighted room selection from dungeon definition resources (requires full resource system)
-- [ ] More vault designs
-- [ ] Lava terrain type for proper lava rivers
+- [x] More vault designs
+- [x] Lava terrain type for proper lava rivers
+
+---
+
+## 2026-01-27: LAVA Terrain and Expanded Vaults
+
+### LAVA Terrain Type
+
+Added proper LAVA terrain type to support lava rivers:
+
+**Changes to `src/dungeon/map.jai`:**
+- Added `LAVA` to Terrain enum
+- Added glyph `~` for lava (same as water, will be colored differently by renderer)
+
+**Changes to `src/dungeon/makelev.jai`:**
+- Updated STREAMER_INFO to use `.LAVA` instead of `.CHASM` for lava rivers
+- Made lava rivers behave like water rivers (`is_river=true`) starting from map edge
+- Added vault character support: `^` = lava, `_` = chasm
+
+### Expanded Vault System
+
+Added 9 new vault designs (12 total):
+
+| Vault | Size | Min Depth | Description |
+|-------|------|-----------|-------------|
+| treasure_room | 7x5 | 3 | Small room with stairs down |
+| water_shrine | 9x7 | 2 | Room with central water pool |
+| guard_post | 9x9 | 1 | Four-quadrant room with doors |
+| arena | 11x9 | 2 | Open fighting area with central pillar |
+| library | 11x9 | 3 | Shelves represented by wall columns |
+| throne_room | 11x7 | 4 | Throne area with decorative walls |
+| prison | 11x7 | 3 | Row of cells with doors |
+| lava_chamber | 9x7 | 5 | Diamond-shaped lava pool with walkway |
+| chasm_bridge | 11x7 | 4 | Bridge over chasms |
+| altar_room | 9x9 | 2 | Altar with water corners |
+| pillared_hall | 13x9 | 2 | Large hall with support columns |
+| crossroads | 9x9 | 1 | Four-way intersection room |
+
+### Files Modified
+
+- `src/dungeon/map.jai` - Added LAVA terrain type and glyph
+- `src/dungeon/makelev.jai` - Updated streamer info, added vault characters, expanded VAULTS array
+
+### Remaining TODO
+
+- [ ] Weighted room selection from dungeon definition resources (requires full resource system)

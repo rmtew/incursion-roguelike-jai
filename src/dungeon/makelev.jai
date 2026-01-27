@@ -52,7 +52,7 @@ STREAMER_INFO :: StreamerInfo.[
     .{.WATER, true, 2, 5, PRIO_RIVER_STREAMER},   // WATER_RIVER
     .{.WATER, false, 1, 3, PRIO_ROCK_STREAMER},   // WATER_STREAM
     .{.CHASM, false, 3, 6, PRIO_RIVER_STREAMER},  // CHASM
-    .{.CHASM, false, 2, 4, PRIO_RIVER_STREAMER},  // LAVA_RIVER (uses CHASM for now)
+    .{.LAVA, true, 2, 4, PRIO_RIVER_STREAMER},    // LAVA_RIVER
     .{.ROCK, false, 1, 3, PRIO_ROCK_STREAMER},    // RUBBLE (TODO: add rubble terrain)
 ];
 
@@ -65,8 +65,8 @@ VaultDef :: struct {
     min_depth: s32;      // Minimum dungeon depth for this vault
 }
 
-// Simple vault definitions (placeholder for future expansion)
-// Characters: . = floor, # = wall, + = door, ~ = water, > = stairs down, < = stairs up
+// Vault definitions (pre-designed special rooms)
+// Characters: . = floor, # = wall, + = door, ~ = water, ^ = lava, _ = chasm, > = stairs down, < = stairs up
 VAULTS :: VaultDef.[
     .{
         "treasure_room",
@@ -107,6 +107,142 @@ END,
 #...+...#
 #...#...#
 #########
+END,
+        1
+    },
+    .{
+        "arena",
+        11, 9,
+        #string END
+###########
+#.........#
+#.........#
+#.........#
++....#....+
+#.........#
+#.........#
+#.........#
+###########
+END,
+        2
+    },
+    .{
+        "library",
+        11, 9,
+        #string END
+###########
+#.#.#.#.#.#
+#.........#
+#.#.#.#.#.#
++.........+
+#.#.#.#.#.#
+#.........#
+#.#.#.#.#.#
+###########
+END,
+        3
+    },
+    .{
+        "throne_room",
+        11, 7,
+        #string END
+###########
+#.........#
+#..#...#..#
+#....#....#
+#..#...#..#
+#.........#
+#####+#####
+END,
+        4
+    },
+    .{
+        "prison",
+        11, 7,
+        #string END
+###########
+#.+.+.+.+.#
+#.#######.#
+#.........#
+#.#######.#
+#.+.+.+.+.#
+#####+#####
+END,
+        3
+    },
+    .{
+        "lava_chamber",
+        9, 7,
+        #string END
+#########
+#..^^^..#
+#.^^^^^.#
++.^^.^^.+
+#.^^^^^.#
+#..^^^..#
+#########
+END,
+        5
+    },
+    .{
+        "chasm_bridge",
+        11, 7,
+        #string END
+###########
+#...___...#
+#...___...#
++.........+
+#...___...#
+#...___...#
+###########
+END,
+        4
+    },
+    .{
+        "altar_room",
+        9, 9,
+        #string END
+#########
+#.......#
+#.~...~.#
+#..#.#..#
+#...#...#
+#..#.#..#
+#.~...~.#
+#.......#
+####+####
+END,
+        2
+    },
+    .{
+        "pillared_hall",
+        13, 9,
+        #string END
+#############
+#...........#
+#.#.......#.#
+#...........#
++.#...#...#.+
+#...........#
+#.#.......#.#
+#...........#
+#############
+END,
+        2
+    },
+    .{
+        "crossroads",
+        9, 9,
+        #string END
+#####+###
+#.......#
+#.#####.#
+#.#...#.#
++.+...+.+
+#.#...#.#
+#.#####.#
+#.......#
+#####+###
 END,
         1
     },
@@ -2059,6 +2195,8 @@ write_vault :: (m: *Map, gs: *GenState, vault_idx: s32, x: s32, y: s32) -> bool 
             case #char ".";  terrain = .FLOOR;
             case #char "+";  terrain = .DOOR_CLOSED;
             case #char "~";  terrain = .WATER;
+            case #char "^";  terrain = .LAVA;
+            case #char "_";  terrain = .CHASM;
             case #char ">";  terrain = .STAIRS_DOWN;
             case #char "<";  terrain = .STAIRS_UP;
             case #char " ";

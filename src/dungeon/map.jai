@@ -22,6 +22,7 @@ Terrain :: enum u8 {
     STAIRS_DOWN;    // Stairs going down
     WATER;          // Water
     CHASM;          // Bottomless pit
+    LAVA;           // Molten lava
 }
 
 // Get the glyph character for a terrain type
@@ -38,6 +39,7 @@ terrain_glyph :: (t: Terrain) -> u8 {
         case .STAIRS_DOWN;  return #char ">";
         case .WATER;        return #char "~";
         case .CHASM;        return #char " ";
+        case .LAVA;         return #char "~";
     }
     return #char "?";
 }
