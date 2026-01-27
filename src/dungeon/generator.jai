@@ -5,13 +5,8 @@
 // Supports two modes:
 //   EXTENDED - Enhanced generation with more room variety (default)
 //   ORIGINAL - TODO: Exact MakeLev.cpp replication for identical dungeons
-
-#import "Basic";
-Random :: #import "Random";
-
-#load "map.jai";
-#load "../rng.jai";
-#load "makelev.jai";
+//
+// Note: This file is loaded by main.jai which handles all imports and loads.
 
 // Generation parameters
 GEN_MIN_ROOM_SIZE :: 5;     // Minimum room dimension (interior)
@@ -47,7 +42,7 @@ bsp_free :: (node: *BSPNode) {
 }
 
 // Split a BSP node into two children
-bsp_split :: (node: *BSPNode, rng: *Random.Random_State) -> bool {
+bsp_split :: (node: *BSPNode, rng: *Random_State) -> bool {
     if node.left != null || node.right != null {
         return false;  // Already split
     }
@@ -63,7 +58,7 @@ bsp_split :: (node: *BSPNode, rng: *Random.Random_State) -> bool {
     } else if h > w && cast(float32)h / cast(float32)w >= 1.25 {
         split_horizontal = true;   // Split horizontally (divide height)
     } else {
-        split_horizontal = Random.random_get(rng) % 2 == 0;
+        split_horizontal = random_get(rng) % 2 == 0;
     }
 
     // Determine max split position
@@ -79,7 +74,7 @@ bsp_split :: (node: *BSPNode, rng: *Random.Random_State) -> bool {
     }
 
     // Choose split position
-    split_pos := GEN_MIN_LEAF_SIZE + cast(s32)(Random.random_get(rng) % cast(u64)(max_split - GEN_MIN_LEAF_SIZE));
+    split_pos := GEN_MIN_LEAF_SIZE + cast(s32)(random_get(rng) % cast(u64)(max_split - GEN_MIN_LEAF_SIZE));
 
     // Create children
     if split_horizontal {
@@ -106,7 +101,7 @@ bsp_split :: (node: *BSPNode, rng: *Random.Random_State) -> bool {
 }
 
 // Recursively split BSP tree to target depth
-bsp_split_recursive :: (node: *BSPNode, rng: *Random.Random_State, depth: s32) {
+bsp_split_recursive :: (node: *BSPNode, rng: *Random_State, depth: s32) {
     if depth <= 0 return;
 
     if bsp_split(node, rng) {
@@ -116,7 +111,7 @@ bsp_split_recursive :: (node: *BSPNode, rng: *Random.Random_State, depth: s32) {
 }
 
 // Create a room in a BSP leaf
-bsp_create_room :: (node: *BSPNode, m: *Map, rng: *Random.Random_State) {
+bsp_create_room :: (node: *BSPNode, m: *GenMap, rng: *Random_State) {
     if node.left != null && node.right != null {
         // Not a leaf, recurse
         bsp_create_room(node.left, m, rng);
@@ -139,17 +134,17 @@ bsp_create_room :: (node: *BSPNode, m: *Map, rng: *Random.Random_State) {
     }
 
     // Random room size
-    room_w := GEN_MIN_ROOM_SIZE + cast(s32)(Random.random_get(rng) % cast(u64)(min(available_w, GEN_MAX_ROOM_SIZE) - GEN_MIN_ROOM_SIZE + 1));
-    room_h := GEN_MIN_ROOM_SIZE + cast(s32)(Random.random_get(rng) % cast(u64)(min(available_h, GEN_MAX_ROOM_SIZE) - GEN_MIN_ROOM_SIZE + 1));
+    room_w := GEN_MIN_ROOM_SIZE + cast(s32)(random_get(rng) % cast(u64)(min(available_w, GEN_MAX_ROOM_SIZE) - GEN_MIN_ROOM_SIZE + 1));
+    room_h := GEN_MIN_ROOM_SIZE + cast(s32)(random_get(rng) % cast(u64)(min(available_h, GEN_MAX_ROOM_SIZE) - GEN_MIN_ROOM_SIZE + 1));
 
     // Random room position within available space
     room_x := min_x;
     room_y := min_y;
     if available_w > room_w {
-        room_x = min_x + cast(s32)(Random.random_get(rng) % cast(u64)(available_w - room_w + 1));
+        room_x = min_x + cast(s32)(random_get(rng) % cast(u64)(available_w - room_w + 1));
     }
     if available_h > room_h {
-        room_y = min_y + cast(s32)(Random.random_get(rng) % cast(u64)(available_h - room_h + 1));
+        room_y = min_y + cast(s32)(random_get(rng) % cast(u64)(available_h - room_h + 1));
     }
 
     node.room = .{room_x, room_y, room_x + room_w - 1, room_y + room_h - 1};
@@ -157,7 +152,7 @@ bsp_create_room :: (node: *BSPNode, m: *Map, rng: *Random.Random_State) {
 
     // Choose a random room shape
     // Weighted: rectangles more common, special shapes less common
-    shape_roll := Random.random_get(rng) % 100;
+    shape_roll := random_get(rng) % 100;
     shape: RoomShape;
     if shape_roll < 50 {
         shape = .RECTANGLE;
@@ -181,7 +176,7 @@ bsp_create_room :: (node: *BSPNode, m: *Map, rng: *Random.Random_State) {
 }
 
 // Get a room from a BSP subtree (for corridor connection)
-bsp_get_room :: (node: *BSPNode, rng: *Random.Random_State) -> Rect, bool {
+bsp_get_room :: (node: *BSPNode, rng: *Random_State) -> Rect, bool {
     if node == null {
         return .{}, false;
     }
@@ -196,7 +191,7 @@ bsp_get_room :: (node: *BSPNode, rng: *Random.Random_State) -> Rect, bool {
 
     if left_ok && right_ok {
         // Return one randomly
-        if Random.random_get(rng) % 2 == 0 {
+        if random_get(rng) % 2 == 0 {
             return left_room, true;
         } else {
             return right_room, true;
@@ -211,7 +206,7 @@ bsp_get_room :: (node: *BSPNode, rng: *Random.Random_State) -> Rect, bool {
 }
 
 // Connect rooms in BSP tree with corridors
-bsp_connect_rooms :: (node: *BSPNode, m: *Map, rng: *Random.Random_State) {
+bsp_connect_rooms :: (node: *BSPNode, m: *GenMap, rng: *Random_State) {
     if node == null return;
     if node.left == null || node.right == null return;
 
@@ -234,18 +229,18 @@ bsp_connect_rooms :: (node: *BSPNode, m: *Map, rng: *Random.Random_State) {
 }
 
 // Main dungeon generation function
-generate_dungeon :: (m: *Map, seed: u64 = 0, mode: GeneratorMode = .EXTENDED) {
+generate_dungeon :: (m: *GenMap, seed: u64 = 0, mode: GeneratorMode = .EXTENDED) {
     if mode == .ORIGINAL {
         generate_dungeon_original(m, cast(u32)seed);
         return;
     }
 
     // EXTENDED mode - uses Jai's Random module
-    rng: Random.Random_State;
+    rng: Random_State;
     if seed == 0 {
         seed = cast(u64) current_time_monotonic().low;
     }
-    Random.random_seed(*rng, seed);
+    random_seed(*rng, seed);
 
     // Initialize map
     map_init(m);
@@ -270,12 +265,12 @@ generate_dungeon :: (m: *Map, seed: u64 = 0, mode: GeneratorMode = .EXTENDED) {
 
     // Place water pools in some rooms (20% chance per room)
     for room: m.rooms {
-        if Random.random_get(*rng) % 5 == 0 {
+        if random_get(*rng) % 5 == 0 {
             cx, cy := rect_center(room.bounds);
             // Offset from center slightly
-            cx += cast(s32)(Random.random_get(*rng) % 3) - 1;
-            cy += cast(s32)(Random.random_get(*rng) % 3) - 1;
-            radius := 1 + cast(s32)(Random.random_get(*rng) % 2);
+            cx += cast(s32)(random_get(*rng) % 3) - 1;
+            cy += cast(s32)(random_get(*rng) % 3) - 1;
+            radius := 1 + cast(s32)(random_get(*rng) % 2);
             map_place_pool(m, cx, cy, radius);
         }
     }
@@ -308,7 +303,7 @@ generate_dungeon :: (m: *Map, seed: u64 = 0, mode: GeneratorMode = .EXTENDED) {
 
 // Original-compatible dungeon generation using MT19937
 // Uses MakeLev panel-based generation
-generate_dungeon_original :: (m: *Map, seed: u32) {
+generate_dungeon_original :: (m: *GenMap, seed: u32) {
     // Use the MakeLev-style generation
     generate_makelev(m, seed);
 }

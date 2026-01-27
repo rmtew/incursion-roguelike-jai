@@ -1,9 +1,8 @@
 // Map data structures for dungeon generation
 //
 // A simple tile-based map with terrain types.
-
-#import "Basic";
-// Note: Random module is imported by generator.jai which loads this file
+//
+// Note: This file is loaded by main.jai which handles all imports.
 
 // Map dimensions (matching Incursion's defaults)
 MAP_WIDTH  :: 80;
@@ -84,7 +83,7 @@ Room :: struct {
 }
 
 // Map structure
-Map :: struct {
+GenMap :: struct {
     width: s32;
     height: s32;
     tiles: [MAP_WIDTH * MAP_HEIGHT] Terrain;
@@ -93,7 +92,7 @@ Map :: struct {
 }
 
 // Initialize a new map filled with rock
-map_init :: (m: *Map, width: s32 = MAP_WIDTH, height: s32 = MAP_HEIGHT) {
+map_init :: (m: *GenMap, width: s32 = MAP_WIDTH, height: s32 = MAP_HEIGHT) {
     m.width = width;
     m.height = height;
     m.depth = 1;
@@ -108,12 +107,12 @@ map_init :: (m: *Map, width: s32 = MAP_WIDTH, height: s32 = MAP_HEIGHT) {
 }
 
 // Free map resources
-map_free :: (m: *Map) {
+map_free :: (m: *GenMap) {
     array_free(m.rooms);
 }
 
 // Get terrain at position (returns ROCK if out of bounds)
-map_get :: (m: *Map, x: s32, y: s32) -> Terrain {
+map_get :: (m: *GenMap, x: s32, y: s32) -> Terrain {
     if x < 0 || x >= m.width || y < 0 || y >= m.height {
         return .ROCK;
     }
@@ -121,7 +120,7 @@ map_get :: (m: *Map, x: s32, y: s32) -> Terrain {
 }
 
 // Set terrain at position
-map_set :: (m: *Map, x: s32, y: s32, terrain: Terrain) {
+map_set :: (m: *GenMap, x: s32, y: s32, terrain: Terrain) {
     if x < 0 || x >= m.width || y < 0 || y >= m.height {
         return;
     }
@@ -129,12 +128,12 @@ map_set :: (m: *Map, x: s32, y: s32, terrain: Terrain) {
 }
 
 // Check if position is in bounds
-map_in_bounds :: (m: *Map, x: s32, y: s32) -> bool {
+map_in_bounds :: (m: *GenMap, x: s32, y: s32) -> bool {
     return x >= 0 && x < m.width && y >= 0 && y < m.height;
 }
 
 // Fill a rectangular area with a terrain type
-map_fill_rect :: (m: *Map, r: Rect, terrain: Terrain) {
+map_fill_rect :: (m: *GenMap, r: Rect, terrain: Terrain) {
     for y: r.y1..r.y2 {
         for x: r.x1..r.x2 {
             map_set(m, x, y, terrain);
@@ -143,7 +142,7 @@ map_fill_rect :: (m: *Map, r: Rect, terrain: Terrain) {
 }
 
 // Draw walls around a rectangular area
-map_draw_walls :: (m: *Map, r: Rect) {
+map_draw_walls :: (m: *GenMap, r: Rect) {
     // Top and bottom walls
     for x: r.x1..r.x2 {
         map_set(m, x, r.y1, .WALL);
@@ -168,7 +167,7 @@ RoomShape :: enum {
 }
 
 // Carve a rectangular room (floor inside, walls around)
-map_carve_room :: (m: *Map, r: Rect, shape: RoomShape = .RECTANGLE, rng: *Random.Random_State = null) {
+map_carve_room :: (m: *GenMap, r: Rect, shape: RoomShape = .RECTANGLE, rng: *Random_State = null) {
     if shape == {
         case .RECTANGLE;
             map_carve_room_rectangle(m, r);
@@ -193,7 +192,7 @@ map_carve_room :: (m: *Map, r: Rect, shape: RoomShape = .RECTANGLE, rng: *Random
     array_add(*m.rooms, room);
 }
 
-map_carve_room_rectangle :: (m: *Map, r: Rect) {
+map_carve_room_rectangle :: (m: *GenMap, r: Rect) {
     // Draw walls around the room
     wall_rect := Rect.{r.x1 - 1, r.y1 - 1, r.x2 + 1, r.y2 + 1};
     map_draw_walls(m, wall_rect);
@@ -202,7 +201,7 @@ map_carve_room_rectangle :: (m: *Map, r: Rect) {
     map_fill_rect(m, r, .FLOOR);
 }
 
-map_carve_room_circle :: (m: *Map, r: Rect) {
+map_carve_room_circle :: (m: *GenMap, r: Rect) {
     cx, cy := rect_center(r);
     radius_x := rect_width(r) / 2;
     radius_y := rect_height(r) / 2;
@@ -228,7 +227,7 @@ map_carve_room_circle :: (m: *Map, r: Rect) {
     }
 }
 
-map_carve_room_cross :: (m: *Map, r: Rect) {
+map_carve_room_cross :: (m: *GenMap, r: Rect) {
     cx, cy := rect_center(r);
     w := rect_width(r);
     h := rect_height(r);
@@ -263,7 +262,7 @@ map_carve_room_cross :: (m: *Map, r: Rect) {
     }
 }
 
-map_carve_room_diamond :: (m: *Map, r: Rect) {
+map_carve_room_diamond :: (m: *GenMap, r: Rect) {
     cx, cy := rect_center(r);
     radius_x := rect_width(r) / 2;
     radius_y := rect_height(r) / 2;
@@ -288,7 +287,7 @@ map_carve_room_diamond :: (m: *Map, r: Rect) {
     }
 }
 
-map_carve_room_octagon :: (m: *Map, r: Rect) {
+map_carve_room_octagon :: (m: *GenMap, r: Rect) {
     // Octagon: rectangle with corners cut off
     map_carve_room_rectangle(m, r);
 
@@ -322,7 +321,7 @@ map_carve_room_octagon :: (m: *Map, r: Rect) {
     }
 }
 
-map_carve_room_cavern :: (m: *Map, r: Rect, rng: *Random.Random_State) {
+map_carve_room_cavern :: (m: *GenMap, r: Rect, rng: *Random_State) {
     // Cellular automata-style irregular cavern
     // Start with random fill, then smooth
 
@@ -340,7 +339,7 @@ map_carve_room_cavern :: (m: *Map, r: Rect, rng: *Random.Random_State) {
     // Initial random fill (45% floor)
     for i: 0..w*h-1 {
         if rng != null {
-            grid[i] = Random.random_get(rng) % 100 < 45;
+            grid[i] = random_get(rng) % 100 < 45;
         } else {
             grid[i] = i % 2 == 0;
         }
@@ -413,7 +412,7 @@ map_carve_room_cavern :: (m: *Map, r: Rect, rng: *Random.Random_State) {
     }
 }
 
-map_carve_room_castle :: (m: *Map, r: Rect, rng: *Random.Random_State) {
+map_carve_room_castle :: (m: *GenMap, r: Rect, rng: *Random_State) {
     // Castle: rectangular room subdivided by internal walls with doors
     map_carve_room_rectangle(m, r);
 
@@ -426,7 +425,7 @@ map_carve_room_castle :: (m: *Map, r: Rect, rng: *Random.Random_State) {
     // Decide split direction based on shape
     split_vertical := w > h;
     if rng != null && w == h {
-        split_vertical = Random.random_get(rng) % 2 == 0;
+        split_vertical = random_get(rng) % 2 == 0;
     }
 
     if split_vertical {
@@ -438,7 +437,7 @@ map_carve_room_castle :: (m: *Map, r: Rect, rng: *Random.Random_State) {
         // Door in the wall
         door_y := r.y1 + 1;
         if rng != null {
-            door_y = r.y1 + 1 + cast(s32)(Random.random_get(rng) % cast(u64)(h - 2));
+            door_y = r.y1 + 1 + cast(s32)(random_get(rng) % cast(u64)(h - 2));
         }
         map_set(m, wx, door_y, .DOOR_CLOSED);
     } else {
@@ -450,14 +449,14 @@ map_carve_room_castle :: (m: *Map, r: Rect, rng: *Random.Random_State) {
         // Door in the wall
         door_x := r.x1 + 1;
         if rng != null {
-            door_x = r.x1 + 1 + cast(s32)(Random.random_get(rng) % cast(u64)(w - 2));
+            door_x = r.x1 + 1 + cast(s32)(random_get(rng) % cast(u64)(w - 2));
         }
         map_set(m, door_x, wy, .DOOR_CLOSED);
     }
 }
 
 // Carve a corridor between two points
-map_carve_corridor :: (m: *Map, x1: s32, y1: s32, x2: s32, y2: s32) {
+map_carve_corridor :: (m: *GenMap, x1: s32, y1: s32, x2: s32, y2: s32) {
     x := x1;
     y := y1;
 
@@ -508,7 +507,7 @@ map_carve_corridor :: (m: *Map, x1: s32, y1: s32, x2: s32, y2: s32) {
 }
 
 // Place a door where corridor meets room
-map_place_doors :: (m: *Map) {
+map_place_doors :: (m: *GenMap) {
     for y: 1..m.height-2 {
         for x: 1..m.width-2 {
             t := map_get(m, x, y);
@@ -536,7 +535,7 @@ map_place_doors :: (m: *Map) {
 }
 
 // Place a water pool in a room
-map_place_pool :: (m: *Map, cx: s32, cy: s32, radius: s32) {
+map_place_pool :: (m: *GenMap, cx: s32, cy: s32, radius: s32) {
     for dy: -radius..radius {
         for dx: -radius..radius {
             dist_sq := dx*dx + dy*dy;
@@ -553,15 +552,15 @@ map_place_pool :: (m: *Map, cx: s32, cy: s32, radius: s32) {
 }
 
 // Add some irregular edges to corridors (make them look more natural)
-map_roughen_corridors :: (m: *Map, rng: *Random.Random_State) {
+map_roughen_corridors :: (m: *GenMap, rng: *Random_State) {
     // Find corridor tiles and occasionally widen them
     for y: 2..m.height-3 {
         for x: 2..m.width-3 {
             if map_get(m, x, y) != .CORRIDOR continue;
 
             // 20% chance to expand into adjacent rock
-            if Random.random_get(rng) % 5 == 0 {
-                dir := Random.random_get(rng) % 4;
+            if random_get(rng) % 5 == 0 {
+                dir := random_get(rng) % 4;
                 nx := x;
                 ny := y;
                 if dir == 0 { nx = x - 1; }

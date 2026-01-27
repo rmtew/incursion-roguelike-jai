@@ -24,6 +24,13 @@
 #load "resource/lexer.jai";
 #load "resource/parser.jai";
 
+// Load RNG and dungeon generation
+#load "rng.jai";
+#load "dungeon/map.jai";
+#load "dungeon/weights.jai";
+#load "dungeon/makelev.jai";
+#load "dungeon/generator.jai";
+
 // Load tests
 #load "tests.jai";
 

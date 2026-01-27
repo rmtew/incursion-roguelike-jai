@@ -556,4 +556,110 @@ Added 9 new vault designs (12 total):
 
 ### Remaining TODO
 
-- [ ] Weighted room selection from dungeon definition resources (requires full resource system)
+- [x] Weighted room selection from dungeon definition resources
+
+---
+
+## 2026-01-27: Weighted Room Selection Implementation
+
+### Overview
+
+Implemented Incursion-compatible weighted room and region selection for exact dungeon replication - same RNG seed should produce identical dungeons to original Incursion.
+
+### Two-Tier Selection System
+
+The original uses:
+1. **Room Type Selection**: Cumulative weight algorithm picks room shape (RM_NORMAL, RM_CAVE, etc.)
+2. **Region Selection**: Constraint filtering picks appearance (walls, floors, monsters)
+
+### Parser Extensions
+
+**New structures in `src/resource/parser.jai`:**
+- `WeightListEntry` - Entry in a weight list (weight, value, is_ref, ref_name, macro support)
+- `ParsedWeightList` - List with type (RM_WEIGHTS, WALL_COLOURS, ENCOUNTER_LIST, etc.)
+
+**Extended `ParsedRegion`:**
+- `has_walls`, `walls` - Wall terrain reference ($"Dungeon Wall")
+- `has_door`, `door` - Door feature reference ($"oak door")
+- `has_room_types`, `room_types` - RM_* bitmask for supported room types
+- `has_size`, `size` - Size constraint (SZ_* constant)
+- `flags` - Region flags (RF_VAULT, RF_CORRIDOR, RF_STAPLE, etc.)
+- `lists` changed from `ParsedList` to `ParsedWeightList`
+- `constants` - Constants section
+
+**Extended `ParsedDungeon`:**
+- `lists` - Weight lists for dungeon-level configuration
+
+**New `parse_lists_section` function:**
+- Parses `Lists:` sections with `*` markers for each list
+- Handles weight-value pairs (numbers set weight, constants/refs are entries)
+- Supports macro calls like `CONSTRAINED_ENC($"name", MA_AQUATIC)`
+- Handles color words, RM_* constants, and resource references
+
+### Runtime Selection System
+
+**New file `src/dungeon/weights.jai`:**
+
+**RuntimeRegion struct:**
+- Resolved region with room_types bitmask, depth, flags, terrain references
+
+**DungeonWeights container:**
+- `rm_types`/`rm_weights` - Room type weights (from RM_WEIGHTS list or defaults)
+- `room_regions`, `corridor_regions`, `vault_regions` - Categorized regions
+
+**SelectionState (per-level):**
+- Mutable copy of weights (modified during level)
+- `used_regions` - Track regions used this level (prevent repeats unless RF_STAPLE)
+- `depth_cr`, `min_vault_depth` - Dungeon depth info
+
+**Selection Algorithms:**
+- `select_room_type()` - Cumulative weight selection, resets weights when all exhausted
+- `select_region()` - Constraint filtering (RoomTypes, Depth, RF_VAULT, RF_NOGEN, uniqueness)
+- `select_corridor()` - Frequency expansion for corridor regions
+
+**Default room type weights (from original MakeLev.cpp):**
+```
+RM_NORMAL: 10, RM_NOROOM: 1, RM_LARGE: 1, RM_CROSS: 1, RM_OVERLAP: 1,
+RM_ADJACENT: 1, RM_AD_ROUND: 2, RM_AD_MIXED: 2, RM_CIRCLE: 4, RM_OCTAGON: 5,
+RM_DIAMONDS: 4, RM_DOUBLE: 2, RM_PILLARS: 3, RM_CHECKER: 1, RM_BUILDING: 3,
+RM_GRID: 1, RM_LIFECAVE: 10, RM_RCAVERN: 4, RM_MAZE: 2, RM_LCIRCLE: 1, RM_SHAPED: 2
+```
+
+### Generator Integration
+
+**Extended `GenState` in `src/dungeon/makelev.jai`:**
+- `dungeon_weights` - Weight configuration for current dungeon
+- `selection` - Per-level selection state
+- `current_region` - Currently selected region for room appearance
+
+**Modified `gen_state_init()`:**
+- Takes optional `depth` parameter
+- Initializes dungeon weights and selection state
+
+**Modified `draw_panel()`:**
+- Replaced hardcoded probability table with weighted selection
+- Tries up to 200 times to find valid room type + region combination
+- Falls back gracefully when no regions defined
+
+### Code Cleanup
+
+- Renamed dungeon's `Map` to `GenMap` to avoid conflict with core `Map` struct
+- Removed duplicate `Dir` enum and `DirX`/`DirY` arrays from makelev.jai (use defines.jai versions)
+- Removed redundant `#import` statements from loaded files
+- Fixed `Random.` namespacing issues in dungeon module
+
+### Test Results
+
+- All existing tests pass (163/165, 2 pre-existing failures in mundane.irh and weapons.irh)
+- Added dungeon.irh to test suite (has errors due to other unimplemented features, not weighted selection)
+
+### Files Created/Modified
+
+- `src/dungeon/weights.jai` - **NEW** - RuntimeRegion, DungeonWeights, SelectionState, selection algorithms
+- `src/resource/parser.jai` - Added WeightListEntry, ParsedWeightList, extended ParsedRegion/ParsedDungeon, implemented parse_lists_section
+- `src/dungeon/makelev.jai` - Added weight fields to GenState, replaced hardcoded selection
+- `src/dungeon/map.jai` - Renamed Map to GenMap
+- `src/dungeon/generator.jai` - Updated for GenMap, removed redundant loads
+- `src/main.jai` - Added loads for rng.jai and dungeon modules
+- `src/rng.jai` - Removed redundant import
+- `src/tests.jai` - Added dungeon.irh test

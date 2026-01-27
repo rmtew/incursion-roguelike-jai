@@ -4,8 +4,8 @@
 // dungeons given the same RNG seed.
 //
 // Reference: C:\Data\R\roguelike - incursion\repo-work\src\MakeLev.cpp
-
-#import "Basic";
+//
+// Note: This file is loaded by main.jai which handles all imports.
 
 // Tunnel termination flags (from original MakeLev.cpp)
 // These control when a tunnel should stop
@@ -335,10 +335,15 @@ GenState :: struct {
     // Flood fill working arrays (allocated on temp allocator)
     flood_array: *u8;
     flood_stack: *u8;
+
+    // Weighted room/region selection (from weights.jai)
+    dungeon_weights: DungeonWeights;
+    selection: SelectionState;
+    current_region: *RuntimeRegion;  // Currently selected region for room appearance
 }
 
 // Initialize generation state
-gen_state_init :: (gs: *GenState, con: DungeonConstants = DEFAULT_CON) {
+gen_state_init :: (gs: *GenState, con: DungeonConstants = DEFAULT_CON, depth: s32 = 1) {
     gs.con = con;
     gs.panels_x = con.LEVEL_SIZEX / con.PANEL_SIZEX;
     gs.panels_y = con.LEVEL_SIZEY / con.PANEL_SIZEY;
@@ -358,16 +363,21 @@ gen_state_init :: (gs: *GenState, con: DungeonConstants = DEFAULT_CON) {
         gs.gen_info.cells[i].connected = false;
         gs.gen_info.cells[i].solid = true;
     }
+
+    // Initialize weighted selection
+    init_dungeon_weights(*gs.dungeon_weights);
+    init_selection_state(*gs.selection, *gs.dungeon_weights, depth);
+    gs.current_region = null;
 }
 
 // Get cell info at position
-get_cell :: (gs: *GenState, m: *Map, x: s32, y: s32) -> *CellInfo {
+get_cell :: (gs: *GenState, m: *GenMap, x: s32, y: s32) -> *CellInfo {
     if x < 0 || x >= m.width || y < 0 || y >= m.height return null;
     return *gs.gen_info.cells[y * m.width + x];
 }
 
 // Check if position is solid
-is_solid :: (gs: *GenState, m: *Map, x: s32, y: s32) -> bool {
+is_solid :: (gs: *GenState, m: *GenMap, x: s32, y: s32) -> bool {
     t := map_get(m, x, y);
     return terrain_solid(t);
 }
@@ -375,7 +385,7 @@ is_solid :: (gs: *GenState, m: *Map, x: s32, y: s32) -> bool {
 // Flood fill to mark all connected tiles starting from (x, y)
 // Returns count of tiles marked connected
 // In original: int32 Map::FloodConnectA(int16 x, int16 y, int32 fCount)
-flood_connect :: (gs: *GenState, m: *Map, start_x: s32, start_y: s32) -> s32 {
+flood_connect :: (gs: *GenState, m: *GenMap, start_x: s32, start_y: s32) -> s32 {
     count: s32 = 0;
 
     // Use a stack-based flood fill (iterative to avoid recursion limits)
@@ -440,7 +450,7 @@ flood_connect :: (gs: *GenState, m: *Map, start_x: s32, start_y: s32) -> s32 {
 }
 
 // Clear all connected flags
-clear_connected :: (gs: *GenState, m: *Map) {
+clear_connected :: (gs: *GenState, m: *GenMap) {
     for i: 0..m.width * m.height - 1 {
         gs.gen_info.cells[i].connected = false;
     }
@@ -448,7 +458,7 @@ clear_connected :: (gs: *GenState, m: *Map) {
 
 // Find unconnected open tiles and return arrays of connected and unconnected edge tiles
 // In original, this is the fix-up tunneling step
-find_disconnected_regions :: (gs: *GenState, m: *Map) -> connected_edges: [..] Point, unconnected_edges: [..] Point {
+find_disconnected_regions :: (gs: *GenState, m: *GenMap) -> connected_edges: [..] Point, unconnected_edges: [..] Point {
     connected_edges: [..] Point;
     connected_edges.allocator = temp;
 
@@ -497,7 +507,7 @@ Point :: struct {
 
 // Write terrain at position with priority check
 // In original: void Map::WriteAt(Rect &r, int16 x, int16 y, rID terID, rID regID, int8 Pri, bool Force)
-write_at :: (m: *Map, gs: *GenState, x: s32, y: s32, terrain: Terrain, priority: u8 = PRIO_ROOM_FLOOR, force: bool = false) {
+write_at :: (m: *GenMap, gs: *GenState, x: s32, y: s32, terrain: Terrain, priority: u8 = PRIO_ROOM_FLOOR, force: bool = false) {
     if !map_in_bounds(m, x, y) return;
 
     cell := get_cell(gs, m, x, y);
@@ -512,14 +522,14 @@ write_at :: (m: *Map, gs: *GenState, x: s32, y: s32, terrain: Terrain, priority:
 }
 
 // Convenience version without GenState for simple cases
-write_at :: (m: *Map, x: s32, y: s32, terrain: Terrain, priority: s32 = 0, force: bool = false) {
+write_at :: (m: *GenMap, x: s32, y: s32, terrain: Terrain, priority: s32 = 0, force: bool = false) {
     if !map_in_bounds(m, x, y) return;
     map_set(m, x, y, terrain);
 }
 
 // Write a rectangular room floor
 // In original: void Map::WriteRoom(Rect &r, rID regID)
-write_room :: (m: *Map, gs: *GenState, r: Rect) {
+write_room :: (m: *GenMap, gs: *GenState, r: Rect) {
     floor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
 
@@ -568,7 +578,7 @@ write_room :: (m: *Map, gs: *GenState, r: Rect) {
 
 // Write a circular room
 // In original: void Map::WriteCircle(Rect &r, rID regID)
-write_circle :: (m: *Map, gs: *GenState, r: Rect) {
+write_circle :: (m: *GenMap, gs: *GenState, r: Rect) {
     cx, cy := rect_center(r);
     radius_x := rect_width(r) / 2;
     radius_y := rect_height(r) / 2;
@@ -608,7 +618,7 @@ write_circle :: (m: *Map, gs: *GenState, r: Rect) {
 
 // Write an octagonal room
 // In original: void Map::WriteOctagon(Rect &r, rID regID)
-write_octagon :: (m: *Map, gs: *GenState, r: Rect) {
+write_octagon :: (m: *GenMap, gs: *GenState, r: Rect) {
     // Start with rectangular room
     write_room(m, gs, r);
 
@@ -646,7 +656,7 @@ write_octagon :: (m: *Map, gs: *GenState, r: Rect) {
 
 // Write a cross-shaped room
 // In original: void Map::WriteCross(Rect &r, rID regID)
-write_cross :: (m: *Map, gs: *GenState, r: Rect) {
+write_cross :: (m: *GenMap, gs: *GenState, r: Rect) {
     cx, cy := rect_center(r);
     w := rect_width(r);
     h := rect_height(r);
@@ -683,7 +693,7 @@ write_cross :: (m: *Map, gs: *GenState, r: Rect) {
 
 // Write a cave using cellular automata (Game of Life variant)
 // In original: void Map::WriteLifeCave(Rect &r, rID regID)
-write_lifecave :: (m: *Map, gs: *GenState, r: Rect) {
+write_lifecave :: (m: *GenMap, gs: *GenState, r: Rect) {
     floor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
 
@@ -800,7 +810,7 @@ write_lifecave :: (m: *Map, gs: *GenState, r: Rect) {
 
 // Write overlapping rectangles (2-4 random boxes)
 // In original: case RM_OVERLAP in DrawPanel
-write_overlap :: (m: *Map, gs: *GenState, panel: Rect) {
+write_overlap :: (m: *GenMap, gs: *GenState, panel: Rect) {
     floor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
 
@@ -865,7 +875,7 @@ write_overlap :: (m: *Map, gs: *GenState, panel: Rect) {
 // Write adjacent four-quadrant room
 // In original: case RM_ADJACENT/RM_AD_ROUND/RM_AD_MIXED
 // Four boxes with a shared center-point compose a single room
-write_adjacent :: (m: *Map, gs: *GenState, panel: Rect, use_circles: bool = false, mixed: bool = false) {
+write_adjacent :: (m: *GenMap, gs: *GenState, panel: Rect, use_circles: bool = false, mixed: bool = false) {
     floor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
 
@@ -955,7 +965,7 @@ write_adjacent :: (m: *Map, gs: *GenState, panel: Rect, use_circles: bool = fals
 
 // Write a simple box (floor only, no walls)
 // Helper for write_adjacent
-write_box :: (m: *Map, gs: *GenState, r: Rect) {
+write_box :: (m: *GenMap, gs: *GenState, r: Rect) {
     floor := gs.con.TERRAIN_FLOOR;
 
     for y: r.y1..r.y2 {
@@ -973,7 +983,7 @@ write_box :: (m: *Map, gs: *GenState, r: Rect) {
 }
 
 // Write walls around floor tiles in a rect
-write_walls :: (m: *Map, gs: *GenState, r: Rect) {
+write_walls :: (m: *GenMap, gs: *GenState, r: Rect) {
     wall := gs.con.TERRAIN_WALL;
     floor := gs.con.TERRAIN_FLOOR;
 
@@ -1004,7 +1014,7 @@ write_walls :: (m: *Map, gs: *GenState, r: Rect) {
 
 // Write a room with pillars
 // In original: case RM_PILLARS
-write_pillars :: (m: *Map, gs: *GenState, r: Rect) {
+write_pillars :: (m: *GenMap, gs: *GenState, r: Rect) {
     // First create normal room
     write_room(m, gs, r);
 
@@ -1028,7 +1038,7 @@ write_pillars :: (m: *Map, gs: *GenState, r: Rect) {
 
 // Write a double room (room within a room)
 // In original: case RM_DOUBLE
-write_double :: (m: *Map, gs: *GenState, r: Rect) {
+write_double :: (m: *GenMap, gs: *GenState, r: Rect) {
     // Outer room
     write_room(m, gs, r);
 
@@ -1070,7 +1080,7 @@ write_double :: (m: *Map, gs: *GenState, r: Rect) {
 
 // Write a maze room using recursive backtracking
 // In original: case RM_MAZE (calls WriteMaze)
-write_maze :: (m: *Map, gs: *GenState, r: Rect) {
+write_maze :: (m: *GenMap, gs: *GenState, r: Rect) {
     floor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
 
@@ -1175,7 +1185,7 @@ write_maze :: (m: *Map, gs: *GenState, r: Rect) {
 
 // Write a checkerboard pattern room
 // In original: case RM_CHECKER
-write_checker :: (m: *Map, gs: *GenState, r: Rect) {
+write_checker :: (m: *GenMap, gs: *GenState, r: Rect) {
     floor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
 
@@ -1223,7 +1233,7 @@ write_checker :: (m: *Map, gs: *GenState, r: Rect) {
 
 // Write a room with diamond-shaped cells
 // In original: case RM_DIAMONDS
-write_diamonds :: (m: *Map, gs: *GenState, r: Rect) {
+write_diamonds :: (m: *GenMap, gs: *GenState, r: Rect) {
     floor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
 
@@ -1291,7 +1301,7 @@ write_diamonds :: (m: *Map, gs: *GenState, r: Rect) {
 
 // Write a castle room (recursively subdivided with internal walls and doors)
 // In original: void Map::WriteCastle(Rect &r, rID regID)
-write_castle :: (m: *Map, gs: *GenState, r: Rect, depth: s32 = 0) {
+write_castle :: (m: *GenMap, gs: *GenState, r: Rect, depth: s32 = 0) {
     floor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
 
@@ -1388,7 +1398,7 @@ write_castle :: (m: *Map, gs: *GenState, r: Rect, depth: s32 = 0) {
 
 // Write a rough cavern using repeated L-shapes
 // In original: void Map::WriteRCavern(Rect &r, rID regID)
-write_rcavern :: (m: *Map, gs: *GenState, r: Rect) {
+write_rcavern :: (m: *GenMap, gs: *GenState, r: Rect) {
     floor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
 
@@ -1496,7 +1506,7 @@ place_within_panel :: (panel: Rect, room_w: s32, room_h: s32) -> Rect {
 
 // Draw a panel with a room
 // In original: void Map::DrawPanel(uint8 px, uint8 py, rID regID)
-draw_panel :: (m: *Map, gs: *GenState, px: s32, py: s32) {
+draw_panel :: (m: *GenMap, gs: *GenState, px: s32, py: s32) {
     con := gs.con;
 
     // Calculate panel bounds
@@ -1515,41 +1525,28 @@ draw_panel :: (m: *Map, gs: *GenState, px: s32, py: s32) {
     gs.n_corners = 0;
     gs.n_centers = 0;
 
-    // Choose room type (simplified - original uses weighted selection)
-    // Uses random for variety, weighted towards common types
-    room_roll := random(100);
-
+    // Choose room type using weighted selection algorithm
+    // Original: uses cumulative weight selection, then region constraint filtering
     r_type: s32;
-    if room_roll < 18 {
-        r_type = RM_NORMAL;
-    } else if room_roll < 26 {
-        r_type = RM_CIRCLE;
-    } else if room_roll < 33 {
-        r_type = RM_OCTAGON;
-    } else if room_roll < 40 {
-        r_type = RM_CROSS;
-    } else if room_roll < 47 {
-        r_type = RM_LARGE;
-    } else if room_roll < 53 {
-        r_type = RM_OVERLAP;
-    } else if room_roll < 59 {
-        r_type = RM_ADJACENT + random(3);  // ADJACENT, AD_ROUND, or AD_MIXED
-    } else if room_roll < 64 {
-        r_type = RM_PILLARS;
-    } else if room_roll < 69 {
-        r_type = RM_DOUBLE;
-    } else if room_roll < 74 {
-        r_type = RM_MAZE;
-    } else if room_roll < 78 {
-        r_type = RM_CHECKER;
-    } else if room_roll < 82 {
-        r_type = RM_DIAMONDS;
-    } else if room_roll < 88 {
-        r_type = RM_CASTLE;
-    } else if room_roll < 94 {
-        r_type = RM_RCAVERN;
-    } else {
-        r_type = RM_LIFECAVE;
+    rm_index: s32;
+
+    // Try up to 200 times to find a valid room type + region combination
+    for try: 0..199 {
+        r_type, rm_index = select_room_type(*gs.selection, *gs.dungeon_weights);
+
+        // Try to select a region that supports this room type
+        // If no valid region found, the room type weight is exhausted and we retry
+        if gs.dungeon_weights.room_regions.count > 0 {
+            region, ok := select_region(*gs.selection, *gs.dungeon_weights, r_type, *rm_index);
+            if ok {
+                gs.current_region = region;
+                break;
+            }
+        } else {
+            // No regions defined, use room type as-is
+            gs.current_region = null;
+            break;
+        }
     }
 
     // Calculate room size
@@ -1711,7 +1708,7 @@ correct_dir :: (x: s32, y: s32, dx: s32, dy: s32, curr: TunnelDir) -> TunnelDir 
 // Advanced tunnel carving with turns and segments
 // Based on original: uint16 Map::Tunnel(...)
 // tflags: TT_* flags controlling termination behavior
-carve_tunnel :: (m: *Map, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32, tflags: u8 = TT_DIRECT | TT_WANDER) {
+carve_tunnel :: (m: *GenMap, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32, tflags: u8 = TT_DIRECT | TT_WANDER) {
     corridor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
 
@@ -1892,13 +1889,13 @@ carve_tunnel :: (m: *Map, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32, tfl
 }
 
 // Simple L-shaped corridor (fallback)
-carve_corridor :: (m: *Map, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32) {
+carve_corridor :: (m: *GenMap, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32) {
     // Use advanced tunnel instead
     carve_tunnel(m, gs, sx, sy, dx, dy);
 }
 
 // Legacy simple corridor for comparison
-carve_corridor_simple :: (m: *Map, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32) {
+carve_corridor_simple :: (m: *GenMap, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32) {
     corridor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
 
@@ -1954,7 +1951,7 @@ carve_corridor_simple :: (m: *Map, gs: *GenState, sx: s32, sy: s32, dx: s32, dy:
 }
 
 // Connect panels with corridors
-connect_panels :: (m: *Map, gs: *GenState) {
+connect_panels :: (m: *GenMap, gs: *GenState) {
     // For each adjacent pair of panels, connect them
     for py: 0..gs.panels_y-1 {
         for px: 0..gs.panels_x-1 {
@@ -2017,20 +2014,11 @@ connect_panels :: (m: *Map, gs: *GenState) {
     }
 }
 
-// Direction offsets for diagonal movement
-Dir :: enum {
-    NORTHEAST :: 0;
-    SOUTHEAST :: 1;
-    SOUTHWEST :: 2;
-    NORTHWEST :: 3;
-}
-
-DirX :: s32.[1, 1, -1, -1];  // NE, SE, SW, NW
-DirY :: s32.[-1, 1, 1, -1];  // NE, SE, SW, NW
+// Note: Dir enum and DirX/DirY functions are defined in defines.jai
 
 // Write a streamer (river or chasm) across the map
 // In original: void Map::WriteStreamer(Rect &r, uint8 sx, uint8 sy, Dir d, rID regID)
-write_streamer :: (m: *Map, gs: *GenState, stype: StreamerType) {
+write_streamer :: (m: *GenMap, gs: *GenState, stype: StreamerType) {
     info := STREAMER_INFO[cast(s32) stype];
     terrain := info.terrain;
     is_river := info.is_river;
@@ -2038,18 +2026,18 @@ write_streamer :: (m: *Map, gs: *GenState, stype: StreamerType) {
     // Pick starting position and direction
     sx: s32;
     sy: s32;
-    dir: s32;
+    dir: Dir;
 
     if is_river {
         // Rivers start from edge
         if random(2) == 0 {
             sx = random(m.width);
             sy = 0;
-            dir = cast(s32) ifx random(2) == 0 then Dir.SOUTHEAST else Dir.SOUTHWEST;
+            dir = ifx random(2) == 0 then Dir.SOUTHEAST else Dir.SOUTHWEST;
         } else {
             sx = 0;
             sy = random(m.height);
-            dir = cast(s32) ifx random(2) == 0 then Dir.SOUTHEAST else Dir.NORTHEAST;
+            dir = ifx random(2) == 0 then Dir.SOUTHEAST else Dir.NORTHEAST;
         }
     } else {
         // Non-river streamers start from corner area
@@ -2057,19 +2045,19 @@ write_streamer :: (m: *Map, gs: *GenState, stype: StreamerType) {
         if corner == 0 {
             sx = 2 + random(10);
             sy = 2 + random(10);
-            dir = cast(s32) Dir.SOUTHEAST;
+            dir = Dir.SOUTHEAST;
         } else if corner == 1 {
             sx = m.width - 3 - random(10);
             sy = 2 + random(10);
-            dir = cast(s32) Dir.SOUTHWEST;
+            dir = Dir.SOUTHWEST;
         } else if corner == 2 {
             sx = 2 + random(10);
             sy = m.height - 3 - random(10);
-            dir = cast(s32) Dir.NORTHEAST;
+            dir = Dir.NORTHEAST;
         } else {
             sx = m.width - 3 - random(10);
             sy = m.height - 3 - random(10);
-            dir = cast(s32) Dir.NORTHWEST;
+            dir = Dir.NORTHWEST;
         }
     }
 
@@ -2112,9 +2100,9 @@ write_streamer :: (m: *Map, gs: *GenState, stype: StreamerType) {
 
         // Move in direction (weighted random between x and y movement)
         if random(rx + ry) < rx {
-            sx += DirX[dir];
+            sx += DirX(dir);
         } else {
-            sy += DirY[dir];
+            sy += DirY(dir);
         }
 
         // Draw the streamer at current position with current width
@@ -2132,7 +2120,7 @@ write_streamer :: (m: *Map, gs: *GenState, stype: StreamerType) {
 }
 
 // Legacy version for backward compatibility
-write_streamer :: (m: *Map, terrain: Terrain, is_river: bool = false) {
+write_streamer :: (m: *GenMap, terrain: Terrain, is_river: bool = false) {
     // Determine streamer type from terrain and is_river
     stype: StreamerType;
     if terrain == .WATER {
@@ -2151,7 +2139,7 @@ write_streamer :: (m: *Map, terrain: Terrain, is_river: bool = false) {
 
 // Write a vault (pre-designed special room) at a position
 // Returns true if vault was placed successfully
-write_vault :: (m: *Map, gs: *GenState, vault_idx: s32, x: s32, y: s32) -> bool {
+write_vault :: (m: *GenMap, gs: *GenState, vault_idx: s32, x: s32, y: s32) -> bool {
     if vault_idx < 0 || vault_idx >= VAULTS.count return false;
 
     vault := VAULTS[vault_idx];
@@ -2229,7 +2217,7 @@ write_vault :: (m: *Map, gs: *GenState, vault_idx: s32, x: s32, y: s32) -> bool 
 
 // Try to place a random vault somewhere in the dungeon
 // Returns true if a vault was placed
-try_place_vault :: (m: *Map, gs: *GenState, depth: s32) -> bool {
+try_place_vault :: (m: *GenMap, gs: *GenState, depth: s32) -> bool {
     // Build list of valid vaults for this depth
     valid_vaults: [..] s32;
     valid_vaults.allocator = temp;
@@ -2262,7 +2250,7 @@ try_place_vault :: (m: *Map, gs: *GenState, depth: s32) -> bool {
 
 // Place doors where floor meets wall with floor on opposite side
 // This finds corridor entrances to rooms
-place_doors_makelev :: (m: *Map) {
+place_doors_makelev :: (m: *GenMap) {
     for y: 1..m.height-2 {
         for x: 1..m.width-2 {
             // Check if this is a wall
@@ -2309,7 +2297,7 @@ place_doors_makelev :: (m: *Map) {
 
 // Fix-up tunneling: ensure all regions are connected
 // In original: "Step 5: Final, Fix-Up Tunneling" in Map::Generate
-fixup_tunneling :: (m: *Map, gs: *GenState) {
+fixup_tunneling :: (m: *GenMap, gs: *GenState) {
     MAX_TRIALS :: 26;  // Same as original
 
     // Clear all connected flags
@@ -2377,7 +2365,7 @@ fixup_tunneling :: (m: *Map, gs: *GenState) {
 }
 
 // Main generation function - matches Map::Generate structure
-generate_makelev :: (m: *Map, seed: u32) {
+generate_makelev :: (m: *GenMap, seed: u32) {
     // Initialize RNG
     random_init(seed);
 

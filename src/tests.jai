@@ -761,6 +761,10 @@ test_real_irh_files :: () {
 
     // Test enclist.irh - encounter lists
     test_irh_file(IRH_PATH, "enclist.irh", "enclist");
+
+    // Test dungeon.irh - dungeons, regions, terrains, features
+    // This tests the new weighted selection parsing (Lists, RoomTypes, Walls, Door, Flags)
+    test_irh_file(IRH_PATH, "dungeon.irh", "dungeon");
 }
 
 test_irh_file :: (path: string, filename: string, label: string) {

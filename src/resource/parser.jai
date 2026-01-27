@@ -478,13 +478,23 @@ ParsedRegion :: struct {
     rtype:        s64;           // RF_RIVER, RF_CORRIDOR, etc.
     has_floor:    bool;
     floor:        string;        // $"shallow water"
+    has_walls:    bool;
+    walls:        string;        // $"Dungeon Wall"
+    has_door:     bool;
+    door:         string;        // $"oak door"
     has_depth:    bool;
     depth:        s64;
+    has_room_types: bool;
+    room_types:   [..] s64;      // RM_* constants (parsed from RoomTypes:)
+    has_size:     bool;
+    size:         s64;           // SZ_* constant
     has_grid:     bool;
     grid:         string;        // Map grid content
     grid_width:   s64;           // Width calculated from grid
     grid_height:  s64;           // Height calculated from grid
-    lists:        [..] ParsedList;
+    flags:        [..] s64;      // RF_VAULT, RF_CORRIDOR, RF_STAPLE, etc.
+    lists:        [..] ParsedWeightList;
+    constants:    [..] ParsedConstant;
     line, column: s32;
 }
 
@@ -592,12 +602,31 @@ ParsedSpecial :: struct {
     at_level:     s64;
 }
 
+// Weight list entry for dungeon/region Lists:
+WeightListEntry :: struct {
+    weight: s64;          // Selection weight (default 1 if not specified)
+    value: s64;           // Constant value (RM_*, color, etc.)
+    is_ref: bool;         // True if this is a $"ref" reference
+    ref_name: string;     // Resource reference name
+    // For macro entries like CONSTRAINED_ENC($"name", MA_AQUATIC)
+    has_macro: bool;
+    macro_name: string;
+    macro_args: [..] string;
+}
+
+// Weight list (used in dungeons and regions)
+ParsedWeightList :: struct {
+    list_type: s64;               // RM_WEIGHTS, ROOM_WEIGHTS, WALL_COLOURS, ENCOUNTER_LIST, etc.
+    entries: [..] WeightListEntry;
+}
+
 ParsedDungeon :: struct {
     name:         string;
     has_desc:     bool;
     desc:         string;
     constants:    [..] ParsedConstant;
     specials:     [..] ParsedSpecial;
+    lists:        [..] ParsedWeightList;
     line, column: s32;
 }
 
@@ -2975,6 +3004,26 @@ parse_region :: (p: *Parser) -> bool {
             region.has_floor = true;
             region.floor = extract_res_ref_name(floor_tok.text);
             match(p, .SEMICOLON);
+        } else if tok.type == .KW_WALLS {
+            // Walls: $"terrain";
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            walls_tok, walls_ok := consume(p, .RES_REF, "Expected $\"terrain\" reference");
+            if !walls_ok return false;
+            region.has_walls = true;
+            region.walls = extract_res_ref_name(walls_tok.text);
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_DOOR {
+            // Door: $"feature";
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            door_tok, door_ok := consume(p, .RES_REF, "Expected $\"feature\" reference");
+            if !door_ok return false;
+            region.has_door = true;
+            region.door = extract_res_ref_name(door_tok.text);
+            match(p, .SEMICOLON);
         } else if tok.type == .KW_DEPTH {
             advance(p);
             _, colon2_ok := consume(p, .COLON, "Expected ':'");
@@ -2983,6 +3032,45 @@ parse_region :: (p: *Parser) -> bool {
             if !ok return false;
             region.has_depth = true;
             region.depth = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_ROOMTYPES {
+            // RoomTypes: RM_NORMAL, RM_CIRCLE, RM_OCTAGON | RM_DOUBLE;
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            region.has_room_types = true;
+            // Parse list of room type constants (can be comma-separated or | combined)
+            while !check(p, .SEMICOLON) && !check(p, .RBRACE) && !parser_is_at_end(p) {
+                val, ok := parse_cexpr3(p);  // parse single value without binary ops
+                if ok {
+                    array_add(*region.room_types, val);
+                }
+                // Skip comma or pipe
+                if !match(p, .COMMA) && !match(p, .PIPE) break;
+            }
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_SIZE {
+            // Size: SZ_MEDIUM;
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            val, ok := parse_cexpr(p);
+            if !ok return false;
+            region.has_size = true;
+            region.size = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_FLAGS {
+            // Flags: RF_VAULT, RF_NEVER_LIT;
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            while !check(p, .SEMICOLON) && !check(p, .RBRACE) && !parser_is_at_end(p) {
+                val, ok := parse_cexpr3(p);
+                if ok {
+                    array_add(*region.flags, val);
+                }
+                if !match(p, .COMMA) break;
+            }
             match(p, .SEMICOLON);
         } else if tok.type == .KW_GRID {
             advance(p);
@@ -2998,16 +3086,35 @@ parse_region :: (p: *Parser) -> bool {
             region.grid_width = width;
             region.grid_height = height;
             match(p, .SEMICOLON);
+        } else if tok.type == .KW_CONSTANTS {
+            parse_constants_section(p, *region.constants);
         } else if tok.type == .KW_LISTS {
-            // Skip Lists for now (complex encounter list syntax)
+            parse_lists_section(p, *region.lists);
+        } else if tok.type == .KW_DESC {
+            // Desc: "description";
             advance(p);
             _, colon2_ok := consume(p, .COLON, "Expected ':'");
             if !colon2_ok return false;
-            // Skip until semicolon or rbrace
-            while !check(p, .SEMICOLON) && !check(p, .RBRACE) && !parser_is_at_end(p) {
+            // Skip the description string
+            if check(p, .STRING) {
                 advance(p);
             }
             match(p, .SEMICOLON);
+        } else if tok.type == .KW_TILES {
+            // Tiles: - skip this section
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            // Skip until we hit a keyword, semicolon at end of block, or rbrace
+            while !check(p, .RBRACE) && !parser_is_at_end(p) {
+                next := peek(p);
+                // Stop if we hit another property keyword
+                if next.type == .KW_LISTS || next.type == .KW_FLAGS ||
+                   next.type == .KW_ON || next.type == .KW_EVENT {
+                    break;
+                }
+                advance(p);
+            }
         } else if tok.type == .KW_ON || tok.type == .KW_EVENT {
             skip_event_handler(p);
         } else {
@@ -3020,6 +3127,142 @@ parse_region :: (p: *Parser) -> bool {
 
     array_add(*p.regions, region);
     return true;
+}
+
+// ============================================================================
+// Lists section parser
+// Parses: Lists: * LIST_TYPE entry1 entry2 ..., * LIST_TYPE2 ...;
+// ============================================================================
+parse_lists_section :: (p: *Parser, lists: *[..] ParsedWeightList) {
+    advance(p);  // consume 'Lists'
+    _, colon_ok := consume(p, .COLON, "Expected ':'");
+    if !colon_ok return;
+
+    // Parse each list (starts with *)
+    while check(p, .STAR) && !parser_is_at_end(p) {
+        advance(p);  // consume '*'
+
+        wlist: ParsedWeightList;
+        current_weight: s64 = 1;  // Default weight
+
+        // First token after * is the list type (e.g., WALL_COLOURS, ENCOUNTER_LIST)
+        type_tok := peek(p);
+        if type_tok.type == .CONSTANT || type_tok.type == .IDENTIFIER {
+            val, ok := parse_cexpr3(p);
+            if ok {
+                wlist.list_type = val;
+            }
+        } else {
+            // Unknown list type, skip this list
+            while !check(p, .STAR) && !check(p, .SEMICOLON) && !check(p, .RBRACE) && !parser_is_at_end(p) {
+                advance(p);
+            }
+            continue;
+        }
+
+        // Parse entries until we hit *, ; or ,
+        while !check(p, .STAR) && !check(p, .SEMICOLON) && !check(p, .RBRACE) && !parser_is_at_end(p) {
+            entry_tok := peek(p);
+
+            // Check for comma (separates lists)
+            if entry_tok.type == .COMMA {
+                advance(p);
+                break;  // End of this list
+            }
+
+            // Number sets the weight for following entries
+            if entry_tok.type == .NUMBER {
+                current_weight = entry_tok.int_value;
+                advance(p);
+                continue;
+            }
+
+            // Resource reference: $"name"
+            if entry_tok.type == .RES_REF {
+                entry: WeightListEntry;
+                entry.weight = current_weight;
+                entry.is_ref = true;
+                entry.ref_name = extract_res_ref_name(entry_tok.text);
+                array_add(*wlist.entries, entry);
+                advance(p);
+                current_weight = 1;  // Reset weight after use
+                continue;
+            }
+
+            // Constant (color word, RM_*, etc.)
+            if entry_tok.type == .CONSTANT || entry_tok.type == .COLOR {
+                entry: WeightListEntry;
+                entry.weight = current_weight;
+                entry.is_ref = false;
+                val, ok := parse_cexpr3(p);
+                if ok {
+                    entry.value = val;
+                }
+                array_add(*wlist.entries, entry);
+                current_weight = 1;
+                continue;
+            }
+
+            // Macro call: CONSTRAINED_ENC($"name", MA_AQUATIC) or CON_ENC_MINMAX(...)
+            if entry_tok.type == .IDENTIFIER {
+                // Check if this looks like a macro (followed by LPAREN)
+                macro_name := entry_tok.text;
+                advance(p);
+
+                if check(p, .LPAREN) {
+                    // It's a macro call
+                    entry: WeightListEntry;
+                    entry.weight = current_weight;
+                    entry.has_macro = true;
+                    entry.macro_name = macro_name;
+
+                    advance(p);  // consume '('
+                    // Parse arguments until ')'
+                    while !check(p, .RPAREN) && !parser_is_at_end(p) {
+                        arg_tok := peek(p);
+                        if arg_tok.type == .RES_REF {
+                            array_add(*entry.macro_args, extract_res_ref_name(arg_tok.text));
+                            advance(p);
+                        } else if arg_tok.type == .CONSTANT || arg_tok.type == .IDENTIFIER {
+                            array_add(*entry.macro_args, arg_tok.text);
+                            advance(p);
+                        } else if arg_tok.type == .NUMBER {
+                            // Convert number to string for macro args
+                            num_str := tprint("%", arg_tok.int_value);
+                            array_add(*entry.macro_args, copy_string(num_str));
+                            advance(p);
+                        } else {
+                            advance(p);
+                        }
+                        match(p, .COMMA);  // Skip comma between args
+                    }
+                    match(p, .RPAREN);  // consume ')'
+                    array_add(*wlist.entries, entry);
+                    current_weight = 1;
+                    continue;
+                } else {
+                    // Not a macro, treat as constant - try to look it up
+                    val, found := lookup_resource_constant(macro_name);
+                    if found {
+                        entry: WeightListEntry;
+                        entry.weight = current_weight;
+                        entry.is_ref = false;
+                        entry.value = val;
+                        array_add(*wlist.entries, entry);
+                    }
+                    current_weight = 1;
+                    continue;
+                }
+            }
+
+            // Unknown token, skip it
+            advance(p);
+        }
+
+        array_add(lists, wlist);
+    }
+
+    match(p, .SEMICOLON);
 }
 
 // ============================================================================
@@ -3425,6 +3668,8 @@ parse_dungeon :: (p: *Parser) -> bool {
                 if !match(p, .COMMA) break;
             }
             match(p, .SEMICOLON);
+        } else if tok.type == .KW_LISTS {
+            parse_lists_section(p, *dungeon.lists);
         } else if tok.type == .KW_ON || tok.type == .KW_EVENT {
             skip_event_handler(p);
         } else {
