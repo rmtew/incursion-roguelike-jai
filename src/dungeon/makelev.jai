@@ -7,6 +7,28 @@
 
 #import "Basic";
 
+// Tunnel termination flags (from original MakeLev.cpp)
+// These control when a tunnel should stop
+TT_CONNECT   :: 0x01;  // Terminate when reach area where Connected flag differs from start
+TT_DIRECT    :: 0x02;  // Always take the most direct route to destination
+TT_LENGTH    :: 0x04;  // Terminate if length exceeds given value
+TT_NOTOUCH   :: 0x08;  // Don't "touch" rooms during traversal
+TT_EXACT     :: 0x10;  // Go to *exact* destination coordinates
+TT_WANDER    :: 0x20;  // Chance to end after touching 2 rooms
+TT_NATURAL   :: 0x40;  // Curved, natural, non-horizontal tunnels
+
+// Priority levels for terrain writing (higher priority overwrites lower)
+PRIO_EMPTY        :: 0;
+PRIO_ROCK_STREAMER :: 10;
+PRIO_CORRIDOR_WALL :: 20;
+PRIO_CORRIDOR_FLOOR :: 30;
+PRIO_ROOM_WALL    :: 40;
+PRIO_ROOM_FLOOR   :: 50;
+PRIO_ROOM_FURNITURE :: 60;
+PRIO_VAULT        :: 80;
+PRIO_FEATURE_FLOOR :: 90;
+PRIO_MAX          :: 100;
+
 // Room type constants (from Defines.h)
 RM_ANY       :: -1;
 RM_NOROOM    :: 0;   // Empty panel; no room
@@ -56,6 +78,19 @@ DungeonConstants :: struct {
 // Default constants for standard dungeon
 DEFAULT_CON :: DungeonConstants.{};
 
+// Per-cell generation info (matches LocationInfo temp fields in original)
+// These are temporary flags used during generation, then cleared
+CellInfo :: struct {
+    priority: u8;       // What wrote this cell (PRIO_*)
+    connected: bool;    // Is this cell connected to the main dungeon?
+    solid: bool;        // Is this cell impassable?
+}
+
+// Extended Map info for generation (parallel array to map tiles)
+MapGenInfo :: struct {
+    cells: [MAP_WIDTH * MAP_HEIGHT] CellInfo;
+}
+
 // Generation state (matches static vars in MakeLev.cpp)
 GenState :: struct {
     con: DungeonConstants;
@@ -74,6 +109,13 @@ GenState :: struct {
     n_corners: s32;
     centers: [16] u16;
     n_centers: s32;
+
+    // Per-cell generation info
+    gen_info: MapGenInfo;
+
+    // Flood fill working arrays (allocated on temp allocator)
+    flood_array: *u8;
+    flood_stack: *u8;
 }
 
 // Initialize generation state
@@ -90,15 +132,169 @@ gen_state_init :: (gs: *GenState, con: DungeonConstants = DEFAULT_CON) {
     gs.open_count = 0;
     gs.n_corners = 0;
     gs.n_centers = 0;
+
+    // Initialize per-cell info
+    for i: 0..MAP_WIDTH * MAP_HEIGHT - 1 {
+        gs.gen_info.cells[i].priority = PRIO_EMPTY;
+        gs.gen_info.cells[i].connected = false;
+        gs.gen_info.cells[i].solid = true;
+    }
+}
+
+// Get cell info at position
+get_cell :: (gs: *GenState, m: *Map, x: s32, y: s32) -> *CellInfo {
+    if x < 0 || x >= m.width || y < 0 || y >= m.height return null;
+    return *gs.gen_info.cells[y * m.width + x];
+}
+
+// Check if position is solid
+is_solid :: (gs: *GenState, m: *Map, x: s32, y: s32) -> bool {
+    t := map_get(m, x, y);
+    return terrain_solid(t);
+}
+
+// Flood fill to mark all connected tiles starting from (x, y)
+// Returns count of tiles marked connected
+// In original: int32 Map::FloodConnectA(int16 x, int16 y, int32 fCount)
+flood_connect :: (gs: *GenState, m: *Map, start_x: s32, start_y: s32) -> s32 {
+    count: s32 = 0;
+
+    // Use a stack-based flood fill (iterative to avoid recursion limits)
+    stack: [..] Point;
+    stack.allocator = temp;
+
+    // Start from the given position
+    if is_solid(gs, m, start_x, start_y) return 0;
+
+    start_cell := get_cell(gs, m, start_x, start_y);
+    if start_cell == null || start_cell.connected return 0;
+
+    array_add(*stack, Point.{start_x, start_y});
+
+    while stack.count > 0 {
+        pos := pop(*stack);
+        x := pos.x;
+        y := pos.y;
+
+        // Skip if out of bounds or already processed
+        cell := get_cell(gs, m, x, y);
+        if cell == null continue;
+        if cell.connected continue;
+        if is_solid(gs, m, x, y) continue;
+
+        // Mark as connected
+        cell.connected = true;
+        count += 1;
+
+        // Add 4-connected neighbors (treating doors as passable)
+        t := map_get(m, x, y);
+        if !terrain_solid(t) || t == .DOOR_CLOSED || t == .DOOR_SECRET {
+            // Check all 4 directions
+            if x > 0 {
+                nc := get_cell(gs, m, x-1, y);
+                if nc != null && !nc.connected && !is_solid(gs, m, x-1, y) {
+                    array_add(*stack, Point.{x-1, y});
+                }
+            }
+            if x < m.width - 1 {
+                nc := get_cell(gs, m, x+1, y);
+                if nc != null && !nc.connected && !is_solid(gs, m, x+1, y) {
+                    array_add(*stack, Point.{x+1, y});
+                }
+            }
+            if y > 0 {
+                nc := get_cell(gs, m, x, y-1);
+                if nc != null && !nc.connected && !is_solid(gs, m, x, y-1) {
+                    array_add(*stack, Point.{x, y-1});
+                }
+            }
+            if y < m.height - 1 {
+                nc := get_cell(gs, m, x, y+1);
+                if nc != null && !nc.connected && !is_solid(gs, m, x, y+1) {
+                    array_add(*stack, Point.{x, y+1});
+                }
+            }
+        }
+    }
+
+    return count;
+}
+
+// Clear all connected flags
+clear_connected :: (gs: *GenState, m: *Map) {
+    for i: 0..m.width * m.height - 1 {
+        gs.gen_info.cells[i].connected = false;
+    }
+}
+
+// Find unconnected open tiles and return arrays of connected and unconnected edge tiles
+// In original, this is the fix-up tunneling step
+find_disconnected_regions :: (gs: *GenState, m: *Map) -> connected_edges: [..] Point, unconnected_edges: [..] Point {
+    connected_edges: [..] Point;
+    connected_edges.allocator = temp;
+
+    unconnected_edges: [..] Point;
+    unconnected_edges.allocator = temp;
+
+    // Find edge tiles (open tiles adjacent to solid)
+    for y: 1..m.height-2 {
+        for x: 1..m.width-2 {
+            if is_solid(gs, m, x, y) continue;
+
+            // Count open neighbors
+            open_count := 0;
+            if !is_solid(gs, m, x-1, y) open_count += 1;
+            if !is_solid(gs, m, x+1, y) open_count += 1;
+            if !is_solid(gs, m, x, y-1) open_count += 1;
+            if !is_solid(gs, m, x, y+1) open_count += 1;
+
+            // Edge tile has < 4 open neighbors
+            if open_count < 4 {
+                cell := get_cell(gs, m, x, y);
+                if cell != null {
+                    if cell.connected {
+                        array_add(*connected_edges, Point.{x, y});
+                    } else {
+                        array_add(*unconnected_edges, Point.{x, y});
+                    }
+                }
+            }
+        }
+    }
+
+    return connected_edges, unconnected_edges;
+}
+
+// Manhattan distance
+dist :: (x1: s32, y1: s32, x2: s32, y2: s32) -> s32 {
+    return abs(x1 - x2) + abs(y1 - y2);
+}
+
+// Point struct for edge tile lists
+Point :: struct {
+    x: s32;
+    y: s32;
 }
 
 // Write terrain at position with priority check
 // In original: void Map::WriteAt(Rect &r, int16 x, int16 y, rID terID, rID regID, int8 Pri, bool Force)
-write_at :: (m: *Map, x: s32, y: s32, terrain: Terrain, priority: s32 = 0, force: bool = false) {
+write_at :: (m: *Map, gs: *GenState, x: s32, y: s32, terrain: Terrain, priority: u8 = PRIO_ROOM_FLOOR, force: bool = false) {
     if !map_in_bounds(m, x, y) return;
 
-    // For now, just write (original has priority system)
-    // TODO: Add priority tracking for faithful reproduction
+    cell := get_cell(gs, m, x, y);
+    if cell == null return;
+
+    // Only write if force or higher priority
+    if !force && cell.priority > priority return;
+
+    map_set(m, x, y, terrain);
+    cell.priority = priority;
+    cell.solid = terrain_solid(terrain);
+}
+
+// Convenience version without GenState for simple cases
+write_at :: (m: *Map, x: s32, y: s32, terrain: Terrain, priority: s32 = 0, force: bool = false) {
+    if !map_in_bounds(m, x, y) return;
     map_set(m, x, y, terrain);
 }
 
@@ -111,18 +307,18 @@ write_room :: (m: *Map, gs: *GenState, r: Rect) {
     // Fill interior with floor
     for y: r.y1..r.y2 {
         for x: r.x1..r.x2 {
-            write_at(m, x, y, floor);
+            write_at(m, gs, x, y, floor, PRIO_ROOM_FLOOR);
         }
     }
 
     // Draw walls around it
     for x: r.x1-1..r.x2+1 {
-        if map_get(m, x, r.y1-1) == .ROCK  write_at(m, x, r.y1-1, wall);
-        if map_get(m, x, r.y2+1) == .ROCK  write_at(m, x, r.y2+1, wall);
+        if map_get(m, x, r.y1-1) == .ROCK  write_at(m, gs, x, r.y1-1, wall, PRIO_ROOM_WALL);
+        if map_get(m, x, r.y2+1) == .ROCK  write_at(m, gs, x, r.y2+1, wall, PRIO_ROOM_WALL);
     }
     for y: r.y1-1..r.y2+1 {
-        if map_get(m, r.x1-1, y) == .ROCK  write_at(m, r.x1-1, y, wall);
-        if map_get(m, r.x2+1, y) == .ROCK  write_at(m, r.x2+1, y, wall);
+        if map_get(m, r.x1-1, y) == .ROCK  write_at(m, gs, r.x1-1, y, wall, PRIO_ROOM_WALL);
+        if map_get(m, r.x2+1, y) == .ROCK  write_at(m, gs, r.x2+1, y, wall, PRIO_ROOM_WALL);
     }
 
     // Record center for corridors
@@ -874,6 +1070,191 @@ write_diamonds :: (m: *Map, gs: *GenState, r: Rect) {
     }
 }
 
+// Write a castle room (recursively subdivided with internal walls and doors)
+// In original: void Map::WriteCastle(Rect &r, rID regID)
+write_castle :: (m: *Map, gs: *GenState, r: Rect, depth: s32 = 0) {
+    floor := gs.con.TERRAIN_FLOOR;
+    wall := gs.con.TERRAIN_WALL;
+
+    sx := rect_width(r);
+    sy := rect_height(r);
+
+    // Base case: too small to subdivide further
+    if sx < 7 || sy < 7 || depth > 4 {
+        // Just fill with floor
+        for y: r.y1..r.y2 {
+            for x: r.x1..r.x2 {
+                write_at(m, x, y, floor);
+            }
+        }
+        return;
+    }
+
+    // Fill base with floor first
+    for y: r.y1..r.y2 {
+        for x: r.x1..r.x2 {
+            write_at(m, x, y, floor);
+        }
+    }
+
+    // Decide split direction (prefer splitting longer dimension, with some randomness)
+    split_vertical := (sx > sy && random(9) != 0) || random(10) == 0;
+
+    if split_vertical {
+        // Vertical split - find split position
+        d := r.x1 + 2 + random(sx - 4);
+
+        // Find door position
+        door_y := r.y1 + 1 + random(sy - 2);
+
+        // Draw vertical wall with door
+        for y: r.y1..r.y2 {
+            if y != door_y {
+                write_at(m, d, y, wall);
+            }
+        }
+
+        // Recurse on both halves
+        r1 := Rect.{r.x1, r.y1, d - 1, r.y2};
+        r2 := Rect.{d + 1, r.y1, r.x2, r.y2};
+        write_castle(m, gs, r1, depth + 1);
+        write_castle(m, gs, r2, depth + 1);
+    } else {
+        // Horizontal split
+        d := r.y1 + 2 + random(sy - 4);
+
+        // Find door position
+        door_x := r.x1 + 1 + random(sx - 2);
+
+        // Draw horizontal wall with door
+        for x: r.x1..r.x2 {
+            if x != door_x {
+                write_at(m, x, d, wall);
+            }
+        }
+
+        // Recurse on both halves
+        r1 := Rect.{r.x1, r.y1, r.x2, d - 1};
+        r2 := Rect.{r.x1, d + 1, r.x2, r.y2};
+        write_castle(m, gs, r1, depth + 1);
+        write_castle(m, gs, r2, depth + 1);
+    }
+
+    // Only track as room at top level
+    if depth == 0 {
+        // Add outer walls
+        for x: r.x1-1..r.x2+1 {
+            if map_get(m, x, r.y1-1) == .ROCK  write_at(m, x, r.y1-1, wall);
+            if map_get(m, x, r.y2+1) == .ROCK  write_at(m, x, r.y2+1, wall);
+        }
+        for y: r.y1-1..r.y2+1 {
+            if map_get(m, r.x1-1, y) == .ROCK  write_at(m, r.x1-1, y, wall);
+            if map_get(m, r.x2+1, y) == .ROCK  write_at(m, r.x2+1, y, wall);
+        }
+
+        // Track as room
+        room: Room;
+        room.bounds = r;
+        room.connected = false;
+        array_add(*m.rooms, room);
+
+        // Record center
+        if gs.n_centers < 16 {
+            cx, cy := rect_center(r);
+            gs.centers[gs.n_centers] = cast(u16)(cx + cy * 256);
+            gs.n_centers += 1;
+        }
+    }
+}
+
+// Write a rough cavern using repeated L-shapes
+// In original: void Map::WriteRCavern(Rect &r, rID regID)
+write_rcavern :: (m: *Map, gs: *GenState, r: Rect) {
+    floor := gs.con.TERRAIN_FLOOR;
+    wall := gs.con.TERRAIN_WALL;
+
+    BUFFER :: 3;
+    sx := rect_width(r) - BUFFER;
+    sy := rect_height(r) - BUFFER;
+
+    if sx < 12 || sy < 12 {
+        // Too small, just make a regular room
+        write_room(m, gs, r);
+        return;
+    }
+
+    // Number of L-shapes to draw (proportional to area)
+    num_shapes := (sx * sy) / 20;
+
+    for i: 0..num_shapes-1 {
+        // Random center point within buffer
+        x := BUFFER + r.x1 + 5 + random(sx - 10);
+        y := BUFFER + r.y1 + 5 + random(sy - 10);
+
+        // Draw an L-shape (5 tiles in each direction)
+        L_LEN :: 5;
+        direction := random(4);
+
+        if direction == 0 {
+            // Right and up
+            for j: 0..L_LEN-1 {
+                write_at(m, x + cast(s32)j, y, floor);
+                write_at(m, x, y - cast(s32)j, floor);
+            }
+        } else if direction == 1 {
+            // Right and down
+            for j: 0..L_LEN-1 {
+                write_at(m, x + cast(s32)j, y, floor);
+                write_at(m, x, y + cast(s32)j, floor);
+            }
+        } else if direction == 2 {
+            // Left and up
+            for j: 0..L_LEN-1 {
+                write_at(m, x - cast(s32)j, y, floor);
+                write_at(m, x, y - cast(s32)j, floor);
+            }
+        } else {
+            // Left and down
+            for j: 0..L_LEN-1 {
+                write_at(m, x - cast(s32)j, y, floor);
+                write_at(m, x, y + cast(s32)j, floor);
+            }
+        }
+    }
+
+    // Add walls around all floor tiles
+    for y: r.y1..r.y2 {
+        for x: r.x1..r.x2 {
+            if map_get(m, x, y) == floor {
+                // Check all 8 neighbors
+                for dy: -1..1 {
+                    for dx: -1..1 {
+                        if dx == 0 && dy == 0 continue;
+                        nx := x + cast(s32)dx;
+                        ny := y + cast(s32)dy;
+                        if map_get(m, nx, ny) == .ROCK {
+                            write_at(m, nx, ny, wall);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Track as room
+    room: Room;
+    room.bounds = r;
+    room.connected = false;
+    array_add(*m.rooms, room);
+
+    // Record center
+    if gs.n_centers < 16 {
+        cx, cy := rect_center(r);
+        gs.centers[gs.n_centers] = cast(u16)(cx + cy * 256);
+        gs.n_centers += 1;
+    }
+}
+
 // Place room within a panel
 // Returns the rect where room was placed
 place_within_panel :: (panel: Rect, room_w: s32, room_h: s32) -> Rect {
@@ -920,30 +1301,34 @@ draw_panel :: (m: *Map, gs: *GenState, px: s32, py: s32) {
     room_roll := random(100);
 
     r_type: s32;
-    if room_roll < 20 {
+    if room_roll < 18 {
         r_type = RM_NORMAL;
-    } else if room_roll < 30 {
+    } else if room_roll < 26 {
         r_type = RM_CIRCLE;
-    } else if room_roll < 38 {
+    } else if room_roll < 33 {
         r_type = RM_OCTAGON;
-    } else if room_roll < 46 {
+    } else if room_roll < 40 {
         r_type = RM_CROSS;
-    } else if room_roll < 54 {
+    } else if room_roll < 47 {
         r_type = RM_LARGE;
-    } else if room_roll < 60 {
+    } else if room_roll < 53 {
         r_type = RM_OVERLAP;
-    } else if room_roll < 66 {
+    } else if room_roll < 59 {
         r_type = RM_ADJACENT + random(3);  // ADJACENT, AD_ROUND, or AD_MIXED
-    } else if room_roll < 72 {
+    } else if room_roll < 64 {
         r_type = RM_PILLARS;
-    } else if room_roll < 78 {
+    } else if room_roll < 69 {
         r_type = RM_DOUBLE;
-    } else if room_roll < 84 {
+    } else if room_roll < 74 {
         r_type = RM_MAZE;
-    } else if room_roll < 88 {
+    } else if room_roll < 78 {
         r_type = RM_CHECKER;
-    } else if room_roll < 92 {
+    } else if room_roll < 82 {
         r_type = RM_DIAMONDS;
+    } else if room_roll < 88 {
+        r_type = RM_CASTLE;
+    } else if room_roll < 94 {
+        r_type = RM_RCAVERN;
     } else {
         r_type = RM_LIFECAVE;
     }
@@ -1026,16 +1411,276 @@ draw_panel :: (m: *Map, gs: *GenState, px: s32, py: s32) {
             diamonds_r := Rect.{panel.x1 + 1, panel.y1 + 1, panel.x2 - 1, panel.y2 - 1};
             write_diamonds(m, gs, diamonds_r);
 
+        case RM_CASTLE; #through;
+        case RM_BUILDING;
+            // Castle/building fills most of panel
+            castle_r := Rect.{panel.x1 + 2, panel.y1 + 2, panel.x2 - 2, panel.y2 - 2};
+            write_castle(m, gs, castle_r);
+
+        case RM_RCAVERN;
+            // Rough cavern fills panel
+            cavern_r := Rect.{panel.x1 + 1, panel.y1 + 1, panel.x2 - 1, panel.y2 - 1};
+            write_rcavern(m, gs, cavern_r);
+
         case;
             // Default to normal room
             write_room(m, gs, r);
     }
 }
 
-// Simple corridor carving (L-shaped)
-// TODO: Implement full Tunnel() algorithm from MakeLev.cpp
+// Cardinal directions for tunnel
+TunnelDir :: enum s32 {
+    NORTH :: 0;
+    EAST :: 1;
+    SOUTH :: 2;
+    WEST :: 3;
+}
+
+TunnelDirX :: s32.[0, 1, 0, -1];  // N, E, S, W
+TunnelDirY :: s32.[-1, 0, 1, 0];  // N, E, S, W
+
+// Tunnel constants
+TURN_CHANCE       :: 25;   // % chance to turn each step after min segment
+SEGMENT_MIN_LEN   :: 3;    // Minimum segment length before turning
+SEGMENT_MAX_LEN   :: 12;   // Maximum segment length before forced turn
+STUBBORN_CORRIDOR :: 30;   // % chance to NOT correct direction toward target
+MAX_CORRIDOR_LEN  :: 500;  // Safety limit
+
+// Get direction that corrects toward destination
+// In original: Dir Map::CorrectDir(...)
+correct_dir :: (x: s32, y: s32, dx: s32, dy: s32, curr: TunnelDir) -> TunnelDir {
+    // If on same row/column, go directly
+    if x == dx {
+        return ifx y > dy then .NORTH else .SOUTH;
+    }
+    if y == dy {
+        return ifx x > dx then .WEST else .EAST;
+    }
+
+    lx := abs(x - dx);
+    ly := abs(y - dy);
+
+    option1: TunnelDir = ifx y > dy then .NORTH else .SOUTH;
+    option2: TunnelDir = ifx x > dx then .WEST else .EAST;
+
+    // Prefer the longer axis
+    if lx > ly {
+        tmp := option1;
+        option1 = option2;
+        option2 = tmp;
+    }
+
+    // Sometimes swap for variety
+    if random(4) == 0 {
+        tmp := option1;
+        option1 = option2;
+        option2 = tmp;
+    }
+
+    // Don't go back the way we came (diametric check)
+    curr_dx := TunnelDirX[cast(s32)curr];
+    curr_dy := TunnelDirY[cast(s32)curr];
+    opt1_dx := TunnelDirX[cast(s32)option1];
+    opt1_dy := TunnelDirY[cast(s32)option1];
+
+    if curr_dx + opt1_dx == 0 && curr_dy + opt1_dy == 0 {
+        return option2;
+    }
+    return option1;
+}
+
+// Advanced tunnel carving with turns and segments
+// Based on original: uint16 Map::Tunnel(...)
+// tflags: TT_* flags controlling termination behavior
+carve_tunnel :: (m: *Map, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32, tflags: u8 = TT_DIRECT | TT_WANDER) {
+    corridor := gs.con.TERRAIN_FLOOR;
+    wall := gs.con.TERRAIN_WALL;
+
+    // Pick starting direction based on which axis is longer
+    curr_dir: TunnelDir;
+    if abs(sx - dx) > abs(sy - dy) {
+        curr_dir = ifx sx > dx then .WEST else .EAST;
+    } else {
+        curr_dir = ifx sy > dy then .NORTH else .SOUTH;
+    }
+
+    x := sx;
+    y := sy;
+    seg_length: s32 = 0;
+    total_length: s32 = 0;
+    rooms_found: s32 = 0;
+
+    // Get start connection state for TT_CONNECT
+    start_connected := false;
+    start_cell := get_cell(gs, m, sx, sy);
+    if start_cell != null {
+        start_connected = start_cell.connected;
+    }
+
+    // Store corridor path for later writing
+    path: [..] Point;
+    path.allocator = temp;
+
+    while total_length < MAX_CORRIDOR_LEN {
+        // Track rooms touched (for TT_WANDER and TT_NOTOUCH)
+        if !(tflags & TT_NOTOUCH) {
+            cell := get_cell(gs, m, x, y);
+            if cell != null && cell.priority == PRIO_ROOM_FLOOR {
+                // Check if we've touched a new room (by panel)
+                panel_x := x / gs.con.PANEL_SIZEX;
+                panel_y := y / gs.con.PANEL_SIZEY;
+                panel_bit := cast(u32)(1 << panel_x);
+
+                if !(gs.rooms_touched[panel_y] & panel_bit) {
+                    rooms_found += 1;
+                    gs.rooms_touched[panel_y] |= panel_bit;
+
+                    // TT_WANDER: chance to stop after touching 2+ rooms
+                    if (tflags & TT_WANDER) && rooms_found >= 2 {
+                        if random(rooms_found) != 0 && random(rooms_found) != 0 {
+                            break;  // Stop tunneling
+                        }
+                    }
+                }
+            }
+        }
+
+        // Record position
+        array_add(*path, Point.{x, y});
+        seg_length += 1;
+        total_length += 1;
+
+        // TT_CONNECT: terminate when Connected flag differs from start
+        if tflags & TT_CONNECT {
+            cell := get_cell(gs, m, x, y);
+            if cell != null {
+                if cell.connected != start_connected && !is_solid(gs, m, x, y) {
+                    break;  // Reached connected/unconnected boundary
+                }
+            }
+        }
+
+        // Move in current direction
+        nx := x + TunnelDirX[cast(s32)curr_dir];
+        ny := y + TunnelDirY[cast(s32)curr_dir];
+
+        // Check if we need to turn
+        force_turn := false;
+
+        // Force turn near map edges
+        if nx <= 2 || nx >= m.width - 3 || ny <= 2 || ny >= m.height - 3 {
+            force_turn = true;
+        }
+
+        // Force turn at vault edges (high priority cells)
+        cell := get_cell(gs, m, nx, ny);
+        if cell != null && cell.priority >= PRIO_VAULT {
+            force_turn = true;
+        }
+
+        // Force turn if at destination axis (unless TT_DIRECT)
+        if !(tflags & TT_DIRECT) {
+            if x == dx && TunnelDirX[cast(s32)curr_dir] != 0 {
+                force_turn = true;
+            }
+            if y == dy && TunnelDirY[cast(s32)curr_dir] != 0 {
+                force_turn = true;
+            }
+        }
+
+        // Force turn if segment too long
+        if seg_length > SEGMENT_MAX_LEN {
+            force_turn = true;
+        }
+
+        // Random turn chance after minimum segment (if not TT_DIRECT)
+        if !force_turn && seg_length > SEGMENT_MIN_LEN && random(100) < TURN_CHANCE {
+            force_turn = true;
+        }
+
+        // Turn if needed
+        if force_turn {
+            seg_length = 0;
+            // TT_DIRECT: always correct toward destination
+            // Otherwise: usually correct, sometimes go random (STUBBORN_CORRIDOR)
+            if (tflags & TT_DIRECT) || random(100) > STUBBORN_CORRIDOR {
+                curr_dir = correct_dir(x, y, dx, dy, curr_dir);
+            } else {
+                // Random perpendicular turn
+                old_dir := curr_dir;
+                while curr_dir == old_dir {
+                    curr_dir = cast(TunnelDir) random(4);
+                }
+            }
+        }
+
+        // Move
+        x = nx;
+        y = ny;
+
+        // Check termination conditions (unless TT_EXACT)
+        if !(tflags & TT_EXACT) {
+            // Close enough and in open space
+            distance := abs(x - dx) + abs(y - dy);
+            if distance < 10 && !is_solid(gs, m, x, y) {
+                // Same panel as destination
+                curr_px := x / gs.con.PANEL_SIZEX;
+                curr_py := y / gs.con.PANEL_SIZEY;
+                dest_px := dx / gs.con.PANEL_SIZEX;
+                dest_py := dy / gs.con.PANEL_SIZEY;
+
+                if curr_px == dest_px && curr_py == dest_py {
+                    break;
+                }
+            }
+        } else {
+            // TT_EXACT: stop when we reach exact destination
+            if x == dx && y == dy {
+                break;
+            }
+        }
+    }
+
+    // Write the corridor
+    for p: path {
+        if map_get(m, p.x, p.y) == .ROCK {
+            map_set(m, p.x, p.y, corridor);
+
+            // Update cell info
+            cell := get_cell(gs, m, p.x, p.y);
+            if cell != null {
+                cell.priority = PRIO_CORRIDOR_FLOOR;
+                cell.solid = false;
+            }
+
+            // Add walls around corridor
+            for dy: -1..1 {
+                for dx: -1..1 {
+                    if dx == 0 && dy == 0 continue;
+                    wx := p.x + cast(s32)dx;
+                    wy := p.y + cast(s32)dy;
+                    if map_get(m, wx, wy) == .ROCK {
+                        map_set(m, wx, wy, wall);
+                        wcell := get_cell(gs, m, wx, wy);
+                        if wcell != null && wcell.priority < PRIO_CORRIDOR_WALL {
+                            wcell.priority = PRIO_CORRIDOR_WALL;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Simple L-shaped corridor (fallback)
 carve_corridor :: (m: *Map, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32) {
-    corridor := gs.con.TERRAIN_FLOOR;  // Use floor for corridors in original mode
+    // Use advanced tunnel instead
+    carve_tunnel(m, gs, sx, sy, dx, dy);
+}
+
+// Legacy simple corridor for comparison
+carve_corridor_simple :: (m: *Map, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32) {
+    corridor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
 
     x := sx;
@@ -1050,7 +1695,6 @@ carve_corridor :: (m: *Map, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32) {
         while x != dx {
             if map_get(m, x, y) == .ROCK {
                 map_set(m, x, y, corridor);
-                // Add walls beside corridor
                 if map_get(m, x, y-1) == .ROCK  map_set(m, x, y-1, wall);
                 if map_get(m, x, y+1) == .ROCK  map_set(m, x, y+1, wall);
             }
@@ -1306,6 +1950,75 @@ place_doors_makelev :: (m: *Map) {
     }
 }
 
+// Fix-up tunneling: ensure all regions are connected
+// In original: "Step 5: Final, Fix-Up Tunneling" in Map::Generate
+fixup_tunneling :: (m: *Map, gs: *GenState) {
+    MAX_TRIALS :: 26;  // Same as original
+
+    // Clear all connected flags
+    clear_connected(gs, m);
+
+    // Find first open tile and flood fill from there
+    for y: 1..m.height-2 {
+        for x: 1..m.width-2 {
+            if !is_solid(gs, m, x, y) {
+                flood_connect(gs, m, x, y);
+                break y;  // Break both loops
+            }
+        }
+    }
+
+    // Try to connect unconnected regions
+    for trial: 0..MAX_TRIALS-1 {
+        // Find edge tiles of connected and unconnected regions
+        connected_edges, unconnected_edges := find_disconnected_regions(gs, m);
+
+        // If nothing is unconnected, we're done
+        if unconnected_edges.count == 0 {
+            break;
+        }
+
+        // Find the closest pair of connected <-> unconnected edge tiles
+        best_dist: s32 = m.width * m.height;
+        best_sx: s32 = -1;
+        best_sy: s32 = -1;
+        best_dx: s32 = -1;
+        best_dy: s32 = -1;
+
+        for c: connected_edges {
+            for u: unconnected_edges {
+                d := dist(c.x, c.y, u.x, u.y);
+                if d < best_dist {
+                    best_dist = d;
+                    best_sx = c.x;
+                    best_sy = c.y;
+                    best_dx = u.x;
+                    best_dy = u.y;
+                }
+            }
+        }
+
+        // Tunnel from connected to unconnected
+        if best_sx >= 0 {
+            carve_tunnel(m, gs, best_sx, best_sy, best_dx, best_dy, TT_DIRECT | TT_WANDER);
+
+            // Re-flood to update connected status
+            clear_connected(gs, m);
+            for y: 1..m.height-2 {
+                for x: 1..m.width-2 {
+                    if !is_solid(gs, m, x, y) {
+                        flood_connect(gs, m, x, y);
+                        break y;
+                    }
+                }
+            }
+        } else {
+            // No valid pair found
+            break;
+        }
+    }
+}
+
 // Main generation function - matches Map::Generate structure
 generate_makelev :: (m: *Map, seed: u32) {
     // Initialize RNG
@@ -1323,8 +2036,18 @@ generate_makelev :: (m: *Map, seed: u32) {
         for x: 0..m.width-1 {
             if x == 0 || y == 0 || x == m.width-1 || y == m.height-1 {
                 map_set(m, x, y, .WALL);
+                cell := get_cell(*gs, m, x, y);
+                if cell != null {
+                    cell.priority = PRIO_MAX;
+                    cell.solid = true;
+                }
             } else {
                 map_set(m, x, y, .ROCK);
+                cell := get_cell(*gs, m, x, y);
+                if cell != null {
+                    cell.priority = PRIO_EMPTY;
+                    cell.solid = true;
+                }
             }
         }
     }
@@ -1358,6 +2081,10 @@ generate_makelev :: (m: *Map, seed: u32) {
 
     // Step 5: Connect panels with corridors
     connect_panels(m, *gs);
+
+    // Step 5.5: Fix-up tunneling - ensure all regions are connected
+    // This is critical for playable dungeons!
+    fixup_tunneling(m, *gs);
 
     // Step 6: Place doors where corridors meet rooms
     place_doors_makelev(m);
