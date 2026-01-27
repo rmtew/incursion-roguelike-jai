@@ -68,6 +68,7 @@ run_all_tests :: () {
     test_constants();
     test_lexer();
     test_parser();
+    test_real_irh_files();
 
     test_summary();
 }
@@ -710,5 +711,108 @@ END;
         test_assert_eq(p.dungeons.count, 1, "one dungeon parsed");
         test_assert(p.dungeons[0].has_desc, "dungeon has desc");
         test_assert_eq(p.dungeons[0].specials.count, 2, "dungeon has 2 specials");
+    }
+
+    // Multiple domains with various grant types (from domains.irh)
+    {
+        source := #string END
+Domain "Domination" : 0
+  {
+    Desc: "Test domain";
+    Grants:
+      Ability[CA_COMMAND_AUTHORITY,+1] at every 4th level starting at 4th,
+      Feat[FT_SCHOOL_FOCUS,SC_ENC] at 1st level;
+  }
+Domain "Earth" : 0
+  {
+    Desc: "Test domain";
+    Grants:
+      Ability[CA_COMMAND,MA_EARTH] at 1st level,
+      Stati[SAVE_BONUS,SN_PETRI,+1] at every level starting at 1st,
+      Stati[IMMUNITY,AD_STON] at 7th level;
+  }
+END;
+        lex := lexer_init(source);
+        tokens := lexer_tokenize_all(*lex);
+
+        p := parser_init(tokens);
+        ok := parser_parse(*p);
+        test_assert(ok, "parse domains with multiple grants ok");
+    }
+}
+
+// Test parsing real .irh files from the original Incursion source
+test_real_irh_files :: () {
+    test_section("Real IRH File Tests");
+
+    IRH_PATH :: "C:/Data/R/roguelike - incursion/repo-work/lib/";
+
+    // Test flavors.irh - simple Flavour resources
+    test_irh_file(IRH_PATH, "flavors.irh", "flavors");
+
+    // Test mundane.irh - basic items
+    test_irh_file(IRH_PATH, "mundane.irh", "mundane");
+
+    // Test domains.irh - god domains
+    test_irh_file(IRH_PATH, "domains.irh", "domains");
+
+    // Test weapons.irh - weapon items
+    test_irh_file(IRH_PATH, "weapons.irh", "weapons");
+
+    // Test enclist.irh - encounter lists
+    test_irh_file(IRH_PATH, "enclist.irh", "enclist");
+}
+
+test_irh_file :: (path: string, filename: string, label: string) {
+    full_path := tprint("%1%2", path, filename);
+    content, success := read_entire_file(full_path);
+
+    if !success {
+        print("  SKIP: Could not read % (file not found)\n", filename);
+        return;
+    }
+
+    lex := lexer_init(content);
+    tokens := lexer_tokenize_all(*lex);
+
+    p := parser_init(tokens);
+    ok := parser_parse(*p);
+
+    if ok && p.errors.count == 0 {
+        test_assert(true, tprint("% parsed successfully", label));
+        // Print stats
+        total := p.flavors.count + p.items.count + p.monsters.count +
+                 p.effects.count + p.features.count + p.terrains.count +
+                 p.races.count + p.classes.count + p.templates.count +
+                 p.regions.count + p.encounters.count + p.domains.count +
+                 p.gods.count + p.texts.count + p.dungeons.count + p.artifacts.count;
+        print("    Parsed % resources from %\n", total, filename);
+        if p.flavors.count > 0    print("      Flavors: %\n", p.flavors.count);
+        if p.items.count > 0      print("      Items: %\n", p.items.count);
+        if p.monsters.count > 0   print("      Monsters: %\n", p.monsters.count);
+        if p.effects.count > 0    print("      Effects: %\n", p.effects.count);
+        if p.features.count > 0   print("      Features: %\n", p.features.count);
+        if p.terrains.count > 0   print("      Terrains: %\n", p.terrains.count);
+        if p.races.count > 0      print("      Races: %\n", p.races.count);
+        if p.classes.count > 0    print("      Classes: %\n", p.classes.count);
+        if p.templates.count > 0  print("      Templates: %\n", p.templates.count);
+        if p.regions.count > 0    print("      Regions: %\n", p.regions.count);
+        if p.encounters.count > 0 print("      Encounters: %\n", p.encounters.count);
+        if p.domains.count > 0    print("      Domains: %\n", p.domains.count);
+        if p.gods.count > 0       print("      Gods: %\n", p.gods.count);
+        if p.texts.count > 0      print("      Texts: %\n", p.texts.count);
+        if p.dungeons.count > 0   print("      Dungeons: %\n", p.dungeons.count);
+        if p.artifacts.count > 0  print("      Artifacts: %\n", p.artifacts.count);
+    } else {
+        test_assert(false, tprint("% parsed with errors", label));
+        // Print first few errors
+        max_errors := min(p.errors.count, 10);
+        for i: 0..max_errors-1 {
+            err := p.errors[i];
+            print("    Error at line %, col %: %\n", err.line, err.column, err.message);
+        }
+        if p.errors.count > 10 {
+            print("    ... and % more errors\n", p.errors.count - 10);
+        }
     }
 }

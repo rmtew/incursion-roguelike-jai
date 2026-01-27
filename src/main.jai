@@ -4,6 +4,7 @@
 #import "Basic";
 #import "Math";
 #import "Random";
+#import "File";
 
 // Load core modules
 #load "defines.jai";

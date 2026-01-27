@@ -6,6 +6,8 @@
 2. **Link to detail files** - For extensive details, create separate files (e.g., RECONSTRUCTION*.md) and link from here
 3. **Keep this file scannable** - Use headers and bullet points; move large content to linked files
 4. **Lexer/Parser: Implement from grammar spec, test against .irh files** - The authoritative reference for lexer/parser implementation is in `lang/Tokens.lex` and `lang/Grammar.acc`. Implement to match these specifications, then validate against actual `.irh` resource files.
+5. **Maintain journal.md** - Record summaries of changes made in each session by appending new entries. Include what was changed, why, and test results.
+6. **Maintain backlog.md** - Track workarounds, deferred work, and ideas for future improvements. Update when adding workarounds or identifying issues to revisit later.
 
 ## Environment
 
@@ -18,6 +20,8 @@
 ```
 incursion-port/
   CLAUDE.md              - This file (project guide)
+  journal.md             - Development journal with change summaries
+  backlog.md             - Workarounds, deferred work, and future ideas
   RECONSTRUCTION.md      - Master reconstruction guide with struct definitions
   RECONSTRUCTION-CORE.md - Core module details (defines, dice, object, etc.)
   RECONSTRUCTION-LEXER.md - Lexer implementation details

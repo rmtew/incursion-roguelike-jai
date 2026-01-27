@@ -483,7 +483,119 @@ skip_whitespace_and_comments :: (lex: *Lexer) {
             continue;
         }
 
+        // Preprocessor directives (#if, #endif, #define, etc.)
+        if c == #char "#" {
+            // Check for #if 0 ... #endif block to skip entirely
+            if match_preprocessor_if_zero(lex) {
+                skip_preprocessor_if_block(lex);
+                continue;
+            }
+            // Skip other preprocessor lines (#define, #include, etc.)
+            while !is_at_end(lex) && peek_char(lex) != #char "\n" {
+                advance_char(lex);
+            }
+            continue;
+        }
+
         break;
+    }
+}
+
+// Check if we're at "#if 0" (with optional whitespace)
+match_preprocessor_if_zero :: (lex: *Lexer) -> bool {
+    if is_at_end(lex) || lex.source[lex.pos] != #char "#" return false;
+
+    // Save position to restore if not matched
+    save_pos := lex.pos;
+    save_line := lex.line;
+    save_col := lex.column;
+
+    advance_char(lex);  // skip #
+
+    // Skip whitespace
+    while !is_at_end(lex) && (peek_char(lex) == #char " " || peek_char(lex) == #char "\t") {
+        advance_char(lex);
+    }
+
+    // Check for "if"
+    if lex.pos + 2 <= lex.source.count &&
+       lex.source[lex.pos] == #char "i" &&
+       lex.source[lex.pos + 1] == #char "f" {
+        advance_char(lex);
+        advance_char(lex);
+
+        // Skip whitespace
+        while !is_at_end(lex) && (peek_char(lex) == #char " " || peek_char(lex) == #char "\t") {
+            advance_char(lex);
+        }
+
+        // Check for "0"
+        if !is_at_end(lex) && peek_char(lex) == #char "0" {
+            advance_char(lex);
+            // Skip to end of line
+            while !is_at_end(lex) && peek_char(lex) != #char "\n" {
+                advance_char(lex);
+            }
+            return true;
+        }
+    }
+
+    // Not #if 0, restore position
+    lex.pos = save_pos;
+    lex.line = save_line;
+    lex.column = save_col;
+    return false;
+}
+
+// Skip until matching #endif (handles nested #if/#endif)
+skip_preprocessor_if_block :: (lex: *Lexer) {
+    nesting := 1;
+
+    while !is_at_end(lex) && nesting > 0 {
+        c := peek_char(lex);
+
+        if c == #char "\n" {
+            lex.line += 1;
+            lex.column = 0;
+            advance_char(lex);
+            continue;
+        }
+
+        if c == #char "#" {
+            // Check for #if or #endif
+            save_pos := lex.pos;
+
+            advance_char(lex);
+
+            // Skip whitespace
+            while !is_at_end(lex) && (peek_char(lex) == #char " " || peek_char(lex) == #char "\t") {
+                advance_char(lex);
+            }
+
+            // Check for "if" (increases nesting)
+            if lex.pos + 2 <= lex.source.count &&
+               lex.source[lex.pos] == #char "i" &&
+               lex.source[lex.pos + 1] == #char "f" {
+                nesting += 1;
+            }
+            // Check for "endif" (decreases nesting)
+            else if lex.pos + 5 <= lex.source.count &&
+                    lex.source[lex.pos] == #char "e" &&
+                    lex.source[lex.pos + 1] == #char "n" &&
+                    lex.source[lex.pos + 2] == #char "d" &&
+                    lex.source[lex.pos + 3] == #char "i" &&
+                    lex.source[lex.pos + 4] == #char "f" {
+                nesting -= 1;
+            }
+
+            // Skip to end of line
+            while !is_at_end(lex) && peek_char(lex) != #char "\n" {
+                advance_char(lex);
+            }
+            continue;
+        }
+
+        advance_char(lex);
     }
 }
 

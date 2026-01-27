@@ -35,10 +35,14 @@ LevelType :: enum u8 { AT_LEVEL; EVERY_LEVEL; EVERY_NTH_LEVEL; }
 ParsedGrant :: struct {
     grant_type:     GrantType;
     feat_id:        s64;
+    feat_param:     s64;        // For Feat[ID,param] syntax
+    has_feat_param: bool;
     ability_id:     s64;
     ability_param1: s64;
     ability_param2: s64;
     has_param2:     bool;
+    has_ability_ref: bool;      // When ability param is a $"ref" instead of a constant
+    ability_ref:    string;     // The referenced resource name
     stati_type:     s64;
     stati_param1:   s64;
     stati_param2:   s64;
@@ -835,6 +839,28 @@ parse_cexpr3 :: (p: *Parser) -> s64, bool {
         return tok.int_value, true;
     }
 
+    // Unknown identifier - could be a macro call like OPT_COST(a,b)
+    // We parse the call and return the last argument value
+    if tok.type == .IDENTIFIER {
+        advance(p);
+        if check(p, .LPAREN) {
+            // Function-like macro call
+            advance(p);  // consume '('
+            last_val: s64 = 0;
+            while !check(p, .RPAREN) && !parser_is_at_end(p) {
+                val, ok := parse_cexpr(p);
+                if ok {
+                    last_val = val;
+                }
+                if !match(p, .COMMA) break;
+            }
+            match(p, .RPAREN);
+            return last_val, true;
+        }
+        // Plain identifier - treat as 0
+        return 0, true;
+    }
+
     add_error(p, "Expected expression");
     return 0, false;
 }
@@ -846,11 +872,19 @@ parse_dice_value :: (p: *Parser) -> ParsedDice, bool {
     dice.sides = 0;
     dice.bonus = 0;
 
-    // Parse number of dice
+    // Parse number of dice - can be NUMBER or (cexpr)
     num_tok := peek(p);
     if num_tok.type == .NUMBER {
         dice.num = cast(s8) num_tok.int_value;
         advance(p);
+    } else if num_tok.type == .LPAREN {
+        // Parenthesized expression for dice count (e.g., (LEVEL_1PER1)d8)
+        advance(p);  // consume '('
+        val, ok := parse_cexpr(p);
+        if !ok return dice, false;
+        _, rparen_ok := consume(p, .RPAREN, "Expected ')' in dice count");
+        if !rparen_ok return dice, false;
+        dice.num = cast(s8) val;
     }
 
     // Expect 'd'
@@ -987,27 +1021,46 @@ extract_res_ref_name :: (s: string) -> string {
 
 // Skip event handlers
 skip_event_handler :: (p: *Parser) -> bool {
-    // Skip until we find matching braces
-    while !check(p, .LBRACE) && !parser_is_at_end(p) {
-        advance(p);
-    }
+    // Event handlers can be chained: On Event PRE(EV_HIT) {...}, PRE(EV_APPLY) {...};
+    // We need to skip all chained handlers until we see a semicolon not followed by more handlers
 
-    if !check(p, .LBRACE) return true;
-
-    // Match braces
-    brace_count := 0;
-    while !parser_is_at_end(p) {
-        tok := advance(p);
-        if tok.type == .LBRACE brace_count += 1;
-        else if tok.type == .RBRACE {
-            brace_count -= 1;
-            if brace_count == 0 break;
+    while true {
+        // Skip until we find matching braces
+        while !check(p, .LBRACE) && !check(p, .SEMICOLON) && !check(p, .RBRACE) && !parser_is_at_end(p) {
+            advance(p);
         }
-    }
 
-    // Optional semicolon or comma after handler
-    match(p, .SEMICOLON);
-    match(p, .COMMA);
+        if !check(p, .LBRACE) {
+            // No more brace blocks - just consume semicolon if present
+            match(p, .SEMICOLON);
+            return true;
+        }
+
+        // Match braces
+        brace_count := 0;
+        while !parser_is_at_end(p) {
+            tok := advance(p);
+            if tok.type == .LBRACE brace_count += 1;
+            else if tok.type == .RBRACE {
+                brace_count -= 1;
+                if brace_count == 0 break;
+            }
+        }
+
+        // Check what follows the closing brace
+        if match(p, .SEMICOLON) {
+            // End of event handler chain
+            return true;
+        }
+
+        if match(p, .COMMA) {
+            // Another handler follows - continue the loop
+            continue;
+        }
+
+        // Something else - we're done
+        return true;
+    }
 
     return true;
 }
@@ -1062,13 +1115,13 @@ parse_grant_level_condition :: (p: *Parser, grant: *ParsedGrant) -> bool {
             match(p, .KW_LEVEL);
         }
     } else {
-        // "N level" - at specific level N
+        // "N level" or "Nth" - at specific level N
         level, lvl_ok := parse_cexpr3(p);
         if !lvl_ok return false;
         skip_ordinal_suffix(p);
 
-        _, kw_ok := consume(p, .KW_LEVEL, "Expected 'level'");
-        if !kw_ok return false;
+        // "level" keyword is optional after ordinal (e.g., "at 10th" vs "at 10th level")
+        match(p, .KW_LEVEL);
 
         grant.level_type = .AT_LEVEL;
         grant.level = level;
@@ -1082,15 +1135,24 @@ parse_grant_feat :: (p: *Parser, grants: *[..] ParsedGrant) -> bool {
     _, lbracket_ok := consume(p, .LBRACKET, "Expected '['");
     if !lbracket_ok return false;
 
-    feat_id, ok := parse_cexpr2(p);
+    // Use parse_cexpr3 to avoid binary +/- consuming comma-separated params
+    feat_id, ok := parse_cexpr3(p);
     if !ok return false;
-
-    _, rbracket_ok := consume(p, .RBRACKET, "Expected ']'");
-    if !rbracket_ok return false;
 
     grant: ParsedGrant;
     grant.grant_type = .FEAT;
     grant.feat_id = feat_id;
+
+    // Handle optional parameter: Feat[FT_SCHOOL_FOCUS,SC_ENC]
+    if match(p, .COMMA) {
+        param, param_ok := parse_cexpr3(p);
+        if !param_ok return false;
+        grant.feat_param = param;
+        grant.has_feat_param = true;
+    }
+
+    _, rbracket_ok := consume(p, .RBRACKET, "Expected ']'");
+    if !rbracket_ok return false;
 
     if !parse_grant_level_condition(p, *grant) return false;
 
@@ -1103,7 +1165,8 @@ parse_grant_ability :: (p: *Parser, grants: *[..] ParsedGrant) -> bool {
     _, lbracket_ok := consume(p, .LBRACKET, "Expected '['");
     if !lbracket_ok return false;
 
-    ability_id, ok := parse_cexpr2(p);
+    // Use parse_cexpr3 to avoid binary +/- consuming comma-separated params like ",+1"
+    ability_id, ok := parse_cexpr3(p);
     if !ok return false;
 
     grant: ParsedGrant;
@@ -1111,9 +1174,16 @@ parse_grant_ability :: (p: *Parser, grants: *[..] ParsedGrant) -> bool {
     grant.ability_id = ability_id;
 
     if match(p, .COMMA) {
-        param1, ok1 := parse_cexpr3(p);
-        if !ok1 return false;
-        grant.ability_param1 = param1;
+        // Parameter can be a cexpr OR a resource reference $"name"
+        if check(p, .RES_REF) {
+            ref_tok := advance(p);
+            grant.ability_ref = extract_res_ref_name(ref_tok.text);
+            grant.has_ability_ref = true;
+        } else {
+            param1, ok1 := parse_cexpr3(p);
+            if !ok1 return false;
+            grant.ability_param1 = param1;
+        }
 
         if match(p, .COMMA) {
             param2, ok2 := parse_cexpr3(p);
@@ -1137,7 +1207,8 @@ parse_grant_stati :: (p: *Parser, grants: *[..] ParsedGrant) -> bool {
     _, lbracket_ok := consume(p, .LBRACKET, "Expected '['");
     if !lbracket_ok return false;
 
-    stati_type, ok := parse_cexpr2(p);
+    // Use parse_cexpr3 to avoid binary +/- consuming comma-separated params like ",+1"
+    stati_type, ok := parse_cexpr3(p);
     if !ok return false;
 
     grant: ParsedGrant;
@@ -1145,7 +1216,7 @@ parse_grant_stati :: (p: *Parser, grants: *[..] ParsedGrant) -> bool {
     grant.stati_type = stati_type;
 
     if match(p, .COMMA) {
-        param1, ok1 := parse_cexpr2(p);
+        param1, ok1 := parse_cexpr3(p);
         if !ok1 return false;
         grant.stati_param1 = param1;
 
@@ -1982,6 +2053,15 @@ parse_effect :: (p: *Parser, is_spell: bool) -> bool {
             if !ok return false;
             effect.has_yval = true;
             effect.yval = val;
+            match(p, .SEMICOLON);
+        } else if tok.type == .KW_PVAL {
+            advance(p);
+            _, colon2_ok := consume(p, .COLON, "Expected ':'");
+            if !colon2_ok return false;
+            dice, dice_ok := parse_dice_value(p);
+            if !dice_ok return false;
+            effect.has_pval = true;
+            effect.pval = dice;
             match(p, .SEMICOLON);
         } else if tok.type == .KW_SVAL {
             advance(p);
