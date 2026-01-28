@@ -17,13 +17,16 @@ This port reimplements Incursion's resource parsing and game systems in Jai, lea
 
 ## Development Approach
 
-This project is developed with [Claude Code](https://github.com/anthropics/claude-code). Jai is in closed beta with no public documentation, so Claude operates under a strict constraint: **no access to official Jai distribution files other than the compiler executable**. Development relies on:
+This project is developed with [Claude Code](https://github.com/anthropics/claude-code). Jai is in closed beta under NDA, so Claude operates under a strict constraint: **no access to official Jai distribution files other than the compiler executable**. Development relies on:
 
-- A reverse-engineered language reference built from public talks and community knowledge
+- A language reference seeded by the user and expanded by Claude through iterative compiler testing
+- Module API documentation extracted via metaprogram introspection
 - Compiler error messages as the primary feedback loop
-- Iterative refinement when assumptions prove incorrect
+- User bridges access to official documentation when needed
 
-This demonstrates that meaningful Jai development is achievable even without official documentation.
+This demonstrates that meaningful Jai development is achievable through systematic exploration.
+
+The Jai reference repository is not published out of prudence at this time. If you're interested in access, please contact Richard.
 
 ## Status
 
