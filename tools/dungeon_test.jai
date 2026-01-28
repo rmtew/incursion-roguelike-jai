@@ -12,33 +12,33 @@ Input :: #import "Input";
 Simp  :: #import "Simp";
 
 // Core modules needed by dungeon generation
-#load "defines.jai";
-#load "dice.jai";
-#load "object.jai";
-#load "map.jai";
-#load "creature.jai";
-#load "item.jai";
-#load "feature.jai";
-#load "vision.jai";
-#load "registry.jai";
-#load "event.jai";
-#load "resource.jai";
+#load "../src/defines.jai";
+#load "../src/dice.jai";
+#load "../src/object.jai";
+#load "../src/map.jai";
+#load "../src/creature.jai";
+#load "../src/item.jai";
+#load "../src/feature.jai";
+#load "../src/vision.jai";
+#load "../src/registry.jai";
+#load "../src/event.jai";
+#load "../src/resource.jai";
 
 // Resource parser (needed for WeightListEntry in weights.jai)
-#load "resource/constants.jai";
-#load "resource/lexer.jai";
-#load "resource/parser.jai";
+#load "../src/resource/constants.jai";
+#load "../src/resource/lexer.jai";
+#load "../src/resource/parser.jai";
 
 // RNG and dungeon generation
-#load "rng.jai";
-#load "dungeon/map.jai";
-#load "dungeon/terrain_registry.jai";
-#load "dungeon/weights.jai";
-#load "dungeon/makelev.jai";
-#load "dungeon/generator.jai";
+#load "../src/rng.jai";
+#load "../src/dungeon/map.jai";
+#load "../src/dungeon/terrain_registry.jai";
+#load "../src/dungeon/weights.jai";
+#load "../src/dungeon/makelev.jai";
+#load "../src/dungeon/generator.jai";
 
 // Terminal rendering
-#load "terminal/window.jai";
+#load "../src/terminal/window.jai";
 
 // Color mapping for terrain
 get_terrain_color :: (t: Terrain) -> Color {
@@ -190,7 +190,8 @@ render_dungeon_to_terminal :: (term: *Terminal, m: *GenMap, view_x: s32, view_y:
             td := map_get_display(m, mx, my);
             if td != null && td.use_custom {
                 glyph = td.glyph;
-                fg = terrain_color_to_rgb(td.fg_color);
+                tc := terrain_color_to_rgb(td.fg_color);
+                fg = Color.{tc.r, tc.g, tc.b};
             }
 
             // Special background for water/chasm/lava

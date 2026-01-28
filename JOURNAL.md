@@ -886,3 +886,84 @@ Panel (3,1) uses region: Icy Chamber
 ```
 
 Each room now renders with the correct terrain appearance based on its selected region.
+
+---
+
+## 2026-01-28: GitHub Publishing Preparation
+
+### README and Screenshot
+
+Created `README.md` for GitHub with:
+- Project overview: porting Incursion from C++ to Jai
+- Motivation: moving away from modaccent (1980's code generator), 32-bit assumptions, vendored deps
+- Development approach: Claude Code with no access to official Jai docs (only compiler executable)
+- Links to PLAN-MVP.md and JOURNAL.md for status tracking
+- License clarification: upstream BSD/Apache/Expat + OGL applies, our code MIT
+
+Created headless screenshot tool `tools/dungeon_screenshot.jai`:
+- Uses stb_image to load font PNG
+- Renders dungeon directly to pixel buffer (no window/OpenGL)
+- Uses stb_image_write to save PNG
+- Generated 10 variations with different seeds
+- Selected one with water river for visual interest
+
+### Tools Reorganization
+
+Moved development tools from `src/` to `tools/`:
+- `dungeon_test.jai` - Interactive windowed dungeon viewer
+- `dungeon_screenshot.jai` - Headless screenshot generator
+- `terminal_test.jai` - Terminal rendering test
+
+Updated all `#load` paths to use `../src/` prefix.
+Updated font/output paths for new directory structure.
+Build artifacts (`.build/`, `*.exe`, `*.pdb`) already gitignored.
+
+### Code Fixes
+
+**terrain_registry.jai Color dependency:**
+- Added `TerrainColor` struct to make module self-contained
+- Changed `terrain_color_to_rgb()` to return `TerrainColor` instead of `Color`
+- Updated `dungeon_test.jai` to convert `TerrainColor` to `Color`
+
+**main.jai missing load:**
+- Added `#load "dungeon/terrain_registry.jai"` to fix build
+
+### Files Created
+
+- `README.md` - GitHub project overview with screenshot
+- `LICENSE` - MIT license with note about upstream licenses
+- `docs/screenshot.png` - Dungeon generation screenshot
+- `tools/dungeon_screenshot.jai` - Headless screenshot tool
+
+### Files Modified
+
+- `CLAUDE.md` - Updated project structure with tools/, docs/, dungeon/ subdirs
+- `.gitignore` - Added `build/` directory
+- `src/main.jai` - Added terrain_registry.jai load
+- `src/dungeon/terrain_registry.jai` - Added TerrainColor struct, self-contained
+- `tools/dungeon_test.jai` - Updated paths, TerrainColor conversion
+- `tools/terminal_test.jai` - Updated paths
+
+### Verification
+
+All builds pass:
+- `src/main.jai` - 166 tests pass
+- `tools/dungeon_test.jai` - Builds and runs
+- `tools/dungeon_screenshot.jai` - Generates screenshot correctly
+
+### Repository Cleanup
+
+**License files restructured:**
+- `LICENSE` - Explains dual licensing, contains MIT for our contributions
+- `LICENSE-INCURSION` - Copied from upstream repo (BSD/Apache/Expat + OGL)
+
+**Files deleted:**
+- `RECONSTRUCTION*.md` (4 files) - Recovery docs now obsolete, code is source of truth
+- `extract_constants.py` - One-time generator, constants.jai already exists
+
+**Files moved:**
+- `assignment/` → `docs/research/` - Research notes under clearer path
+
+**Documentation updates:**
+- Added Jai compiler version (`beta 0.2.025`) to README.md and CLAUDE.md
+- Added directive #7 to CLAUDE.md: check compiler version at session start, ask about language changes if different

@@ -6,28 +6,28 @@
 2. **Link to detail files** - For extensive details, create separate files (e.g., RECONSTRUCTION*.md) and link from here
 3. **Keep this file scannable** - Use headers and bullet points; move large content to linked files
 4. **Lexer/Parser: Implement from grammar spec, test against .irh files** - The authoritative reference for lexer/parser implementation is in `lang/Tokens.lex` and `lang/Grammar.acc`. Implement to match these specifications, then validate against actual `.irh` resource files.
-5. **Maintain journal.md** - Record summaries of changes made in each session by appending new entries. Include what was changed, why, and test results.
+5. **Maintain JOURNAL.md** - Record summaries of changes made in each session by appending new entries. Include what was changed, why, and test results.
 6. **Maintain backlog.md** - Track workarounds, deferred work, and ideas for future improvements. Update when adding workarounds or identifying issues to revisit later.
+7. **Check Jai compiler version** - At session start, ask user for current compiler version. If it differs from the recorded version below, ask what language changes occurred that might affect this codebase (new features, deprecations, syntax changes).
 
 ## Environment
 
 - **Shell**: Git Bash on Windows (cmd/terminal)
 - **Python**: Use `py` command (not `python`)
 - **Jai Compiler**: `C:/Data/R/jai/bin/jai.exe`
+- **Jai Version**: `beta 0.2.025` (released 2026-01-19, last verified: 2026-01-28)
 
 ## Project Structure
 
 ```
 incursion-port/
+  README.md              - Project overview for GitHub
+  LICENSE                - MIT license (our code) + note about upstream licenses
+  LICENSE-INCURSION      - Upstream Incursion licenses (BSD/Apache/Expat + OGL)
   CLAUDE.md              - This file (project guide)
   PLAN-MVP.md            - MVP roadmap: dungeon generation with terminal view
-  journal.md             - Development journal with change summaries
+  JOURNAL.md             - Development journal with change summaries
   backlog.md             - Workarounds, deferred work, and future ideas
-  RECONSTRUCTION.md      - Master reconstruction guide with struct definitions
-  RECONSTRUCTION-CORE.md - Core module details (defines, dice, object, etc.)
-  RECONSTRUCTION-LEXER.md - Lexer implementation details
-  RECONSTRUCTION-PARSER.md - Parser implementation details
-  extract_constants.py   - Script to extract constants from Defines.h
   src/
     main.jai             - Entry point, imports all modules, runs tests
     defines.jai          - Core types: Dir, Glyph, hObj, rID, colors
@@ -46,6 +46,22 @@ incursion-port/
       constants.jai      - 3572 constants from Defines.h (binary search)
       lexer.jai          - Tokenizer with 130+ token types
       parser.jai         - Recursive descent parser
+    dungeon/
+      map.jai            - GenMap, Terrain enum, room carving
+      terrain_registry.jai - Runtime terrain lookup by name
+      weights.jai        - Region/weight system for procedural selection
+      makelev.jai        - MakeLev room types (original Incursion algorithm)
+      generator.jai      - High-level dungeon generation
+    terminal/
+      window.jai         - Simp-based glyph terminal rendering
+  tools/
+    dungeon_test.jai     - Interactive dungeon viewer (windowed)
+    dungeon_screenshot.jai - Headless screenshot generator
+    terminal_test.jai    - Terminal rendering test
+  docs/
+    screenshot.png       - Dungeon generation screenshot for README
+  fonts/
+    8x8.png, 12x16.png, etc. - Bitmap fonts for terminal rendering
 ```
 
 ## Original Incursion Source
@@ -189,7 +205,11 @@ py extract_constants.py
 
 ## Jai Language Reference
 
-**External Reference**: `C:\Data\R\git\jai\jai-language.md` - Full language reference with module documentation
+**CONSTRAINT**: No access to official Jai distribution except the compiler executable at `C:/Data/R/jai/bin/jai.exe`. All language documentation comes from the local reverse-engineered reference repo.
+
+**Local Reference Repo**: `C:\Data\R\git\jai\` - Contains reverse-engineered Jai documentation including:
+- `jai-language.md` - Core language reference with syntax and semantics
+- `modules/*.md` - Module documentation for standard library
 
 ### Key Patterns Used in This Project
 - `using` for struct composition: `Monster :: struct { using creature: Creature; }`

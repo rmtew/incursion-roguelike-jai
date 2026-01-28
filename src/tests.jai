@@ -742,9 +742,13 @@ END;
 }
 
 // Test parsing real .irh files from the original Incursion source
+// NOTE: These tests require access to the original Incursion source code.
+// They will be skipped if the files are not found at the expected path.
+// To run these tests, set IRH_PATH to your local Incursion source lib/ directory.
 test_real_irh_files :: () {
     test_section("Real IRH File Tests");
 
+    // Local path to original Incursion source - adjust for your system
     IRH_PATH :: "C:/Data/R/roguelike - incursion/repo-work/lib/";
 
     // Test flavors.irh - simple Flavour resources

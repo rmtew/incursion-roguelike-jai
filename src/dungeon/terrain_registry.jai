@@ -2,10 +2,13 @@
 //
 // Stores parsed terrain data for lookup by name, enabling regions to
 // reference specific terrain types (e.g., "shallow water", "ice wall").
-//
-// Note: This file is loaded by dungeon_test.jai which handles all imports.
 
 #import "Hash_Table";
+
+// Simple color struct for terrain_color_to_rgb (avoids dependency on terminal/window.jai)
+TerrainColor :: struct {
+    r, g, b: float32;
+}
 
 // Runtime terrain representation (resolved from ParsedTerrain)
 RuntimeTerrain :: struct {
@@ -232,27 +235,26 @@ create_default_terrains :: (reg: *TerrainRegistry) {
     terrain_registry_add(reg, cobblestone);
 }
 
-// Convert color constant to RGB Color
-terrain_color_to_rgb :: (color_const: s64) -> Color {
+// Convert color constant to RGB TerrainColor
+terrain_color_to_rgb :: (color_const: s64) -> TerrainColor {
     // Map common ANSI color constants to RGB
-    // These match the TC_* colors in terminal/window.jai
     if color_const == {
-        case 0;  return Color.{0.0, 0.0, 0.0};        // Black
-        case 1;  return Color.{0.0, 0.0, 0.5};        // Dark blue
-        case 2;  return Color.{0.0, 0.5, 0.0};        // Dark green
-        case 3;  return Color.{0.0, 0.5, 0.5};        // Dark cyan
-        case 4;  return Color.{0.5, 0.0, 0.0};        // Dark red
-        case 5;  return Color.{0.5, 0.0, 0.5};        // Dark magenta
-        case 6;  return Color.{0.6, 0.4, 0.2};        // Brown
-        case 7;  return Color.{0.7, 0.7, 0.7};        // Grey
-        case 8;  return Color.{0.4, 0.4, 0.4};        // Dark grey
-        case 9;  return Color.{0.3, 0.3, 1.0};        // Light blue
-        case 10; return Color.{0.3, 1.0, 0.3};        // Light green
-        case 11; return Color.{0.3, 1.0, 1.0};        // Light cyan
-        case 12; return Color.{1.0, 0.3, 0.3};        // Light red
-        case 13; return Color.{1.0, 0.3, 1.0};        // Light magenta
-        case 14; return Color.{1.0, 1.0, 0.3};        // Yellow
-        case 15; return Color.{1.0, 1.0, 1.0};        // White
+        case 0;  return .{0.0, 0.0, 0.0};        // Black
+        case 1;  return .{0.0, 0.0, 0.5};        // Dark blue
+        case 2;  return .{0.0, 0.5, 0.0};        // Dark green
+        case 3;  return .{0.0, 0.5, 0.5};        // Dark cyan
+        case 4;  return .{0.5, 0.0, 0.0};        // Dark red
+        case 5;  return .{0.5, 0.0, 0.5};        // Dark magenta
+        case 6;  return .{0.6, 0.4, 0.2};        // Brown
+        case 7;  return .{0.7, 0.7, 0.7};        // Grey
+        case 8;  return .{0.4, 0.4, 0.4};        // Dark grey
+        case 9;  return .{0.3, 0.3, 1.0};        // Light blue
+        case 10; return .{0.3, 1.0, 0.3};        // Light green
+        case 11; return .{0.3, 1.0, 1.0};        // Light cyan
+        case 12; return .{1.0, 0.3, 0.3};        // Light red
+        case 13; return .{1.0, 0.3, 1.0};        // Light magenta
+        case 14; return .{1.0, 1.0, 0.3};        // Yellow
+        case 15; return .{1.0, 1.0, 1.0};        // White
     }
-    return Color.{0.7, 0.7, 0.7};  // Default grey
+    return .{0.7, 0.7, 0.7};  // Default grey
 }

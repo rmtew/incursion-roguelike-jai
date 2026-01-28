@@ -1,5 +1,6 @@
 # Build artifacts
 .build/
+build/
 *.exe
 *.pdb
 *.obj
@@ -13,3 +14,6 @@ __pycache__/
 # Editor
 *.swp
 *~
+
+# Claude Code local settings
+.claude/

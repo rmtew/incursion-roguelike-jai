@@ -27,6 +27,7 @@
 // Load RNG and dungeon generation
 #load "rng.jai";
 #load "dungeon/map.jai";
+#load "dungeon/terrain_registry.jai";
 #load "dungeon/weights.jai";
 #load "dungeon/makelev.jai";
 #load "dungeon/generator.jai";

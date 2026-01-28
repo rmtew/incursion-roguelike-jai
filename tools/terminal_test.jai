@@ -2,7 +2,7 @@
 //
 // Creates a window and displays a simple dungeon-like pattern.
 
-#load "terminal/window.jai";
+#load "../src/terminal/window.jai";
 
 main :: () {
     print("Incursion Terminal Test\n");
