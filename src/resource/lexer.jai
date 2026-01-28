@@ -445,7 +445,8 @@ make_token :: (lex: *Lexer, type: TokenType, text: string, start_line: s32, star
 }
 
 // Use to_string from Basic module for substring views
-slice :: (s: string, start: s64, length: s64) -> string {
+// Named substr to avoid conflict with String.slice
+substr :: (s: string, start: s64, length: s64) -> string {
     return to_string(s.data + start, length);
 }
 
@@ -654,7 +655,7 @@ scan_number :: (lex: *Lexer, start_pos: s64, start_line: s32, start_col: s32) ->
         while lex_is_hex_digit(peek_char(lex)) {
             advance_char(lex);
         }
-        text := slice(lex.source, start_pos, lex.pos - start_pos);
+        text := substr(lex.source, start_pos, lex.pos - start_pos);
         tok := make_token(lex, .NUMBER, text, start_line, start_col);
         tok.int_value = parse_hex(text);
         return tok;
@@ -667,14 +668,14 @@ scan_number :: (lex: *Lexer, start_pos: s64, start_line: s32, start_col: s32) ->
 
     // Check for % suffix
     if peek_char(lex) == #char "%" {
-        text := slice(lex.source, start_pos, lex.pos - start_pos);
+        text := substr(lex.source, start_pos, lex.pos - start_pos);
         advance_char(lex);  // skip %
         tok := make_token(lex, .PERCENT, text, start_line, start_col);
         tok.int_value = parse_decimal(text);
         return tok;
     }
 
-    text := slice(lex.source, start_pos, lex.pos - start_pos);
+    text := substr(lex.source, start_pos, lex.pos - start_pos);
     tok := make_token(lex, .NUMBER, text, start_line, start_col);
     tok.int_value = parse_decimal(text);
     return tok;
@@ -693,7 +694,7 @@ scan_string :: (lex: *Lexer, start_pos: s64, start_line: s32, start_col: s32) ->
         advance_char(lex);  // closing "
     }
 
-    text := slice(lex.source, start_pos, lex.pos - start_pos);
+    text := substr(lex.source, start_pos, lex.pos - start_pos);
     return make_token(lex, .STRING, text, start_line, start_col);
 }
 
@@ -721,7 +722,7 @@ scan_char :: (lex: *Lexer, start_pos: s64, start_line: s32, start_col: s32) -> T
         advance_char(lex);  // closing '
     }
 
-    text := slice(lex.source, start_pos, lex.pos - start_pos);
+    text := substr(lex.source, start_pos, lex.pos - start_pos);
     tok := make_token(lex, .CHAR_CONST, text, start_line, start_col);
     tok.int_value = char_val;
     return tok;
@@ -745,7 +746,7 @@ scan_res_ref :: (lex: *Lexer, start_pos: s64, start_line: s32, start_col: s32) -
         }
     }
 
-    text := slice(lex.source, start_pos, lex.pos - start_pos);
+    text := substr(lex.source, start_pos, lex.pos - start_pos);
     return make_token(lex, .RES_REF, text, start_line, start_col);
 }
 
@@ -755,7 +756,7 @@ scan_crit_mult :: (lex: *Lexer, start_pos: s64, start_line: s32, start_col: s32)
         advance_char(lex);
     }
 
-    text := slice(lex.source, start_pos, lex.pos - start_pos);
+    text := substr(lex.source, start_pos, lex.pos - start_pos);
 
     // Extract multiplier value
     mult: s64 = 0;
@@ -1213,7 +1214,7 @@ lookup_keyword :: (text: string, in_code: bool) -> TokenType {
 scan_identifier :: (lex: *Lexer, start_pos: s64, start_line: s32, start_col: s32) -> Token {
     // Special case: 'd' followed by digit is dice notation
     if lex.source[start_pos] == #char "d" && lex_is_digit(peek_char(lex)) {
-        text := slice(lex.source, start_pos, 1);
+        text := substr(lex.source, start_pos, 1);
         return make_token(lex, .DICE_D, text, start_line, start_col);
     }
 
@@ -1227,7 +1228,7 @@ scan_identifier :: (lex: *Lexer, start_pos: s64, start_line: s32, start_col: s32
         }
     }
 
-    text := slice(lex.source, start_pos, lex.pos - start_pos);
+    text := substr(lex.source, start_pos, lex.pos - start_pos);
     in_code := lex.brace_level >= 2;
 
     // Standalone 'd' is dice notation
@@ -1323,7 +1324,7 @@ scan_map_grid :: (lex: *Lexer, start_pos: s64, start_line: s32, start_col: s32) 
             // Check if next is }
             if lex.pos + 1 < lex.source.count && lex.source[lex.pos + 1] == #char "}" {
                 // Found :}, extract grid content
-                grid_content := slice(lex.source, grid_start, lex.pos - grid_start);
+                grid_content := substr(lex.source, grid_start, lex.pos - grid_start);
                 advance_char(lex);  // consume ':'
                 advance_char(lex);  // consume '}'
 
@@ -1566,5 +1567,5 @@ lexer_next_token :: (lex: *Lexer) -> Token {
     }
 
     // Unknown character
-    return make_token(lex, .INVALID, slice(lex.source, start_pos, 1), start_line, start_col);
+    return make_token(lex, .INVALID, substr(lex.source, start_pos, 1), start_line, start_col);
 }

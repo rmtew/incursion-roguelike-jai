@@ -5,6 +5,7 @@
 #import "Math";
 #import "Random";
 #import "File";
+#import "Sort";
 
 // Load core modules
 #load "defines.jai";
@@ -23,6 +24,8 @@
 #load "resource/constants.jai";
 #load "resource/lexer.jai";
 #load "resource/parser.jai";
+#load "resource/runtime.jai";
+#load "resource/bake.jai";
 
 // Load RNG and dungeon generation
 #load "rng.jai";

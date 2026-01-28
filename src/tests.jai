@@ -69,6 +69,7 @@ run_all_tests :: () {
     test_lexer();
     test_parser();
     test_real_irh_files();
+    test_resource_baking();
 
     test_summary();
 }
@@ -769,6 +770,13 @@ test_real_irh_files :: () {
     // Test dungeon.irh - dungeons, regions, terrains, features
     // This tests the new weighted selection parsing (Lists, RoomTypes, Walls, Door, Flags)
     test_irh_file(IRH_PATH, "dungeon.irh", "dungeon");
+
+    // Test monster files from local lib/ directory
+    LOCAL_LIB :: "lib/";
+    test_irh_file(LOCAL_LIB, "mon1.irh", "mon1");
+    test_irh_file(LOCAL_LIB, "mon2.irh", "mon2");
+    test_irh_file(LOCAL_LIB, "mon3.irh", "mon3");
+    test_irh_file(LOCAL_LIB, "mon4.irh", "mon4");
 }
 
 test_irh_file :: (path: string, filename: string, label: string) {
@@ -821,10 +829,14 @@ test_irh_file :: (path: string, filename: string, label: string) {
                  p.gods.count + p.texts.count + p.dungeons.count + p.artifacts.count;
         if total > 0 {
             print("    (Partially parsed % resources)\n", total);
+            if p.monsters.count > 0   print("      Monsters: %\n", p.monsters.count);
+            if p.items.count > 0      print("      Items: %\n", p.items.count);
+            if p.effects.count > 0    print("      Effects: %\n", p.effects.count);
             if p.dungeons.count > 0   print("      Dungeons: %\n", p.dungeons.count);
             if p.regions.count > 0    print("      Regions: %\n", p.regions.count);
             if p.terrains.count > 0   print("      Terrains: %\n", p.terrains.count);
             if p.features.count > 0   print("      Features: %\n", p.features.count);
+            if p.templates.count > 0  print("      Templates: %\n", p.templates.count);
         }
         // Print first few errors
         max_errors := min(p.errors.count, 10);
@@ -835,5 +847,94 @@ test_irh_file :: (path: string, filename: string, label: string) {
         if p.errors.count > 10 {
             print("    ... and % more errors\n", p.errors.count - 10);
         }
+    }
+}
+
+// Resource baking tests
+test_resource_baking :: () {
+    test_section("Resource Baking Tests");
+
+    // Initialize resource database
+    init_resource_db();
+    db := get_resource_db();
+
+    // Test that we have monsters
+    test_assert(db.monsters.count > 0, "baked monsters exist");
+    print("    Baked % monsters\n", db.monsters.count);
+
+    // Test that we have items
+    test_assert(db.items.count > 0, "baked items exist");
+    print("    Baked % items\n", db.items.count);
+
+    // Test that we have terrains
+    test_assert(db.terrains.count > 0, "baked terrains exist");
+    print("    Baked % terrains\n", db.terrains.count);
+
+    // Test monster lookup
+    if db.monsters.count > 0 {
+        // Check first monster has valid data
+        first := db.monsters[0];
+        test_assert(first.name.count > 0, "first monster has name");
+        test_assert(first.glyph != 0, "first monster has glyph");
+        print("    First monster: '%' glyph=% CR=%\n", first.name, first.glyph, first.cr);
+    }
+
+    // Test item lookup
+    if db.items.count > 0 {
+        first := db.items[0];
+        test_assert(first.name.count > 0, "first item has name");
+        print("    First item: '%' glyph=%\n", first.name, first.glyph);
+    }
+
+    // Test find_monster function
+    // Note: find_monster uses binary search on sorted names
+    if db.monster_names.count > 0 {
+        // Try to find a monster by name
+        test_name := db.monster_names[0];
+        found := find_monster(db, test_name);
+        test_assert(found != null, tprint("find_monster('%') works", test_name));
+    }
+
+    // Test specific monster lookup (goblin is a common low-level monster)
+    goblin := find_monster(db, "goblin");
+    if goblin != null {
+        test_assert(goblin.glyph == #char "g" || goblin.glyph > 255, "goblin has expected glyph");
+        test_assert(goblin.cr >= -5 && goblin.cr <= 20, "goblin has reasonable CR");
+        print("    Goblin lookup: glyph=% CR=%\n", goblin.glyph, goblin.cr);
+    } else {
+        // Goblin might not be in the partial data
+        print("    Note: 'goblin' not found in baked data (partial parse)\n");
+    }
+
+    // Test that names are sorted (binary search depends on this)
+    if db.monster_names.count >= 2 {
+        sorted := true;
+        for i: 0..db.monster_names.count-2 {
+            if cmp_str_for_search(db.monster_names[i], db.monster_names[i+1]) > 0 {
+                sorted = false;
+                break;
+            }
+        }
+        test_assert(sorted, "monster names are sorted");
+    }
+
+    // Test find_item function
+    if db.item_names.count > 0 {
+        test_name := db.item_names[0];
+        found := find_item(db, test_name);
+        test_assert(found != null, tprint("find_item('%') works", test_name));
+    }
+
+    // Test that extended glyph codes are preserved (GLYPH_* values 256+)
+    extended_glyph_found := false;
+    for item: db.items {
+        if item.glyph > 255 {
+            extended_glyph_found = true;
+            break;
+        }
+    }
+    // Note: This is informational - not all resources have extended glyphs
+    if extended_glyph_found {
+        print("    Extended glyph codes (256+) preserved: YES\n");
     }
 }

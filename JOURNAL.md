@@ -1213,3 +1213,225 @@ All 166 tests pass. Dungeons now have:
 - Proper item distribution (chests, treasure, cursed, staples)
 - Furnishing patterns (pillars, columns, etc.)
 - Terrain-appropriate monster placement
+
+---
+
+## 2026-01-28: Phase 1 - Resource Baking System
+
+### Overview
+
+Implemented compile-time resource baking to parse .irh files and embed the results in the binary.
+
+### Resource Files
+
+Copied all .irh files from Incursion source to local `lib/` directory:
+- mon1.irh through mon4.irh (monsters)
+- mundane.irh (basic items)
+- weapons.irh (weapon items)
+- dungeon.irh (terrains, regions)
+- Additional support files
+
+### Runtime Structs
+
+Created lean runtime structs in `src/resource/runtime.jai`:
+
+**RMonster:**
+- name, glyph (u16), fg_color
+- cr, hd, size, speed
+- Ability scores (str_val, dex_val, etc.)
+- Combat stats (ac, hit_bonus)
+- Packed flags (u64) and mtypes (u64) bitmasks
+
+**RItem:**
+- name, glyph (u16), fg_color
+- itype, material, weight, cost, level, size
+- Weapon properties (dmg_small, dmg_large, crit_range, crit_mult)
+- Armor properties (armor_bonus, max_dex, armor_penalty)
+- Packed flags (u32)
+
+**ResourceDB:**
+- Arrays of monsters, items, terrains, encounters
+- Sorted name arrays for binary search lookup
+- `find_monster()` and `find_item()` functions
+
+### Baking Implementation
+
+Created `src/resource/bake.jai`:
+
+**Parsing:**
+- `parse_resource_file()` - Parse single .irh file into runtime structs
+- `bake_all_resources()` - Parse all resource files
+- `init_resource_db()` - Initialize global BAKED_DB
+
+**Conversion functions:**
+- `convert_monster()` - ParsedMonster → RMonster
+- `convert_item()` - ParsedItem → RItem
+- `convert_terrain()` - ParsedTerrain → RuntimeTerrain
+- `convert_region()` - ParsedRegion → RuntimeRegion
+
+**Key fixes:**
+- String ownership: copy_string() used during conversion since parser strings reference freed file content
+- Glyph storage: u16 to preserve extended glyph codes (GLYPH_* values 256+)
+- Null checks in sorting to handle partial parse results
+
+### Integration
+
+Updated dungeon viewer (`tools/dungeon_test.jai`):
+- Loads baked resources on startup
+- Displays resource counts
+
+Updated terminal system (`src/terminal/window.jai`):
+- TermCell.char changed to u16
+- terminal_set() accepts u16 glyph
+
+Updated map system (`src/dungeon/map.jai`):
+- terrain_glyph() returns u16
+- TileDisplay.glyph is u16
+
+### Test Results
+
+| Resource | Count |
+|----------|-------|
+| Monsters | 429 |
+| Items | 201 |
+| Terrains | 53 |
+
+Tests verify:
+- Binary search lookups work (find_monster, find_item)
+- Names are properly sorted
+- Extended glyph codes (256+) are preserved
+- Goblin lookup returns valid data
+
+### Parser Limitations
+
+4 test failures from mon1-4.irh due to unsupported syntax:
+- SC_WEA bare constants
+- ABILITY() macro calls
+- Multi-line Desc blocks
+
+These files partially parse (425 monsters recovered).
+
+### Files Created/Modified
+
+**Created:**
+- `src/resource/runtime.jai` - Runtime resource structs
+- `src/resource/bake.jai` - Baking logic
+- `lib/*.irh` - Copied from Incursion source
+
+**Modified:**
+- `src/tests.jai` - Added resource baking tests
+- `src/resource/constants.jai` - Renamed compare_strings to cmp_strings_const
+- `src/dungeon/terrain_registry.jai` - glyph u8→u16
+- `src/dungeon/map.jai` - terrain_glyph returns u16, TileDisplay.glyph u16
+- `src/terminal/window.jai` - TermCell.char u16, terminal_set param
+- `tools/dungeon_test.jai` - Loads resources, Sort import
+- `tools/inspect.jai` - Loads resources, Sort import, fixed u16 glyph handling
+
+---
+
+## 2026-01-28: Baked Resources Integration
+
+### Overview
+
+Wired baked resources from dungeon.irh through to actual dungeon generation, so rooms display with varied terrain colors.
+
+### Changes
+
+**`src/resource/runtime.jai`:**
+- Added `regions: [] RuntimeRegion` to ResourceDB
+
+**`src/resource/bake.jai`:**
+- Store baked regions in BAKED_DB
+- Added `get_baked_regions()` accessor
+
+**`src/dungeon/terrain_registry.jai`:**
+- Added `build_terrain_registry_from_baked()` to load from RuntimeTerrain[]
+
+**`src/dungeon/weights.jai`:**
+- Added `load_baked_regions()` to populate room/corridor/vault regions from baked data
+- `init_dungeon_weights()` now tries baked regions first, falls back to hardcoded test regions
+
+**`src/dungeon/makelev.jai`:**
+- `gen_state_init()` now loads terrain registry from baked data when available
+
+### Results
+
+When running `dungeon_test.exe` from project root:
+- **53 terrains** loaded from dungeon.irh
+- **59 room regions** with varied terrain (ice floor, shallow water, slime, fog, etc.)
+- **30 corridor regions**
+- **1 vault region**
+
+Rooms now display with the correct terrain colors based on their selected region from the original Incursion definitions.
+
+---
+
+## 2026-01-28: Wall Placement Bug Fix and EXTENDED Mode Removal
+
+### Wall Placement Bug
+
+**Problem:** Some room types (lifecave, lifelink) had floor tiles at panel edges with no walls around them. Monsters could appear in these "floating" floor areas with rock (void) directly adjacent.
+
+**Root Cause:** In `write_lifecave` and `write_lifelink`, the wall placement loops used `1..h-2` and `1..w-2` bounds, which skipped the first and last row/column. Floor tiles at panel edges never got walls placed around them.
+
+**Fix:** Changed both functions to use `0..h-1` and `0..w-1` for wall placement loops:
+- `src/dungeon/makelev.jai` line 834: `for gy: 0..h-1`
+- `src/dungeon/makelev.jai` line 1788: `for gy: 0..h-1`
+
+**Testing:** Used `inspect.exe` to analyze seed 12349 which had floor tiles at position (40,30) directly adjacent to rock. After fix, walls properly enclose all floor areas.
+
+### EXTENDED Mode Removal
+
+**Motivation:** Simplified codebase by removing unused BSP-based generator mode. Only ORIGINAL (MakeLev panel-based) mode is now supported.
+
+**Changes:**
+- `src/rng.jai`: Removed `EXTENDED` from `GeneratorMode` enum
+- `src/dungeon/generator.jai`: Simplified `generate_dungeon()` to always use ORIGINAL mode
+- `tools/dungeon_test.jai`: Removed mode toggle (M key), mode parameter from functions
+- `tools/inspect.jai`: Removed mode CLI flag processing, simplified output
+
+### Test Results
+
+- 177/181 tests passing (same as before - 4 failures are known monster file parsing issues)
+- Dungeons now properly walled at all panel boundaries
+
+---
+
+## 2026-01-28: Color Mapping and Terrain Visibility Fixes
+
+### Problem: Black Room Interiors in Screenshots
+
+The dungeon screenshot showed large black areas where rooms should have visible floor tiles. Investigation revealed multiple issues:
+
+1. **Color enum mismatch**: `BaseColor` enum ordinal values didn't match ANSI color indices (e.g., `BaseColor.BROWN = 10` but ANSI brown = 6)
+2. **Case-sensitive terrain lookup**: Regions referenced `$"floor"` but terrain was named `"Floor"`, causing lookup failures
+3. **Grey too dim**: ANSI grey (0.7, 0.7, 0.7) was nearly invisible on black background
+
+### Fixes Applied
+
+**1. Color Conversion Function** (`src/resource/bake.jai`):
+Added `parsed_color_to_ansi()` to properly map `BaseColor` enum values to ANSI color indices:
+- `.GREY` -> 7, `.BROWN` -> 6, `.SHADOW` -> 8, etc.
+- Handles modifiers (BRIGHT, LIGHT, DARK) for color variants
+
+**2. Case-Insensitive Terrain Lookup** (`src/dungeon/terrain_registry.jai`):
+- Added `#import "String"` for `to_lower_copy()`
+- Modified `terrain_registry_add()` to store lowercase keys
+- Modified `terrain_registry_get()` to normalize lookup keys to lowercase
+
+**3. Lexer Function Rename** (`src/resource/lexer.jai`):
+- Renamed local `slice()` to `substr()` to avoid conflict with `String.slice`
+- Updated all 11 call sites
+
+**4. Brighter Grey** (`src/dungeon/terrain_registry.jai`):
+- Changed `terrain_color_to_rgb(7)` from 0.7 to 0.85 for better visibility
+
+**5. Headless Screenshot Tool** (`tools/dungeon_screenshot.jai`):
+- Created standalone tool for generating screenshots without window
+- Defines own Color struct and TC_* constants (no Simp dependency)
+
+### Test Results
+
+- 177/181 tests passing (unchanged)
+- Screenshot now shows visible floor tiles in all rooms
+- Grey floor glyphs clearly distinguishable from black background

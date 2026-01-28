@@ -377,8 +377,51 @@ init_dungeon_weights :: (weights: *DungeonWeights) {
     array_reset(*weights.vault_regions);
     array_reset(*weights.corridor_weights);
 
-    // Add test regions for visual variety demonstration
-    add_test_regions(weights);
+    // Try to load from baked resources first
+    db := get_resource_db();
+    if db != null && db.terrains.count > 0 {
+        // Use baked regions from dungeon.irh
+        load_baked_regions(weights, db);
+    } else {
+        // Fall back to hardcoded test regions
+        add_test_regions(weights);
+    }
+}
+
+// Load regions from baked resource database
+load_baked_regions :: (weights: *DungeonWeights, db: *ResourceDB) {
+    // Note: Baked regions are in BAKED_DB which uses RuntimeRegion from bake.jai
+    // We need to get them from the bake module
+    // For now, copy the regions that have floor/wall terrain refs
+
+    // Get regions from the global baked data
+    baked := get_baked_regions();
+    if baked.count == 0 {
+        add_test_regions(weights);
+        return;
+    }
+
+    for i: 0..baked.count-1 {
+        region := baked[i];
+
+        // Skip regions without terrain (RF_NOGEN or abstract)
+        if region.floor_ref.count == 0 && region.wall_ref.count == 0 continue;
+
+        // Categorize by flags
+        if region.flags & RF_CORRIDOR {
+            array_add(*weights.corridor_regions, region);
+        } else if region.flags & RF_VAULT {
+            array_add(*weights.vault_regions, region);
+        } else {
+            // Regular room region
+            array_add(*weights.room_regions, region);
+        }
+    }
+
+    // If no room regions loaded, fall back to test regions
+    if weights.room_regions.count == 0 {
+        add_test_regions(weights);
+    }
 }
 
 // Add test regions with different terrain for demonstration

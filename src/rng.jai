@@ -88,8 +88,7 @@ random :: (max: s32) -> s32 {
     return mt_random(*global_mt, max);
 }
 
-// Generator mode
+// Generator mode (only ORIGINAL is supported - kept for API compatibility)
 GeneratorMode :: enum {
-    ORIGINAL;   // Exact Incursion replication (MT19937, same algorithm)
-    EXTENDED;   // Enhanced version with more variety
+    ORIGINAL;   // Exact Incursion replication (MT19937, MakeLev algorithm)
 }

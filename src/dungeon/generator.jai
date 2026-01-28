@@ -1,10 +1,7 @@
-// Dungeon Generator using BSP (Binary Space Partitioning)
+// Dungeon Generator
 //
-// Creates classic roguelike dungeons with rooms connected by corridors.
-//
-// Supports two modes:
-//   EXTENDED - Enhanced generation with more room variety (default)
-//   ORIGINAL - TODO: Exact MakeLev.cpp replication for identical dungeons
+// Uses the MakeLev panel-based algorithm from the original Incursion.
+// The BSP code below is kept for reference but not used.
 //
 // Note: This file is loaded by main.jai which handles all imports and loads.
 
@@ -229,77 +226,9 @@ bsp_connect_rooms :: (node: *BSPNode, m: *GenMap, rng: *Random_State) {
 }
 
 // Main dungeon generation function
-generate_dungeon :: (m: *GenMap, seed: u64 = 0, mode: GeneratorMode = .EXTENDED, depth: s32 = 1) {
-    if mode == .ORIGINAL {
-        generate_dungeon_original(m, cast(u32)seed, depth);
-        return;
-    }
-
-    // EXTENDED mode - uses Jai's Random module
-    rng: Random_State;
-    if seed == 0 {
-        seed = cast(u64) current_time_monotonic().low;
-    }
-    random_seed(*rng, seed);
-
-    // Initialize map
-    map_init(m);
-    m.depth = depth;
-
-    // Create BSP tree covering the map (with border margin)
-    root := bsp_create(.{1, 1, m.width - 2, m.height - 2});
-
-    // Split the tree (4-5 levels gives good room distribution)
-    bsp_split_recursive(root, *rng, 4);
-
-    // Create rooms in leaves
-    bsp_create_room(root, m, *rng);
-
-    // Connect rooms with corridors
-    bsp_connect_rooms(root, m, *rng);
-
-    // Roughen corridors for more natural look
-    map_roughen_corridors(m, *rng);
-
-    // Place doors where corridors meet rooms
-    map_place_doors(m);
-
-    // Place water pools in some rooms (20% chance per room)
-    for room: m.rooms {
-        if random_get(*rng) % 5 == 0 {
-            cx, cy := rect_center(room.bounds);
-            // Offset from center slightly
-            cx += cast(s32)(random_get(*rng) % 3) - 1;
-            cy += cast(s32)(random_get(*rng) % 3) - 1;
-            radius := 1 + cast(s32)(random_get(*rng) % 2);
-            map_place_pool(m, cx, cy, radius);
-        }
-    }
-
-    // Place stairs
-    if m.rooms.count >= 2 {
-        // Stairs up in first room
-        first_room := m.rooms[0];
-        cx, cy := rect_center(first_room.bounds);
-        // Make sure we don't place on water
-        if map_get(m, cx, cy) == .WATER {
-            cx += 1;
-        }
-        map_set(m, cx, cy, .STAIRS_UP);
-
-        // Stairs down in last room
-        last_room := m.rooms[m.rooms.count - 1];
-        cx, cy = rect_center(last_room.bounds);
-        if map_get(m, cx, cy) == .WATER {
-            cx += 1;
-        }
-        map_set(m, cx, cy, .STAIRS_DOWN);
-    }
-
-    // Clean up BSP tree
-    bsp_free(root);
-
-    print("Generated dungeon (EXTENDED) with % rooms\n", m.rooms.count);
+// Mode parameter kept for API compatibility but only ORIGINAL is supported
+generate_dungeon :: (m: *GenMap, seed: u64 = 0, mode: GeneratorMode = .ORIGINAL, depth: s32 = 1) {
+    generate_dungeon_original(m, cast(u32)seed, depth);
 }
 
 // Original-compatible dungeon generation using MT19937

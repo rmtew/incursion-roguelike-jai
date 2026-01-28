@@ -6,6 +6,7 @@
 #import "Math";
 #import "Random";
 #import "File";
+#import "Sort";
 #import "Window_Creation";
 
 Input :: #import "Input";
@@ -29,6 +30,8 @@ stbi_write :: #import "stb_image_write";
 #load "../src/resource/constants.jai";
 #load "../src/resource/lexer.jai";
 #load "../src/resource/parser.jai";
+#load "../src/resource/runtime.jai";
+#load "../src/resource/bake.jai";
 
 // RNG and dungeon generation
 #load "../src/rng.jai";
@@ -121,7 +124,7 @@ free_screenshot_font :: (font: *ScreenshotFont) {
 }
 
 // Render full map to PNG file
-save_screenshot :: (m: *GenMap, mode: GeneratorMode) -> bool {
+save_screenshot :: (m: *GenMap) -> bool {
     font, ok := load_screenshot_font();
     if !ok return false;
     defer free_screenshot_font(*font);
@@ -168,9 +171,10 @@ save_screenshot :: (m: *GenMap, mode: GeneratorMode) -> bool {
                 fg = TC_BRIGHT_YELLOW;
             }
 
-            // Draw glyph at this position
+            // Draw glyph at this position (clamp extended glyphs to '?' for bitmap font)
+            glyph_u8: u8 = ifx glyph > 255 then #char "?" else cast(u8)glyph;
             draw_glyph_to_buffer(pixels.data, img_width, img_height, *font,
-                                 cast(u8)glyph, mx * font.glyph_width, my * font.glyph_height, fg, bg);
+                                 glyph_u8, mx * font.glyph_width, my * font.glyph_height, fg, bg);
         }
     }
 
@@ -244,6 +248,12 @@ main :: () {
     print("Incursion Dungeon Test\n");
     print("======================\n\n");
 
+    // Initialize resource database (parses .irh files)
+    print("Loading resources...\n");
+    init_resource_db();
+    db := get_resource_db();
+    print("  Loaded % monsters, % items, % terrains\n", db.monsters.count, db.items.count, db.terrains.count);
+
     // Initialize terminal (use smaller font for bigger map)
     term, ok := terminal_init(.F8x8);
     if !ok {
@@ -255,8 +265,7 @@ main :: () {
     // Generate dungeon
     dungeon: GenMap;
     seed: u64 = 12345;  // Fixed seed for reproducibility
-    mode := GeneratorMode.ORIGINAL;  // Start in ORIGINAL to test MakeLev rooms
-    generate_dungeon(*dungeon, seed, mode);
+    generate_dungeon(*dungeon, seed);
 
     print("Terminal: %x% cells\n", TERM_WIDTH, TERM_HEIGHT);
     print("Dungeon: %x% tiles\n", dungeon.width, dungeon.height);
@@ -268,7 +277,6 @@ main :: () {
     print("\nControls:\n");
     print("  Arrow keys - scroll viewport\n");
     print("  R - regenerate dungeon\n");
-    print("  M - toggle mode (EXTENDED/ORIGINAL)\n");
     print("  S - save screenshot to docs/screenshot.png\n");
     print("  ESC - exit\n\n");
 
@@ -304,19 +312,9 @@ main :: () {
                         if view_x < dungeon.width - TERM_WIDTH view_x += 1;
                     case #char "R";
                         regenerate = true;
-                    case #char "M";
-                        // Toggle mode
-                        if mode == .EXTENDED {
-                            mode = .ORIGINAL;
-                            print("Switched to ORIGINAL mode\n");
-                        } else {
-                            mode = .EXTENDED;
-                            print("Switched to EXTENDED mode\n");
-                        }
-                        regenerate = true;
                     case #char "S";
                         // Save screenshot of full map
-                        save_screenshot(*dungeon, mode);
+                        save_screenshot(*dungeon);
                 }
             }
         }
@@ -325,21 +323,21 @@ main :: () {
         if regenerate {
             seed += 1;
             map_free(*dungeon);
-            generate_dungeon(*dungeon, seed, mode);
+            generate_dungeon(*dungeon, seed);
             view_x = 0;
             view_y = 0;
             regenerate = false;
         }
 
         // Render dungeon to terminal
-        render_dungeon_to_terminal(term, *dungeon, view_x, view_y, mode);
+        render_dungeon_to_terminal(term, *dungeon, view_x, view_y);
         terminal_render(term);
 
         sleep_milliseconds(16);  // ~60 FPS
     }
 }
 
-render_dungeon_to_terminal :: (term: *Terminal, m: *GenMap, view_x: s32, view_y: s32, mode: GeneratorMode) {
+render_dungeon_to_terminal :: (term: *Terminal, m: *GenMap, view_x: s32, view_y: s32) {
     terminal_clear(term);
 
     // Draw visible portion of map
@@ -388,9 +386,8 @@ render_dungeon_to_terminal :: (term: *Terminal, m: *GenMap, view_x: s32, view_y:
     }
 
     // Draw status line
-    mode_str := ifx mode == .EXTENDED then "EXT" else "ORI";
-    status := tprint("D:% %  Rooms:% Monsters:% Items:% [R:regen M:mode S:screenshot ESC:quit]",
-                     m.depth, mode_str, m.rooms.count, m.monsters.count, m.items.count);
+    status := tprint("D:%  Rooms:% Monsters:% Items:% [R:regen S:screenshot ESC:quit]",
+                     m.depth, m.rooms.count, m.monsters.count, m.items.count);
     for i: 0..min(status.count-1, TERM_WIDTH-1) {
         terminal_set(term, cast(s32)i, TERM_HEIGHT - 1, status[i], TC_BRIGHT_WHITE, Color.{0.2, 0.2, 0.2});
     }

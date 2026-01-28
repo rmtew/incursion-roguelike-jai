@@ -9,6 +9,7 @@
 5. **Maintain JOURNAL.md** - Record summaries of changes made in each session by appending new entries. Include what was changed, why, and test results.
 6. **Maintain BACKLOG.md** - Track workarounds, deferred work, and ideas for future improvements. Update when adding workarounds or identifying issues to revisit later.
 7. **Keep CLAUDE.md updated for commit messages** - When making significant changes, ensure CLAUDE.md reflects current state so it can serve as context for writing accurate, detailed commit messages.
+8. **Task lists should include documentation updates** - When creating task lists for multi-step work, always include a final task for updating JOURNAL.md, BACKLOG.md, and committing changes.
 
 ## Environment
 
@@ -27,7 +28,9 @@ incursion-port/
   CLAUDE.md              - This file (project guide)
   PLAN-MVP.md            - MVP roadmap: dungeon generation with terminal view
   JOURNAL.md             - Development journal with change summaries
-  backlog.md             - Workarounds, deferred work, and future ideas
+  BACKLOG.md             - Workarounds, deferred work, and future ideas
+  lib/
+    *.irh                - Copied Incursion resource files for parsing
   src/
     main.jai             - Entry point, imports all modules, runs tests
     defines.jai          - Core types: Dir, Glyph, hObj, rID, colors
@@ -46,6 +49,8 @@ incursion-port/
       constants.jai      - 3572 constants from Defines.h (binary search)
       lexer.jai          - Tokenizer with 130+ token types
       parser.jai         - Recursive descent parser
+      runtime.jai        - Runtime resource structs (RMonster, RItem, etc.)
+      bake.jai           - Resource baking (parse .irh → runtime tables)
     dungeon/
       map.jai            - GenMap, Terrain enum, room carving
       terrain_registry.jai - Runtime terrain lookup by name

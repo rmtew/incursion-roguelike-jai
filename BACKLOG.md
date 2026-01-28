@@ -10,12 +10,18 @@
   - flavors.irh (883), mundane.irh (73), domains.irh (44), weapons.irh (118), enclist.irh (87), dungeon.irh (184)
 - [x] Phase 3: Population System - Per-panel population, item distribution, furnishing (2026-01-28)
 - [x] Phase 5: Inspection Interface - `tools/inspect.jai` CLI tool (2026-01-28)
+- [x] Phase 1: Resource Baking - Runtime .irh parsing to embedded tables (2026-01-28)
+  - 429 monsters, 201 items, 53 terrains, 91 regions baked
+  - Binary search lookups working
+  - Extended glyph codes (256+) preserved
+  - Baked terrains/regions flow through to dungeon generation
 
 ### In Progress
+- [ ] Phase 6: Integration & Testing - Wire everything together
+  - [x] Baked resources integrated with dungeon viewer (2026-01-28)
+  - [ ] Full end-to-end gameplay test
 
 ### Not Started
-- [ ] Phase 1: Resource Baking - Compile-time .irh to runtime tables
-- [ ] Phase 6: Integration & Testing - Wire everything together
 
 ## Dungeon Generator Improvements Needed
 
@@ -31,7 +37,7 @@
 - [x] Water pools
 - [x] Rivers/streamers (write_streamer)
 - [x] Chasms (CHASM terrain type)
-- [ ] Special terrain from region definitions
+- [x] Special terrain from region definitions (53 terrains from dungeon.irh)
 
 ### Structural Features
 - [x] Doors at room entrances (place_doors_makelev)
@@ -47,6 +53,15 @@
 - [ ] Occasional dead ends
 
 ## Current Parsing Issues
+
+### Monster Files (mon1-4.irh) - PARTIAL
+- Files partially parse (425 of ~600 monsters recovered)
+- **Unsupported syntax:**
+  - SC_WEA bare constants (need context-sensitive tokenization)
+  - ABILITY() macro calls (function-like macros with complex args)
+  - Multi-line Desc blocks (string continuation handling)
+- Parser continues after errors to recover partial data
+- Not critical for MVP - enough monsters for testing
 
 ### mundane.irh - FIXED (2026-01-28)
 - ~~Line 659: `Potion Effect "flask of oil"` - Fixed with preprocessor alias + compound effect parsing~~

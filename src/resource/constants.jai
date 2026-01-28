@@ -7159,7 +7159,7 @@ lookup_resource_constant :: (name: string) -> s64, bool {
 
     while lo <= hi {
         mid := (lo + hi) / 2;
-        cmp := compare_strings(name, CONSTANT_NAMES[mid]);
+        cmp := cmp_strings_const(name, CONSTANT_NAMES[mid]);
         if cmp == 0 {
             return CONSTANT_VALUES[mid], true;
         } else if cmp < 0 {
@@ -7172,7 +7172,7 @@ lookup_resource_constant :: (name: string) -> s64, bool {
     return 0, false;
 }
 
-compare_strings :: (a: string, b: string) -> s32 {
+cmp_strings_const :: (a: string, b: string) -> s32 {
     len := min(a.count, b.count);
     for i: 0..len-1 {
         if a[i] < b[i] return -1;

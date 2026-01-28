@@ -29,7 +29,8 @@ Terrain :: enum u8 {
 }
 
 // Get the glyph character for a terrain type
-terrain_glyph :: (t: Terrain) -> u8 {
+// Returns u16 to allow extended glyph codes (GLYPH_* values 256+)
+terrain_glyph :: (t: Terrain) -> u16 {
     if t == {
         case .ROCK;         return #char " ";
         case .WALL;         return #char "#";
@@ -133,7 +134,7 @@ DoorInfo :: struct {
 
 // Tile display info (for visual variety via regions)
 TileDisplay :: struct {
-    glyph: u8;          // Character to display (overrides terrain default)
+    glyph: u16;         // Character code or GLYPH_* constant (256+)
     fg_color: s64;      // Foreground color constant
     use_custom: bool;   // If true, use glyph/fg_color instead of terrain default
 }
@@ -205,7 +206,7 @@ map_set :: (m: *GenMap, x: s32, y: s32, terrain: Terrain) {
 }
 
 // Set terrain with custom display info (for region terrain variety)
-map_set_with_display :: (m: *GenMap, x: s32, y: s32, terrain: Terrain, glyph: u8, fg_color: s64) {
+map_set_with_display :: (m: *GenMap, x: s32, y: s32, terrain: Terrain, glyph: u16, fg_color: s64) {
     if x < 0 || x >= m.width || y < 0 || y >= m.height {
         return;
     }

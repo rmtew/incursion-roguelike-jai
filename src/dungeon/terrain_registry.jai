@@ -4,6 +4,7 @@
 // reference specific terrain types (e.g., "shallow water", "ice wall").
 
 #import "Hash_Table";
+#import "String";
 
 // Simple color struct for terrain_color_to_rgb (avoids dependency on terminal/window.jai)
 TerrainColor :: struct {
@@ -13,7 +14,7 @@ TerrainColor :: struct {
 // Runtime terrain representation (resolved from ParsedTerrain)
 RuntimeTerrain :: struct {
     name: string;
-    glyph: u8;
+    glyph: u16;            // Character code or GLYPH_* constant (256+)
     fg_color: s64;         // Color constant from resources
     bg_color: s64;         // Background color (usually 0)
     material: s64;         // Material constant
@@ -56,15 +57,18 @@ terrain_registry_add :: (reg: *TerrainRegistry, terrain: RuntimeTerrain) -> *Run
     array_add(*reg.terrains, terrain);
     ptr := *reg.terrains[reg.terrains.count - 1];
 
-    // Add to lookup table
-    table_add(*reg.by_name, terrain.name, ptr);
+    // Add to lookup table with lowercase key for case-insensitive lookup
+    lower_name := to_lower_copy(terrain.name);
+    table_add(*reg.by_name, lower_name, ptr);
 
     return ptr;
 }
 
-// Look up terrain by name
+// Look up terrain by name (case-insensitive)
 terrain_registry_get :: (reg: *TerrainRegistry, name: string) -> *RuntimeTerrain {
-    ptr := table_find_pointer(*reg.by_name, name);
+    lower_name := to_lower_copy(name);
+    defer free(lower_name);
+    ptr := table_find_pointer(*reg.by_name, lower_name);
     if ptr != null return ptr.*;
     return null;
 }
@@ -100,6 +104,16 @@ build_terrain_registry :: (reg: *TerrainRegistry, parsed: [] ParsedTerrain) {
         }
 
         terrain_registry_add(reg, rt);
+    }
+}
+
+// Build terrain registry from baked RuntimeTerrain array
+build_terrain_registry_from_baked :: (reg: *TerrainRegistry, baked: [] RuntimeTerrain) {
+    terrain_registry_init(reg);
+
+    for terrain: baked {
+        // Copy the terrain (baked data is already in RuntimeTerrain format)
+        terrain_registry_add(reg, terrain);
     }
 }
 
@@ -246,7 +260,7 @@ terrain_color_to_rgb :: (color_const: s64) -> TerrainColor {
         case 4;  return .{0.5, 0.0, 0.0};        // Dark red
         case 5;  return .{0.5, 0.0, 0.5};        // Dark magenta
         case 6;  return .{0.6, 0.4, 0.2};        // Brown
-        case 7;  return .{0.7, 0.7, 0.7};        // Grey
+        case 7;  return .{0.85, 0.85, 0.85};     // Grey (brightened for visibility)
         case 8;  return .{0.4, 0.4, 0.4};        // Dark grey
         case 9;  return .{0.3, 0.3, 1.0};        // Light blue
         case 10; return .{0.3, 1.0, 0.3};        // Light green

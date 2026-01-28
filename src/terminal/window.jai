@@ -55,7 +55,7 @@ TC_BRIGHT_MAGENTA :: Color.{1.0, 0.2, 1.0};
 
 // A single cell in the terminal
 TermCell :: struct {
-    char: u8;       // ASCII character
+    char: u16;      // Character code (u16 to support extended glyph codes 256+)
     fg: Color;      // Foreground color
     bg: Color;      // Background color
 }
@@ -134,7 +134,7 @@ terminal_shutdown :: (term: *Terminal) {
 }
 
 // Set a cell's content
-terminal_set :: (term: *Terminal, x: s32, y: s32, char: u8, fg: Color, bg: Color) {
+terminal_set :: (term: *Terminal, x: s32, y: s32, char: u16, fg: Color, bg: Color) {
     if x < 0 || x >= TERM_WIDTH || y < 0 || y >= TERM_HEIGHT return;
     idx := y * TERM_WIDTH + x;
     term.cells[idx].char = char;
@@ -264,7 +264,13 @@ terminal_dump :: (term: *Terminal) -> string {
     for y: 0..TERM_HEIGHT-1 {
         for x: 0..TERM_WIDTH-1 {
             idx := y * TERM_WIDTH + x;
-            append(*builder, term.cells[idx].char);
+            ch := term.cells[idx].char;
+            // For extended glyph codes (256+), output a placeholder
+            if ch < 256 {
+                append(*builder, cast(u8)ch);
+            } else {
+                append(*builder, cast(u8)#char "?");
+            }
         }
         append(*builder, "\n");
     }

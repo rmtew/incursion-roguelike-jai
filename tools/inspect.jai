@@ -7,13 +7,11 @@
 //   inspect.exe                         # Interactive mode
 //   inspect.exe --seed 12345            # Start with specific seed
 //   inspect.exe --depth 5               # Start at dungeon depth 5
-//   inspect.exe --mode ext              # Use extended generator mode
 //   inspect.exe --quiet --batch "dump"  # Run command silently and exit
 //
 // CLI Flags:
 //   --seed N, -s N      Set RNG seed (default: 12345)
 //   --depth N, -d N     Set dungeon depth (default: 1)
-//   --mode MODE, -m     Set generator mode: ext/extended or ori/original
 //   --batch CMD, -b     Run single command and exit
 //   --quiet, -q         Suppress generation messages (for clean output)
 //   --help, -h          Show help
@@ -39,7 +37,6 @@
 //   walk X,Y DIR N    Simulate walking N steps in direction
 //   seed [N]          Get/set RNG seed
 //   depth [N]         Get/set dungeon depth
-//   mode [ext|ori]    Get/set generator mode
 //   generate          Regenerate dungeon
 //   help              Show commands
 //   quit              Exit
@@ -49,6 +46,7 @@
 Str :: #import "String";
 #import "Math";
 #import "Random";
+#import "Sort";
 
 // Core modules needed by dungeon generation
 #load "../src/defines.jai";
@@ -67,6 +65,8 @@ Str :: #import "String";
 #load "../src/resource/constants.jai";
 #load "../src/resource/lexer.jai";
 #load "../src/resource/parser.jai";
+#load "../src/resource/runtime.jai";
+#load "../src/resource/bake.jai";
 
 // RNG and dungeon generation
 #load "../src/rng.jai";
@@ -114,14 +114,9 @@ main :: () {
                 if ok state.depth = cast(s32)val;
             }
         } else if arg == "--mode" || arg == "-m" {
+            // Mode option kept for compatibility but only ORIGINAL is supported
             i += 1;
-            if i < args.count {
-                if args[i] == "ext" || args[i] == "extended" {
-                    state.mode = .EXTENDED;
-                } else {
-                    state.mode = .ORIGINAL;
-                }
-            }
+            state.mode = .ORIGINAL;
         } else if arg == "--quiet" || arg == "-q" {
             state.quiet = true;
             makelev_quiet = true;
@@ -131,6 +126,9 @@ main :: () {
         }
         i += 1;
     }
+
+    // Initialize resource database (loads baked terrains and regions)
+    init_resource_db();
 
     // Generate initial dungeon
     do_generate();
@@ -272,29 +270,15 @@ execute_command :: (line: string) {
             }
 
         case "mode";
-            if parts.count < 2 {
-                mode_str := ifx state.mode == .EXTENDED then "extended" else "original";
-                print("Current mode: %\n", mode_str);
-                return;
-            }
-            if parts[1] == "ext" || parts[1] == "extended" {
-                state.mode = .EXTENDED;
-                print("Mode set to extended\n");
-            } else if parts[1] == "ori" || parts[1] == "original" {
-                state.mode = .ORIGINAL;
-                print("Mode set to original\n");
-            } else {
-                print("Invalid mode (use 'ext' or 'ori')\n");
-            }
+            // Only ORIGINAL mode is supported
+            print("Current mode: original\n");
 
         case "generate"; #through;
         case "gen"; #through;
         case "regen";
             do_generate();
-            print("Generated dungeon: seed=% depth=% mode=% rooms=%\n",
-                  state.seed, state.depth,
-                  ifx state.mode == .EXTENDED then "extended" else "original",
-                  state.dungeon.rooms.count);
+            print("Generated dungeon: seed=% depth=% rooms=%\n",
+                  state.seed, state.depth, state.dungeon.rooms.count);
 
         case "rooms";
             list_rooms();
@@ -650,8 +634,11 @@ get_cell_char :: (m: *GenMap, x: s32, y: s32) -> u8 {
     }
 
     // Return terrain glyph (includes stairs)
+    // For extended glyphs (256+), return '?' for ASCII output
     terrain := map_get(m, x, y);
-    return terrain_glyph(terrain);
+    glyph := terrain_glyph(terrain);
+    if glyph > 255 return #char "?";
+    return cast(u8) glyph;
 }
 
 // Count stairs in the map
@@ -677,7 +664,7 @@ dump_json :: () {
     print("  \"height\": %,\n", m.height);
     print("  \"depth\": %,\n", m.depth);
     print("  \"seed\": %,\n", state.seed);
-    print("  \"mode\": \"%\",\n", ifx state.mode == .EXTENDED then "extended" else "original");
+    print("  \"mode\": \"%\",\n", "original");
     print("  \"rooms\": %,\n", m.rooms.count);
     print("  \"monsters\": %,\n", m.monsters.count);
     print("  \"items\": %,\n", m.items.count);
@@ -746,12 +733,16 @@ query_cell :: (x: s32, y: s32, json_mode: bool) {
         }
     }
 
+    // Convert glyph to displayable character
+    glyph := terrain_glyph(terrain);
+    glyph_char: u8 = ifx glyph > 255 then #char "?" else cast(u8)glyph;
+
     if json_mode {
         print("{\n");
         print("  \"x\": %,\n", x);
         print("  \"y\": %,\n", y);
         print("  \"terrain\": \"%\",\n", terrain_name);
-        print("  \"glyph\": \"%\",\n", to_string(*terrain_glyph(terrain), 1));
+        print("  \"glyph\": \"%\",\n", to_string(*glyph_char, 1));
         print("  \"passable\": %,\n", ifx is_passable(terrain) then "true" else "false");
         print("  \"monster\": %,\n", ifx has_monster then "true" else "false");
         print("  \"item\": %,\n", ifx has_item then "true" else "false");
@@ -761,7 +752,7 @@ query_cell :: (x: s32, y: s32, json_mode: bool) {
         print("}\n");
     } else {
         print("Location (%,%)\n", x, y);
-        print("  Terrain: % ('%')\n", terrain_name, to_string(*terrain_glyph(terrain), 1));
+        print("  Terrain: % ('%')\n", terrain_name, to_string(*glyph_char, 1));
         print("  Passable: %\n", ifx is_passable(terrain) then "yes" else "no");
         if has_monster print("  Monster: yes\n");
         if has_item print("  Item: yes\n");
@@ -831,7 +822,7 @@ print_stats :: (json_mode: bool) {
         print("{\n");
         print("  \"seed\": %,\n", state.seed);
         print("  \"depth\": %,\n", state.depth);
-        print("  \"mode\": \"%\",\n", ifx state.mode == .EXTENDED then "extended" else "original");
+        print("  \"mode\": \"%\",\n", "original");
         print("  \"width\": %,\n", m.width);
         print("  \"height\": %,\n", m.height);
         print("  \"rooms\": %,\n", m.rooms.count);
@@ -853,7 +844,7 @@ print_stats :: (json_mode: bool) {
         print("==================\n");
         print("Seed: %\n", state.seed);
         print("Depth: %\n", state.depth);
-        print("Mode: %\n", ifx state.mode == .EXTENDED then "extended" else "original");
+        print("Mode: %\n", "original");
         print("Size: %x%\n", m.width, m.height);
         print("Rooms: %\n", m.rooms.count);
         print("Monsters: %\n", m.monsters.count);
@@ -2174,7 +2165,7 @@ export_state :: (filename: string) {
     append(*builder, "{\n");
     print_to_builder(*builder, "  \"seed\": %,\n", state.seed);
     print_to_builder(*builder, "  \"depth\": %,\n", state.depth);
-    print_to_builder(*builder, "  \"mode\": \"%\",\n", ifx state.mode == .EXTENDED then "extended" else "original");
+    print_to_builder(*builder, "  \"mode\": \"%\",\n", "original");
     print_to_builder(*builder, "  \"width\": %,\n", m.width);
     print_to_builder(*builder, "  \"height\": %,\n", m.height);
 

@@ -374,15 +374,20 @@ gen_state_init :: (gs: *GenState, con: DungeonConstants = DEFAULT_CON, depth: s3
         gs.gen_info.cells[i].solid = true;
     }
 
-    // Initialize weighted selection
+    // Initialize terrain registry - try baked terrains first
+    db := get_resource_db();
+    if db != null && db.terrains.count > 0 {
+        build_terrain_registry_from_baked(*gs.terrain_registry, db.terrains);
+    } else {
+        create_default_terrains(*gs.terrain_registry);
+    }
+    gs.default_floor = terrain_registry_get(*gs.terrain_registry, "floor");
+    gs.default_wall = terrain_registry_get(*gs.terrain_registry, "wall");
+
+    // Initialize weighted selection (uses baked regions if available)
     init_dungeon_weights(*gs.dungeon_weights);
     init_selection_state(*gs.selection, *gs.dungeon_weights, depth);
     gs.current_region = null;
-
-    // Initialize terrain registry with defaults
-    create_default_terrains(*gs.terrain_registry);
-    gs.default_floor = terrain_registry_get(*gs.terrain_registry, "floor");
-    gs.default_wall = terrain_registry_get(*gs.terrain_registry, "wall");
 
     // Resolve terrain references for all regions
     resolve_region_terrains(*gs.dungeon_weights, *gs.terrain_registry);
@@ -825,9 +830,9 @@ write_lifecave :: (m: *GenMap, gs: *GenState, r: Rect) {
         }
     }
 
-    // Add walls around open spaces
-    for gy: 1..h-2 {
-        for gx: 1..w-2 {
+    // Add walls around open spaces (use full bounds to catch edge tiles)
+    for gy: 0..h-1 {
+        for gx: 0..w-1 {
             idx := gy * w + gx;
             if grid[idx] == 0 {  // This is floor
                 mx := r.x1 + cast(s32)gx - 1;
@@ -1779,9 +1784,9 @@ write_lifelink :: (m: *GenMap, gs: *GenState, panel: Rect) {
         }
     }
 
-    // Add walls
-    for gy: 1..h-2 {
-        for gx: 1..w-2 {
+    // Add walls (use full bounds to catch edge tiles)
+    for gy: 0..h-1 {
+        for gx: 0..w-1 {
             idx := cast(s32)gy * w + cast(s32)gx;
             if grid[idx] == 0 {
                 mx := panel.x1 + cast(s32)gx;
