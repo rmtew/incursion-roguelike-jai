@@ -249,7 +249,39 @@ Integrated `glyph_to_cp437()` into the rendering pipeline.
 - Tests pass (177/181, same as before)
 - "Extended glyph codes (256+) preserved: YES" in test output
 
-**Remaining:** Visual verification that GLYPH_FLOOR, GLYPH_WALL render correctly.
+**Remaining:** ~~Visual verification that GLYPH_FLOOR, GLYPH_WALL render correctly.~~ Done via dungeon_verify.exe.
+
+---
+
+## 2026-01-29: Automated Visual Verification Tool
+
+Created `tools/dungeon_verify.exe` to formalize visual correctness testing.
+
+### Checks Implemented
+
+1. **No '?' glyphs** - All extended glyphs have valid CP437 mappings
+2. **Water is blue** - WATER terrain renders with blue color
+3. **Lava is red** - LAVA terrain renders with red color
+4. **Extended glyph conversion** - All GLYPH_* constants (256+) map to valid CP437
+5. **Full map verification** - Every cell's glyph and color matches expectations
+
+### Bug Found and Fixed
+
+During implementation, discovered `map_set()` didn't clear stale TileDisplay data. Water streamers appeared grey because room's region color persisted after terrain was overwritten.
+
+**Fix:** `map_set()` now sets `use_custom = false` to clear stale display info.
+
+### Usage
+
+```bash
+dungeon_verify.exe [--seed N] [--verbose]
+```
+
+### Lessons Learned
+
+1. Expected values in tests must match actual implementation
+2. Initial test showed 64 failures - wrong expectations for PILLAR ('0' not '#'), DOOR_OPEN ("'" not '/')
+3. Tests themselves need verification against the source of truth
 
 ---
 
