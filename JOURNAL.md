@@ -1435,3 +1435,39 @@ Added `parsed_color_to_ansi()` to properly map `BaseColor` enum values to ANSI c
 - 177/181 tests passing (unchanged)
 - Screenshot now shows visible floor tiles in all rooms
 - Grey floor glyphs clearly distinguishable from black background
+
+---
+
+## 2026-01-28: Glyph Rendering Understanding Correction
+
+### Problem: Extended Glyphs Render as "?"
+
+Screenshots show "?" characters where terrain glyphs should appear. Extended glyphs (GLYPH_FLOOR = 323, GLYPH_WALL = 264, etc.) exceed the 256-character range of the bitmap font.
+
+### Corrected Understanding
+
+Initial research incorrectly treated Unicode mappings in `Wcurses.cpp` as the primary rendering path. User correction:
+
+**Fonts are the PRIMARY display.** The original Incursion used:
+- CP437 bitmap fonts (256 chars in 16x16 grid) - the main rendering mode
+- Unicode/ASCII in `Wcurses.cpp` is a **fallback** for pure curses/text terminals
+
+**GLYPH_* constants are aliases** that map to CP437 character codes via a lookup table in `Wlibtcod.cpp`:
+- `GLYPH_FLOOR (323)` → CP437 code 250 (middle dot ·)
+- `GLYPH_FLOOR2 (324)` → CP437 code 249 (small square)
+- `GLYPH_WALL (264)` → CP437 code 177 (medium shade ▒)
+- `GLYPH_ROCK (265)` → CP437 code 176 (light shade ░)
+- `GLYPH_WATER` / `GLYPH_LAVA` → CP437 code 247 (almost equal ≈)
+
+**Color is applied separately** from glyphs. This is why lava (red) and water (blue) can share the same glyph image (CP437 code 247) - the glyph defines shape, color is applied on top.
+
+### Action Taken
+
+Added detailed backlog entry under "Technical Debt > Glyph Rendering (HIGH PRIORITY)" documenting:
+- The correct understanding of the rendering architecture
+- The specific GLYPH_* to CP437 mappings needed
+- Reference to the authoritative source file (`Wlibtcod.cpp` lines 448-600)
+
+### Impact
+
+Our 8x8.png font is already in CP437 layout. Once the lookup table is implemented, extended glyphs will render correctly with no font changes needed.

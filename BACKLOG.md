@@ -176,6 +176,34 @@ Ideas for enabling Claude Code to drive and test the GUI:
 
 ## Technical Debt
 
+### Glyph Rendering (HIGH PRIORITY)
+
+**Current Problem**: Extended glyphs (GLYPH_FLOOR = 323, GLYPH_WALL = 264, etc.) render as "?" in screenshots because the bitmap font only has 256 characters.
+
+**Root Cause Understanding** (corrected 2026-01-28):
+- **Fonts are the PRIMARY display** - the original Incursion used CP437 bitmap fonts (256 chars in 16x16 grid)
+- Unicode/ASCII in `Wcurses.cpp` is a **fallback** for pure text terminals, not the main rendering path
+- GLYPH_* constants are **aliases** that map to CP437 character codes via lookup table
+- **Color is applied separately** from glyphs - lava (red) and water (blue) share the same glyph image (CP437 code 247)
+
+**Solution Required**:
+1. Implement GLYPH_* to CP437 lookup table based on `Wlibtcod.cpp` lines 448-600
+2. Key mappings from original source:
+   - `GLYPH_FLOOR (323)` → CP437 code 250 (middle dot ·)
+   - `GLYPH_FLOOR2 (324)` → CP437 code 249 (small square)
+   - `GLYPH_WALL (264)` → CP437 code 177 (medium shade ▒)
+   - `GLYPH_ROCK (265)` → CP437 code 176 (light shade ░)
+   - `GLYPH_WATER` → CP437 code 247 (almost equal ≈)
+   - `GLYPH_LAVA` → CP437 code 247 (same glyph, different color)
+3. For glyphs 256+, use lookup table to get CP437 code (0-255)
+4. For glyphs 0-255, use directly as CP437 code
+5. Our 8x8.png font is already CP437 layout, so this should "just work" once mapping is added
+
+**Reference Files**:
+- `C:/Data/R/roguelike - incursion/repo-work/src/Wlibtcod.cpp` - Primary glyph→CP437 lookup table
+- `C:/Data/R/roguelike - incursion/repo-work/src/Wcurses.cpp` - Unicode fallback (NOT primary)
+- `C:/Data/R/roguelike - incursion/repo-work/inc/Defines.h` - GLYPH_* constant definitions
+
 ### Terminal Renderer
 - Font path fallback is hacky (tries both `fonts/` and `../fonts/`)
 - Could use Jai's `#run` to embed font at compile time
