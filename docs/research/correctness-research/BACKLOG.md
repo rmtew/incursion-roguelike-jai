@@ -18,13 +18,14 @@
 
 ### Glyph Rendering (HIGH PRIORITY)
 
-**Status:** Spec complete, implementation needed
+**Status:** Lookup table extracted, integration needed
 
 **Spec:** `docs/research/specs/rendering-pipeline.md`
+**Implementation:** `src/glyph_cp437.jai`
 
 **Tasks:**
-1. [ ] Extract full GLYPH_* → CP437 lookup table from `src/Wlibtcod.cpp` lines 448-606
-2. [ ] Implement `glyph_to_cp437(id: u16) -> u8` function
+1. [x] Extract full GLYPH_* → CP437 lookup table from `src/Wlibtcod.cpp` lines 448-606
+2. [x] Implement `glyph_to_cp437(id: u16) -> u8` function
 3. [ ] Update terminal rendering to apply lookup before font atlas indexing
 4. [ ] Verify extended glyphs (GLYPH_FLOOR, GLYPH_WALL, etc.) render correctly
 
