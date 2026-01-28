@@ -13,7 +13,7 @@
 
 ### Not Started
 - [ ] Phase 1: Resource Baking - Compile-time .irh to runtime tables
-- [ ] Phase 3: Population System - Monsters, items from encounter tables (using baked resources)
+- [x] Phase 3: Population System - Per-panel population, item distribution, furnishing (2026-01-28)
 - [x] Phase 5: Inspection Interface - `tools/inspect.jai` CLI tool (2026-01-28)
 - [ ] Phase 6: Integration & Testing - Wire everything together
 

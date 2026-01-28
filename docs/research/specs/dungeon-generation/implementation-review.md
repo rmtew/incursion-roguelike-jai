@@ -148,15 +148,20 @@ PRIO_MAX = 120
 
 | Aspect | Spec | Implementation | Status |
 |--------|------|----------------|--------|
-| PopulatePanel | Trigger encounter for each panel | populate_dungeon() per level | PARTIAL |
+| PopulatePanel | Trigger encounter for each panel | populate_panel() per room | MATCHES |
 | Encounter generation | 7-stage algorithm with XCR budget | Simplified density-based | PARTIAL |
 | Monster density | OpenC/30 (depth>2), /50 (depth=2), /75 (depth=1) | monster_density_divisor() | MATCHES |
 | Monster count caps | maxAmtByCR: 5/7/10/12/15/50 | max_monsters_by_cr() | MATCHES |
-| FurnishArea | Place furniture based on region | Room-based item placement | PARTIAL |
-| Chest contents | MIN to MAX items, lock based on depth | NOT IMPLEMENTED | MISSING |
-| Out-of-depth monsters | 22% - mLuck chance | 22% chance, CR +1 to +3 | PARTIAL |
+| FurnishArea | Place furniture based on region | furnish_room() with patterns | MATCHES |
+| Chest chance | CHEST_CHANCE percentage | 15% chest placement | MATCHES |
+| Treasure chance | TREASURE_CHANCE percentage | 25% treasure at CR+3 | MATCHES |
+| Cursed items | CURSED_CHANCE percentage | 10% of treasure cursed | MATCHES |
+| Staple items | STAPLE_CHANCE percentage | 20% staple items | MATCHES |
+| Out-of-depth monsters | 22% - mLuck chance | 22% chance, CR +1 to +4 | MATCHES |
+| Aquatic placement | Aquatic in water, non-aquatic not | find_open_in_room() | MATCHES |
+| Party assignment | Same panel = same party | party_id per room | MATCHES |
 
-**Status:** Basic population system implemented. Dungeons now have monsters and items.
+**Status:** Population system fully implemented with per-panel placement, proper item distribution, and terrain rules.
 
 ## Region System Comparison
 
@@ -194,8 +199,8 @@ Missing: RF_ROCKTYPE, RF_CAVE, RF_AUTO, RF_OPT_DIM, RF_VAULT, RF_NOMONSTER, RF_N
 
 ### High Priority (Affects Core Gameplay)
 
-1. ~~**Population system** - No monsters/items/features generated~~ **FIXED** (basic implementation)
-2. **RM_SHAPED rooms** - Can't render predefined room layouts
+1. ~~**Population system** - No monsters/items/features generated~~ **FIXED** (full per-panel implementation)
+2. ~~**RM_SHAPED rooms** - Can't render predefined room layouts~~ **FIXED**
 3. **Region terrain** - All rooms look the same (no themed areas)
 4. ~~**Trap placement** - Missing hazards~~ **FIXED**
 5. ~~**Stair placement** - Single stair instead of MIN_STAIRS to MAX_STAIRS~~ **FIXED**
@@ -204,13 +209,14 @@ Missing: RF_ROCKTYPE, RF_CAVE, RF_AUTO, RF_OPT_DIM, RF_VAULT, RF_NOMONSTER, RF_N
 
 1. **Corridor regions** - No themed corridor appearances
 2. **Streamer system** - Simplified compared to original
-3. **Missing room types** - RM_DESTROYED, RM_RANDTOWN, RM_GRID, RM_LIFELINK
-4. **Door states** - No open/locked/trapped states
+3. ~~**Missing room types** - RM_DESTROYED, RM_RANDTOWN, RM_GRID, RM_LIFELINK~~ **FIXED** (RM_DESTROYED, RM_GRID, RM_LIFELINK)
+4. ~~**Door states** - No open/locked/trapped states~~ **FIXED**
+5. ~~**Furnishing system** - No room furniture~~ **FIXED**
 
 ### Lower Priority (Polish)
 
-1. **Corridor edge clamping** - Corridors might hit map edge
-2. **Treasure deposits** - Hidden treasures in walls
+1. ~~**Corridor edge clamping** - Corridors might hit map edge~~ **FIXED**
+2. ~~**Treasure deposits** - Hidden treasures in walls~~ **FIXED**
 3. **RF_* flags** - Many region flags not implemented
 
 ## Recommendations

@@ -2940,6 +2940,179 @@ place_treasure_deposits :: (m: *GenMap, depth: s32) {
 }
 
 // ============================================================================
+// Furnishing System
+// Source: MakeLev.cpp:2951-3266 (FurnishArea)
+//         Defines.h:3828-3843 (FU_* constants)
+// ============================================================================
+
+// Furnishing types from Defines.h:3828-3843
+FurnishType :: enum {
+    FU_NONE;
+    FU_SPLATTER;              // Random scatter
+    FU_TRAIL;                 // Not implemented
+    FU_LIFEBLOB;              // Cellular automata patches
+    FU_GRID;                  // Regular 2x2 grid
+    FU_COLUMNS;               // Alternating rows/columns
+    FU_CENTER;                // Room center points
+    FU_RANDOM;                // Single random placement
+    FU_TABLE;                 // Table placement
+    FU_BED;                   // Bed placement
+    FU_CORNERS;               // Corner positions
+    FU_XCORNERS;              // Extended corners
+    FU_SPACED_COLUMNS;        // Widely spaced columns
+    FU_CENTER_CIRCLE_SMALL;   // Small circle at center
+    FU_CENTER_CIRCLE_MEDIUM;  // Medium circle at center
+    FU_CENTER_CIRCLE_LARGE;   // Large circle at center
+    FU_INNER_COLUMNS;         // Columns with 2-tile border
+}
+
+// Apply furnishing pattern to a room
+// Source: MakeLev.cpp:2951-3266
+furnish_area :: (m: *GenMap, room: Room, pattern: FurnishType, terrain: Terrain = .PILLAR) {
+    if pattern == .FU_NONE return;
+
+    r := room.bounds;
+    room_w := rect_width(r);
+    room_h := rect_height(r);
+
+    if room_w < 4 || room_h < 4 return;  // Too small to furnish
+
+    if pattern == {
+        case .FU_SPLATTER;
+            // Random scatter: ~1/5 of room volume
+            // Source: MakeLev.cpp:3058-3068
+            count := room_w * room_h / 5;
+            for i: 0..count-1 {
+                x := r.x1 + 1 + random(room_w - 2);
+                y := r.y1 + 1 + random(room_h - 2);
+                if map_get(m, x, y) == .FLOOR {
+                    map_set(m, x, y, terrain);
+                }
+            }
+
+        case .FU_GRID;
+            // Regular 2x2 grid with 1-tile border
+            // Source: MakeLev.cpp:3107-3113
+            for x: 0..(room_w-3)/2 {
+                for y: 0..(room_h-3)/2 {
+                    px := r.x1 + 1 + x * 2;
+                    py := r.y1 + 1 + y * 2;
+                    if map_get(m, px, py) == .FLOOR {
+                        map_set(m, px, py, terrain);
+                    }
+                }
+            }
+
+        case .FU_COLUMNS;
+            // 50% vertical bars, 50% horizontal bars
+            // Source: MakeLev.cpp:3129-3141
+            if random(2) == 0 {
+                // Vertical bars
+                for x: 0..(room_w-3)/2 {
+                    px := r.x1 + 1 + x * 2;
+                    for y: 1..room_h-2 {
+                        py := r.y1 + y;
+                        if map_get(m, px, py) == .FLOOR {
+                            map_set(m, px, py, terrain);
+                        }
+                    }
+                }
+            } else {
+                // Horizontal bars
+                for y: 0..(room_h-3)/2 {
+                    py := r.y1 + 1 + y * 2;
+                    for x: 1..room_w-2 {
+                        px := r.x1 + x;
+                        if map_get(m, px, py) == .FLOOR {
+                            map_set(m, px, py, terrain);
+                        }
+                    }
+                }
+            }
+
+        case .FU_CORNERS;
+            // Place in corners
+            // Source: MakeLev.cpp:3116-3127
+            corners := s32.[
+                r.x1 + 1, r.y1 + 1,  // Top-left
+                r.x2 - 1, r.y1 + 1,  // Top-right
+                r.x1 + 1, r.y2 - 1,  // Bottom-left
+                r.x2 - 1, r.y2 - 1   // Bottom-right
+            ];
+            for i: 0..3 {
+                x := corners[i * 2];
+                y := corners[i * 2 + 1];
+                if map_get(m, x, y) == .FLOOR {
+                    map_set(m, x, y, terrain);
+                }
+            }
+
+        case .FU_CENTER;
+            // Place at center
+            cx, cy := rect_center(r);
+            if map_get(m, cx, cy) == .FLOOR {
+                map_set(m, cx, cy, terrain);
+            }
+
+        case .FU_SPACED_COLUMNS;
+            // Widely spaced columns (every 3 tiles)
+            for x: 0..(room_w-3)/3 {
+                for y: 0..(room_h-3)/3 {
+                    px := r.x1 + 1 + x * 3;
+                    py := r.y1 + 1 + y * 3;
+                    if map_get(m, px, py) == .FLOOR {
+                        map_set(m, px, py, terrain);
+                    }
+                }
+            }
+
+        case .FU_INNER_COLUMNS;
+            // Columns with 2-tile border
+            for x: 0..(room_w-5)/2 {
+                for y: 0..(room_h-5)/2 {
+                    px := r.x1 + 2 + x * 2;
+                    py := r.y1 + 2 + y * 2;
+                    if map_get(m, px, py) == .FLOOR {
+                        map_set(m, px, py, terrain);
+                    }
+                }
+            }
+    }
+}
+
+// Choose and apply a random furnishing pattern to a room
+// Called after room generation for visual variety
+furnish_room :: (m: *GenMap, room: Room) {
+    // Only furnish larger rooms
+    room_w := rect_width(room.bounds);
+    room_h := rect_height(room.bounds);
+    if room_w < 6 || room_h < 6 return;
+
+    // 30% chance to add furnishing
+    if random(100) >= 30 return;
+
+    // Weighted pattern selection
+    roll := random(100);
+    pattern: FurnishType;
+
+    if roll < 25 {
+        pattern = .FU_CORNERS;
+    } else if roll < 45 {
+        pattern = .FU_SPACED_COLUMNS;
+    } else if roll < 60 {
+        pattern = .FU_INNER_COLUMNS;
+    } else if roll < 75 {
+        pattern = .FU_CENTER;
+    } else if roll < 90 {
+        pattern = .FU_SPLATTER;
+    } else {
+        pattern = .FU_NONE;  // No furnishing
+    }
+
+    furnish_area(m, room, pattern);
+}
+
+// ============================================================================
 // Population System
 // Source: MakeLev.cpp:3269-3301 (PopulatePanel)
 //         Encounter.cpp:514-1125 (enGenerate)
@@ -3012,120 +3185,258 @@ count_open_tiles :: (m: *GenMap) -> s32 {
     return count;
 }
 
-// Populate dungeon with monsters and items
-// Source: MakeLev.cpp:3269-3301, Encounter.cpp:514-1125
-populate_dungeon :: (m: *GenMap, depth: s32) {
-    // Calculate DepthCR (simplified)
-    depth_cr := depth;
+// Item generation chances (from population.md)
+// These are indices into a conceptual Con[] array in original
+CHEST_CHANCE    :: 15;   // % chance for chest in room
+TREASURE_CHANCE :: 25;   // % chance for good treasure item
+CURSED_CHANCE   :: 10;   // % of treasure being cursed
+STAPLE_CHANCE   :: 20;   // % chance for staple item
 
-    // Count open tiles
-    open_count := count_open_tiles(m);
-    if open_count == 0 return;
+// Count open tiles in a room
+count_open_tiles_in_room :: (m: *GenMap, room: Room) -> s32 {
+    count: s32 = 0;
+    for y: room.bounds.y1..room.bounds.y2 {
+        for x: room.bounds.x1..room.bounds.x2 {
+            t := map_get(m, x, y);
+            if t == .FLOOR || t == .CORRIDOR {
+                count += 1;
+            }
+        }
+    }
+    return count;
+}
 
-    // Calculate base monster count from density
-    divisor := monster_density_divisor(depth);
-    base_monster_count := open_count / divisor;
+// Find a valid position in a room for entity placement
+// Source: Encounter.cpp:2537-2620 (monster placement rules)
+find_open_in_room :: (m: *GenMap, room: Room, is_aquatic: bool = false, is_aerial: bool = false) -> s32, s32, bool {
+    MAX_TRIES :: 50;
+    room_w := rect_width(room.bounds);
+    room_h := rect_height(room.bounds);
+    if room_w <= 0 || room_h <= 0 return 0, 0, false;
 
-    // Apply CR-based cap
+    for try: 0..MAX_TRIES-1 {
+        x := room.bounds.x1 + random(room_w);
+        y := room.bounds.y1 + random(room_h);
+
+        t := map_get(m, x, y);
+
+        // Must be walkable terrain
+        if t != .FLOOR && t != .CORRIDOR && t != .WATER && t != .RUBBLE continue;
+
+        // Aquatic placement rules (Source: Encounter.cpp:2556-2265)
+        if is_aquatic {
+            // Aquatic creatures must be in water
+            if t != .WATER continue;
+        } else {
+            // Non-aquatic creatures cannot be in water
+            if t == .WATER continue;
+        }
+
+        // Fall terrain (chasm/lava) only for aerial creatures
+        if t == .CHASM || t == .LAVA {
+            if !is_aerial continue;
+        }
+
+        // Check no existing entity
+        if has_monster_at(m, x, y) || has_item_at(m, x, y) continue;
+
+        return x, y, true;
+    }
+    return 0, 0, false;
+}
+
+// Find a position for items (no aquatic/aerial restrictions)
+find_open_for_item :: (m: *GenMap, room: Room) -> s32, s32, bool {
+    MAX_TRIES :: 50;
+    room_w := rect_width(room.bounds);
+    room_h := rect_height(room.bounds);
+    if room_w <= 0 || room_h <= 0 return 0, 0, false;
+
+    for try: 0..MAX_TRIES-1 {
+        x := room.bounds.x1 + random(room_w);
+        y := room.bounds.y1 + random(room_h);
+
+        t := map_get(m, x, y);
+        if t != .FLOOR && t != .CORRIDOR && t != .RUBBLE continue;
+
+        // Check no existing entity
+        if has_monster_at(m, x, y) || has_item_at(m, x, y) continue;
+
+        return x, y, true;
+    }
+    return 0, 0, false;
+}
+
+// Populate a single panel/room
+// Source: MakeLev.cpp:3269-3301 (PopulatePanel)
+populate_panel :: (m: *GenMap, room_index: s32, room: Room, depth_cr: s32, party_id: s32) -> s32, s32 {
+    monsters_placed: s32 = 0;
+    items_placed: s32 = 0;
+
+    // Calculate monsters for this room based on open tile count
+    open_count := count_open_tiles_in_room(m, room);
+    if open_count == 0 return 0, 0;
+
+    // Monster density: 1 per 30/50/75 tiles depending on depth
+    divisor := monster_density_divisor(depth_cr);
+    base_monster_count := max(1, open_count / divisor);
+
+    // Apply CR cap
     max_monsters := max_monsters_by_cr(depth_cr);
     monster_count := min(base_monster_count, max_monsters);
 
-    // Ensure at least some monsters on each level
-    if monster_count < 3 && depth > 0 {
-        monster_count = cast(s32) min(3, max_monsters);
+    // Cap per room (don't overcrowd)
+    monster_count = min(monster_count, 4);
+
+    // Out-of-depth chance: 22% when depth > 1
+    is_ood := depth_cr > 1 && random(100) < 22;
+
+    // Check if room has water (for aquatic monster chance)
+    has_water := false;
+    for y: room.bounds.y1..room.bounds.y2 {
+        for x: room.bounds.x1..room.bounds.x2 {
+            if map_get(m, x, y) == .WATER {
+                has_water = true;
+                break y;
+            }
+        }
     }
 
-    // Place monsters
-    MAX_PLACEMENT_TRIES :: 50;
-    monsters_placed := 0;
-
+    // Place monsters in this room
     for i: 0..monster_count-1 {
-        for try: 0..MAX_PLACEMENT_TRIES-1 {
-            x := 1 + random(m.width - 2);
-            y := 1 + random(m.height - 2);
+        // Determine if this should be an aquatic monster
+        // 20% chance if room has water, otherwise always land
+        is_aquatic := has_water && random(100) < 20;
+        is_aerial := random(100) < 5;  // 5% chance for aerial
 
-            if is_valid_entity_pos(m, x, y) && !has_monster_at(m, x, y) {
-                // Determine monster CR
-                // Base CR is depth_cr, with small chance of out-of-depth
-                mon_cr := depth_cr;
+        x, y, found := find_open_in_room(m, room, is_aquatic, is_aerial);
+        if !found continue;
 
-                // 22% chance of out-of-depth monster (simplified from spec)
-                if random(100) < 22 {
-                    mon_cr = depth_cr + 1 + random(3);  // 1-3 levels higher
-                }
+        mon: EntityPos;
+        mon.x = x;
+        mon.y = y;
+        mon.room_index = room_index;
+        mon.party_id = party_id;
+        mon.is_aquatic = is_aquatic;
+        mon.is_aerial = is_aerial;
 
-                // Place the monster
-                mon: EntityPos;
-                mon.x = x;
-                mon.y = y;
-                mon.cr = mon_cr;
-                mon.type_id = 0;  // Would be monster type in full implementation
-                array_add(*m.monsters, mon);
+        // CR: base or out-of-depth
+        if is_ood {
+            mon.cr = depth_cr + 1 + random(4);  // +1 to +4
+        } else {
+            mon.cr = depth_cr;
+        }
 
-                monsters_placed += 1;
-                break;
+        // Random sleep chance (higher at lower depths)
+        sleep_threshold := random(100) + 1;
+        mon.is_sleeping = sleep_threshold > 50;  // ~50% sleeping
+
+        array_add(*m.monsters, mon);
+        monsters_placed += 1;
+    }
+
+    // Place items in room using proper distribution
+    // Source: population.md lines 366-394
+
+    // Chest chance
+    if random(100) + 1 < CHEST_CHANCE {
+        x, y, found := find_open_for_item(m, room);
+        if found {
+            item: EntityPos;
+            item.x = x;
+            item.y = y;
+            item.room_index = room_index;
+            item.cr = depth_cr;
+            item.is_chest = true;
+            array_add(*m.items, item);
+            items_placed += 1;
+        }
+    }
+    // Treasure chance (if no chest)
+    else if random(100) + 1 <= TREASURE_CHANCE {
+        x, y, found := find_open_for_item(m, room);
+        if found {
+            item: EntityPos;
+            item.x = x;
+            item.y = y;
+            item.room_index = room_index;
+            item.cr = depth_cr + 3;  // Treasure is CR+3
+
+            // Cursed chance
+            if random(100) + 1 <= CURSED_CHANCE {
+                item.is_cursed = true;
+            } else {
+                item.is_good = true;
             }
+            array_add(*m.items, item);
+            items_placed += 1;
+        }
+    }
+    // Poor item (50% chance if no chest/treasure)
+    else if random(100) + 1 < 50 {
+        x, y, found := find_open_for_item(m, room);
+        if found {
+            item: EntityPos;
+            item.x = x;
+            item.y = y;
+            item.room_index = room_index;
+            item.cr = cast(s32) max(0, depth_cr / 2 - 4);  // Lower tier
+            array_add(*m.items, item);
+            items_placed += 1;
         }
     }
 
-    // Place items (roughly 1 item per 100 open tiles, minimum 2)
-    item_count := max(2, open_count / 100);
-    items_placed := 0;
-
-    for i: 0..item_count-1 {
-        for try: 0..MAX_PLACEMENT_TRIES-1 {
-            x := 1 + random(m.width - 2);
-            y := 1 + random(m.height - 2);
-
-            if is_valid_entity_pos(m, x, y) && !has_item_at(m, x, y) && !has_monster_at(m, x, y) {
-                // Place the item
-                item: EntityPos;
-                item.x = x;
-                item.y = y;
-                item.cr = depth_cr;  // Item value tier based on depth
-                item.type_id = 0;    // Would be item type in full implementation
-                array_add(*m.items, item);
-
-                items_placed += 1;
-                break;
-            }
+    // Staple items
+    if random(100) + 1 <= STAPLE_CHANCE {
+        x, y, found := find_open_for_item(m, room);
+        if found {
+            item: EntityPos;
+            item.x = x;
+            item.y = y;
+            item.room_index = room_index;
+            item.cr = depth_cr;
+            item.is_staple = true;
+            array_add(*m.items, item);
+            items_placed += 1;
         }
     }
 
-    // Place items in rooms (furniture-style placement)
-    // Each room has a chance for additional items
-    for room: m.rooms {
-        // 30% chance for room to have extra items
-        if random(100) < 30 {
-            num_items := 1 + random(3);  // 1-3 items
-            for i: 0..num_items-1 {
-                // Random position within room bounds
-                room_w := rect_width(room.bounds);
-                room_h := rect_height(room.bounds);
-                if room_w <= 0 || room_h <= 0 continue;
+    return monsters_placed, items_placed;
+}
 
-                for try: 0..MAX_PLACEMENT_TRIES-1 {
-                    x := room.bounds.x1 + random(room_w);
-                    y := room.bounds.y1 + random(room_h);
+// Populate dungeon with monsters and items
+// Source: MakeLev.cpp:3269-3301, Encounter.cpp:514-1125
+// Uses per-panel population for better distribution
+populate_dungeon :: (m: *GenMap, depth: s32) {
+    // Calculate DepthCR
+    depth_cr := depth;
 
-                    if is_valid_entity_pos(m, x, y) && !has_item_at(m, x, y) && !has_monster_at(m, x, y) {
-                        item: EntityPos;
-                        item.x = x;
-                        item.y = y;
-                        item.cr = depth_cr;
-                        item.type_id = 0;
-                        array_add(*m.items, item);
-                        items_placed += 1;
-                        break;
-                    }
-                }
-            }
-        }
+    // Count total open tiles for stats
+    total_open := count_open_tiles(m);
+    if total_open == 0 return;
+
+    total_monsters: s32 = 0;
+    total_items: s32 = 0;
+
+    // Generate unique party ID base for this level
+    // Source: MakeLev.cpp:2900-2908
+    // PartyID = MAX_PLAYERS + 10 + random(200)
+    MAX_PLAYERS :: 6;
+    base_party_id := MAX_PLAYERS + 10 + random(200);
+
+    // Populate each room
+    for room, room_index: m.rooms {
+        // Each room gets its own party ID (creatures in same room don't fight)
+        party_id := base_party_id + cast(s32)room_index;
+
+        monsters, items := populate_panel(m, cast(s32)room_index, room, depth_cr, party_id);
+        total_monsters += monsters;
+        total_items += items;
     }
 
     if !makelev_quiet {
         print("  Populated level %: % monsters, % items (% open tiles)\n",
-              depth, monsters_placed, items_placed, open_count);
+              depth, total_monsters, total_items, total_open);
     }
 }
 
@@ -3458,6 +3769,12 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
     // Step 5.5: Fix-up tunneling - ensure all regions are connected
     // This is critical for playable dungeons!
     fixup_tunneling(m, *gs);
+
+    // Step 5.6: Furnish rooms with pillars, rubble, etc.
+    // Source: MakeLev.cpp:2951-3266 (FurnishArea)
+    for room: m.rooms {
+        furnish_room(m, room);
+    }
 
     // Step 6: Place doors where corridors meet rooms
     // Per spec: 10% open, ~45% locked, ~45% unlocked, ~14% secret

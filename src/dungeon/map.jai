@@ -24,6 +24,8 @@ Terrain :: enum u8 {
     LAVA;           // Molten lava
     TRAP;           // Visible trap ('^')
     TRAP_HIDDEN;    // Hidden trap (looks like floor until triggered)
+    PILLAR;         // Pillar/column (blocks movement, not sight fully)
+    RUBBLE;         // Rubble/debris (passable but difficult)
 }
 
 // Get the glyph character for a terrain type
@@ -43,6 +45,8 @@ terrain_glyph :: (t: Terrain) -> u8 {
         case .LAVA;         return #char "~";
         case .TRAP;         return #char "^";
         case .TRAP_HIDDEN;  return #char ".";  // Looks like floor until found
+        case .PILLAR;       return #char "0";  // Pillar/column
+        case .RUBBLE;       return #char ";";  // Rubble/debris
     }
     return #char "?";
 }
@@ -50,12 +54,12 @@ terrain_glyph :: (t: Terrain) -> u8 {
 // Is this terrain passable?
 terrain_passable :: (t: Terrain) -> bool {
     return t == .FLOOR || t == .CORRIDOR || t == .DOOR_OPEN ||
-           t == .STAIRS_UP || t == .STAIRS_DOWN;
+           t == .STAIRS_UP || t == .STAIRS_DOWN || t == .RUBBLE;
 }
 
 // Is this terrain solid (blocks movement and sight)?
 terrain_solid :: (t: Terrain) -> bool {
-    return t == .ROCK || t == .WALL || t == .DOOR_CLOSED || t == .DOOR_SECRET;
+    return t == .ROCK || t == .WALL || t == .DOOR_CLOSED || t == .DOOR_SECRET || t == .PILLAR;
 }
 
 // Rectangle helper
@@ -92,6 +96,19 @@ EntityPos :: struct {
     y: s32;
     cr: s32;            // Challenge rating (monsters) or value tier (items)
     type_id: s32;       // Monster/item type identifier (for future use)
+    party_id: s32;      // Creatures in same party don't fight each other
+    room_index: s32;    // Which room this entity belongs to (-1 = corridor)
+
+    // Monster flags
+    is_aquatic: bool;   // Must be placed in water
+    is_aerial: bool;    // Can be placed in fall terrain
+    is_sleeping: bool;  // Monster is asleep
+
+    // Item flags
+    is_cursed: bool;    // Item is cursed
+    is_good: bool;      // Item is high quality (IG_GOOD)
+    is_staple: bool;    // Item is essential consumable (IG_STAPLE)
+    is_chest: bool;     // Item is a chest/container
 }
 
 // Door flags (from Defines.h:920-930)

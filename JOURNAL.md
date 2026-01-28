@@ -1128,3 +1128,88 @@ DF_SEARCHED :: 0x80;  // Door has been searched
 ### Test Results
 
 All 166 tests pass. Dungeon generation now includes all researched features.
+
+---
+
+## 2026-01-28: Phase 3 - Population System Enhancements
+
+### Overview
+
+Implemented proper per-panel population system following the original MakeLev.cpp specifications.
+
+### Per-Panel Population
+
+Changed from global random placement to per-room population:
+- Each room is populated independently with appropriate monster/item density
+- Party IDs assigned per room (creatures in same room don't fight)
+- Monster count based on room's open tile count with density divisor (30/50/75)
+
+**Source:** MakeLev.cpp:3269-3301 (PopulatePanel), MakeLev.cpp:2900-2908 (party assignment)
+
+### Item Distribution System
+
+Proper item generation with original chances:
+- `CHEST_CHANCE` (15%): Chests placed in rooms
+- `TREASURE_CHANCE` (25%): Good treasure items at CR+3
+- `CURSED_CHANCE` (10%): Treasure may be cursed
+- `STAPLE_CHANCE` (20%): Essential consumables
+- Poor items (50% if no chest/treasure) at lower CR tier
+
+**Source:** population.md lines 366-394
+
+### Furnishing System
+
+Room decoration patterns from FurnishArea:
+- `FU_SPLATTER`: Random scatter (~1/5 room volume)
+- `FU_GRID`: Regular 2x2 grid pattern
+- `FU_COLUMNS`: Alternating rows/columns (50% each)
+- `FU_CORNERS`: Four corner positions
+- `FU_CENTER`: Single center placement
+- `FU_SPACED_COLUMNS`: Widely spaced columns
+- `FU_INNER_COLUMNS`: Columns with 2-tile border
+
+Added PILLAR and RUBBLE terrain types for furnishing.
+
+**Source:** MakeLev.cpp:2951-3266, Defines.h:3828-3843
+
+### Aquatic and Terrain Placement Rules
+
+Monster placement follows terrain rules:
+- Aquatic monsters (20% chance in water rooms) placed in water
+- Non-aquatic cannot be in water
+- Aerial monsters (5% chance) can be in chasm/lava
+- 50 tries max per placement
+
+**Source:** Encounter.cpp:2537-2620
+
+### EntityPos Extensions
+
+Added fields to EntityPos struct:
+- `party_id`: Creatures in same party don't fight
+- `room_index`: Which room entity belongs to
+- `is_aquatic`, `is_aerial`, `is_sleeping`: Monster flags
+- `is_cursed`, `is_good`, `is_staple`, `is_chest`: Item flags
+
+### Files Modified
+
+**`src/dungeon/map.jai`:**
+- Added PILLAR and RUBBLE terrain types
+- Extended EntityPos with party_id, room_index, and flags
+
+**`src/dungeon/makelev.jai`:**
+- Added FurnishType enum and furnish_area()/furnish_room() functions
+- Added find_open_for_item() for item placement
+- Rewrote populate_dungeon() to use per-panel populate_panel()
+- Added aquatic/aerial monster placement logic
+- Added proper item distribution chances
+
+**`tools/dungeon_test.jai`:**
+- Added color mapping for PILLAR and RUBBLE terrain
+
+### Test Results
+
+All 166 tests pass. Dungeons now have:
+- Per-room population with party assignment
+- Proper item distribution (chests, treasure, cursed, staples)
+- Furnishing patterns (pillars, columns, etc.)
+- Terrain-appropriate monster placement
