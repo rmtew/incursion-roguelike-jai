@@ -8,13 +8,13 @@
 - [x] Phase 2: Dungeon Generator (enhanced) - Room shapes, water pools, rougher corridors
 - [x] Parser: All test .irh files parse successfully (2026-01-28)
   - flavors.irh (883), mundane.irh (73), domains.irh (44), weapons.irh (118), enclist.irh (87), dungeon.irh (184)
+- [x] Phase 3: Population System - Per-panel population, item distribution, furnishing (2026-01-28)
+- [x] Phase 5: Inspection Interface - `tools/inspect.jai` CLI tool (2026-01-28)
 
 ### In Progress
 
 ### Not Started
 - [ ] Phase 1: Resource Baking - Compile-time .irh to runtime tables
-- [x] Phase 3: Population System - Per-panel population, item distribution, furnishing (2026-01-28)
-- [x] Phase 5: Inspection Interface - `tools/inspect.jai` CLI tool (2026-01-28)
 - [ ] Phase 6: Integration & Testing - Wire everything together
 
 ## Dungeon Generator Improvements Needed
@@ -24,25 +24,27 @@
 - [x] Octagonal rooms
 - [x] Cross-shaped rooms
 - [x] Diamond-shaped rooms
-- [ ] Irregular caverns (WriteRCavern, WriteLifeCave style)
-- [ ] Castle-style subdivided rooms (WriteCastle)
+- [x] Irregular caverns (write_rcavern, write_lifecave)
+- [x] Castle-style subdivided rooms (write_castle)
 
 ### Terrain Features
 - [x] Water pools
-- [ ] Rivers/streamers (linear water features)
-- [ ] Chasms
+- [x] Rivers/streamers (write_streamer)
+- [x] Chasms (CHASM terrain type)
 - [ ] Special terrain from region definitions
 
 ### Structural Features
-- Doors at room entrances (currently basic detection)
-- Secret doors
-- Traps
-- Altars, fountains, etc.
+- [x] Doors at room entrances (place_doors_makelev)
+- [x] Secret doors (DOOR_SECRET terrain, 5% chance)
+- [x] Traps (place_traps with TRAP_CHANCE)
+- [x] Treasure deposits in walls (place_deposits)
+- [ ] Altars, fountains, etc. (need region terrain)
 
 ### Connection Improvements
-- More natural corridor shapes
-- Occasional dead ends
-- Room connection verification (flood fill)
+- [x] More natural corridor shapes (roughen_corridor)
+- [x] Corridor edge clamping (prevent hitting map edge)
+- [x] Room connection verification (fixup_tunneling with flood fill)
+- [ ] Occasional dead ends
 
 ## Current Parsing Issues
 
@@ -166,4 +168,3 @@ Ideas for enabling Claude Code to drive and test the GUI:
 ### Dungeon Generator
 - BSP tree nodes are individually allocated (could use pool)
 - Room array uses dynamic allocation (could be fixed size for MVP)
-- No validation that all rooms are connected

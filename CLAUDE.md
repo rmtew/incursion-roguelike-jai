@@ -7,7 +7,7 @@
 3. **Keep this file scannable** - Use headers and bullet points; move large content to linked files
 4. **Lexer/Parser: Implement from grammar spec, test against .irh files** - The authoritative reference for lexer/parser implementation is in `lang/Tokens.lex` and `lang/Grammar.acc`. Implement to match these specifications, then validate against actual `.irh` resource files.
 5. **Maintain JOURNAL.md** - Record summaries of changes made in each session by appending new entries. Include what was changed, why, and test results.
-6. **Maintain backlog.md** - Track workarounds, deferred work, and ideas for future improvements. Update when adding workarounds or identifying issues to revisit later.
+6. **Maintain BACKLOG.md** - Track workarounds, deferred work, and ideas for future improvements. Update when adding workarounds or identifying issues to revisit later.
 7. **Keep CLAUDE.md updated for commit messages** - When making significant changes, ensure CLAUDE.md reflects current state so it can serve as context for writing accurate, detailed commit messages.
 
 ## Environment
@@ -56,8 +56,7 @@ incursion-port/
       window.jai         - Simp-based glyph terminal rendering
   tools/
     inspect.jai          - CLI inspection tool for programmatic testing
-    dungeon_test.jai     - Interactive dungeon viewer (windowed)
-    dungeon_screenshot.jai - Headless screenshot generator
+    dungeon_test.jai     - Interactive dungeon viewer (windowed, S for screenshot)
     terminal_test.jai    - Terminal rendering test
   docs/
     screenshot.png       - Dungeon generation screenshot for README
