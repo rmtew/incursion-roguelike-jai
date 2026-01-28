@@ -41,6 +41,9 @@ stbi_write :: #import "stb_image_write";
 #load "../src/dungeon/makelev.jai";
 #load "../src/dungeon/generator.jai";
 
+// Glyph to CP437 conversion (must be before terminal/window.jai)
+#load "../src/glyph_cp437.jai";
+
 // Terminal rendering
 #load "../src/terminal/window.jai";
 
@@ -171,10 +174,10 @@ save_screenshot :: (m: *GenMap) -> bool {
                 fg = TC_BRIGHT_YELLOW;
             }
 
-            // Draw glyph at this position (clamp extended glyphs to '?' for bitmap font)
-            glyph_u8: u8 = ifx glyph > 255 then #char "?" else cast(u8)glyph;
+            // Convert extended glyphs (256+) to CP437 for font atlas lookup
+            glyph_cp437 := glyph_to_cp437(glyph);
             draw_glyph_to_buffer(pixels.data, img_width, img_height, *font,
-                                 glyph_u8, mx * font.glyph_width, my * font.glyph_height, fg, bg);
+                                 glyph_cp437, mx * font.glyph_width, my * font.glyph_height, fg, bg);
         }
     }
 

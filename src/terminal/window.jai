@@ -1,8 +1,10 @@
 // Terminal Window - Glyph-based display using Simp
 //
 // Renders a grid of colored characters using bitmap fonts.
+// Extended glyphs (GLYPH_* constants 256+) are converted to CP437 for font lookup.
 //
 // Note: Simp and Input are imported by the main file that #loads this.
+// Note: glyph_cp437.jai must be loaded before this file.
 
 // Terminal dimensions (in cells)
 TERM_WIDTH  :: 80;
@@ -199,11 +201,14 @@ terminal_render :: (term: *Terminal) {
                 px1 := px0 + gw;
                 py1 := py0 + gh;
 
+                // Convert extended glyphs (256+) to CP437 codes for font atlas
+                cp437_char := glyph_to_cp437(cell.char);
+
                 // Calculate UV coordinates for this glyph
-                // Font is arranged in 16x16 grid, ASCII order
+                // Font is arranged in 16x16 grid, CP437 order
                 // PNG has row 0 at top, OpenGL has V=0 at bottom, so flip V
-                glyph_col := cell.char % 16;
-                glyph_row := cell.char / 16;
+                glyph_col := cast(u16)cp437_char % 16;
+                glyph_row := cast(u16)cp437_char / 16;
 
                 u0 := cast(float32)(glyph_col) / 16.0;
                 u1 := cast(float32)(glyph_col + 1) / 16.0;
@@ -265,12 +270,9 @@ terminal_dump :: (term: *Terminal) -> string {
         for x: 0..TERM_WIDTH-1 {
             idx := y * TERM_WIDTH + x;
             ch := term.cells[idx].char;
-            // For extended glyph codes (256+), output a placeholder
-            if ch < 256 {
-                append(*builder, cast(u8)ch);
-            } else {
-                append(*builder, cast(u8)#char "?");
-            }
+            // Convert extended glyphs to CP437, then output
+            cp437 := glyph_to_cp437(ch);
+            append(*builder, cp437);
         }
         append(*builder, "\n");
     }

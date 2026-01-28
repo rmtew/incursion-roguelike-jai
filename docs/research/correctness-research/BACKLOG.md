@@ -26,7 +26,7 @@
 **Tasks:**
 1. [x] Extract full GLYPH_* → CP437 lookup table from `src/Wlibtcod.cpp` lines 448-606
 2. [x] Implement `glyph_to_cp437(id: u16) -> u8` function
-3. [ ] Update terminal rendering to apply lookup before font atlas indexing
+3. [x] Update terminal rendering to apply lookup before font atlas indexing
 4. [ ] Verify extended glyphs (GLYPH_FLOOR, GLYPH_WALL, etc.) render correctly
 
 **Key insight:** Glyph is a u32 bitfield:

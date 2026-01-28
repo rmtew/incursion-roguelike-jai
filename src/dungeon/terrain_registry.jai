@@ -81,9 +81,9 @@ build_terrain_registry :: (reg: *TerrainRegistry, parsed: [] ParsedTerrain) {
         rt: RuntimeTerrain;
         rt.name = pt.name;
 
-        // Extract glyph from image
+        // Extract glyph from image (may be GLYPH_* constant 256+)
         if pt.has_image {
-            rt.glyph = cast(u8) pt.image.char_code;
+            rt.glyph = cast(u16) pt.image.char_code;
             rt.fg_color = cast(s64) pt.image.color.base;
         } else {
             rt.glyph = #char "?";

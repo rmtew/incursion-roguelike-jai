@@ -234,4 +234,23 @@ This investigation would have prevented the "?" glyph bug if done earlier. The f
 
 ---
 
+## 2026-01-29: CP437 Lookup Integration
+
+Integrated `glyph_to_cp437()` into the rendering pipeline.
+
+**Changes:**
+- `src/terminal/window.jai`: Apply CP437 lookup before UV coordinate calculation
+- `tools/dungeon_test.jai`: Use lookup in screenshot rendering
+- `tools/inspect.jai`: Use lookup for ASCII output
+- `src/dungeon/terrain_registry.jai`: Fixed u8 truncation bug (was losing extended glyphs)
+
+**Verification:**
+- All tools compile successfully
+- Tests pass (177/181, same as before)
+- "Extended glyph codes (256+) preserved: YES" in test output
+
+**Remaining:** Visual verification that GLYPH_FLOOR, GLYPH_WALL render correctly.
+
+---
+
 *Future entries should be appended below*

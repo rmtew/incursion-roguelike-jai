@@ -76,6 +76,9 @@ Str :: #import "String";
 #load "../src/dungeon/makelev.jai";
 #load "../src/dungeon/generator.jai";
 
+// Glyph to CP437 conversion
+#load "../src/glyph_cp437.jai";
+
 // Global state
 InspectState :: struct {
     dungeon: GenMap;
@@ -634,11 +637,10 @@ get_cell_char :: (m: *GenMap, x: s32, y: s32) -> u8 {
     }
 
     // Return terrain glyph (includes stairs)
-    // For extended glyphs (256+), return '?' for ASCII output
+    // Convert extended glyphs (256+) to CP437 for ASCII output
     terrain := map_get(m, x, y);
     glyph := terrain_glyph(terrain);
-    if glyph > 255 return #char "?";
-    return cast(u8) glyph;
+    return glyph_to_cp437(glyph);
 }
 
 // Count stairs in the map
@@ -733,9 +735,9 @@ query_cell :: (x: s32, y: s32, json_mode: bool) {
         }
     }
 
-    // Convert glyph to displayable character
+    // Convert glyph to displayable character (extended glyphs -> CP437)
     glyph := terrain_glyph(terrain);
-    glyph_char: u8 = ifx glyph > 255 then #char "?" else cast(u8)glyph;
+    glyph_char := glyph_to_cp437(glyph);
 
     if json_mode {
         print("{\n");
