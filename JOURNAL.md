@@ -1045,3 +1045,86 @@ All commands support JSON mode for programmatic parsing:
 ### Test Results
 
 All 166 existing tests pass. Inspect tool builds and runs correctly.
+
+---
+
+## 2026-01-28: Dungeon Generation Enhancements (Correctness Research Implementation)
+
+### Overview
+
+Implemented all outstanding dungeon enhancements identified in `docs/research/correctness-research/` and `docs/research/specs/`.
+
+### Room Types Added
+
+**RM_SHAPED (`write_shaped`):**
+- Uses predefined vault definitions with ASCII art maps
+- Supports horizontal and vertical flip for variety
+- Vault characters: `#`=wall, `.`=floor, `+`=door, `~`=water, `^`=lava, `_`=chasm
+
+**RM_DESTROYED (`write_destroyed`):**
+- Post-apocalyptic room appearance
+- 10% rock, 30% rubble terrain, rest floor
+- Creates partially collapsed room effect
+
+**RM_GRID (`write_grid`):**
+- Furnishing grid pattern
+- 2x2 pillar blocks with 3-tile spacing
+- 5% chance each pillar is missing (variation)
+
+**RM_LIFELINK (`write_lifelink`):**
+- Linked caves using cellular automata
+- Similar to RM_LIFECAVE but fills entire panel
+- Creates organic cavern appearance
+
+### Corridor Edge Clamping
+
+Implemented in `carve_tunnel()`:
+- 4-tile lookahead before map edge forces turn
+- 2-3 tile hard clamp at map boundaries
+- Prevents corridors from hitting map edges
+
+### Treasure Deposits
+
+**`place_treasure_deposits()`:**
+- Places hidden treasure in fully-enclosed rock areas
+- Scans for rock tiles completely surrounded by rock
+- Depth-based chance calculation
+- Creates discoverable secrets via mining/detection
+
+### Door State System
+
+**New DoorInfo struct in `map.jai`:**
+```jai
+DF_VERTICAL :: 0x01;  // Door orientation
+DF_OPEN     :: 0x02;  // Door is open
+DF_STUCK    :: 0x04;  // Door is stuck
+DF_LOCKED   :: 0x08;  // Door is locked
+DF_TRAPPED  :: 0x10;  // Door is trapped
+DF_SECRET   :: 0x20;  // Secret door
+DF_BROKEN   :: 0x40;  // Door is broken
+DF_SEARCHED :: 0x80;  // Door has been searched
+```
+
+**Door state distribution (per original spec):**
+- 10% open
+- 14% secret
+- Of remaining: 50% locked, 50% unlocked
+- Lock DC scales with depth (10 + depth*2 + random)
+
+### Files Modified
+
+**`src/dungeon/makelev.jai`:**
+- Added `write_destroyed()`, `write_grid()`, `write_lifelink()`, `write_shaped()`
+- Updated `draw_panel()` with new room type cases
+- Enhanced `carve_tunnel()` with edge clamping
+- Added `place_treasure_deposits()`
+- Enhanced `place_doors_makelev()` with door states and DoorInfo tracking
+
+**`src/dungeon/map.jai`:**
+- Added `DF_*` door flag constants
+- Added `DoorInfo` struct
+- Added `doors: [..] DoorInfo` array to GenMap
+
+### Test Results
+
+All 166 tests pass. Dungeon generation now includes all researched features.

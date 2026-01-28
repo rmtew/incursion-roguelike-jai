@@ -98,6 +98,7 @@
 - Resource linking (references between resources)
 - Game loop integration
 - Actual game functionality
+- **Design annotation pass** - Late in development, review original Incursion source code and annotate our code with design-related comments explaining *why* things work the way they do. Future developers would find these historical/architectural insights valuable.
 
 ## Claude-Driven GUI Testing (Brainstorm)
 

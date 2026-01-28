@@ -94,6 +94,26 @@ EntityPos :: struct {
     type_id: s32;       // Monster/item type identifier (for future use)
 }
 
+// Door flags (from Defines.h:920-930)
+// Per spec: 10% open, ~45% locked, ~45% unlocked, ~14% secret
+DF_VERTICAL :: 0x01;  // Vertical orientation (walls above/below)
+DF_OPEN     :: 0x02;  // Door is currently open
+DF_STUCK    :: 0x04;  // Door is stuck/jammed
+DF_LOCKED   :: 0x08;  // Door is locked
+DF_TRAPPED  :: 0x10;  // Door is trapped
+DF_SECRET   :: 0x20;  // Door is secret (hidden)
+DF_BROKEN   :: 0x40;  // Door has been broken down
+DF_SEARCHED :: 0x80;  // Door has been searched for traps
+
+// Door information for tracking state
+DoorInfo :: struct {
+    x: s32;
+    y: s32;
+    flags: u8;          // DF_* flags
+    lock_dc: s32;       // Lock difficulty (if DF_LOCKED)
+    trap_type: s32;     // Trap type (if DF_TRAPPED)
+}
+
 // Tile display info (for visual variety via regions)
 TileDisplay :: struct {
     glyph: u8;          // Character to display (overrides terrain default)
@@ -113,6 +133,9 @@ GenMap :: struct {
     // Population (filled by populate_dungeon)
     monsters: [..] EntityPos;
     items: [..] EntityPos;
+
+    // Doors with state tracking
+    doors: [..] DoorInfo;
 }
 
 // Initialize a new map filled with rock
@@ -137,6 +160,7 @@ map_init :: (m: *GenMap, width: s32 = MAP_WIDTH, height: s32 = MAP_HEIGHT) {
     array_reset(*m.rooms);
     array_reset(*m.monsters);
     array_reset(*m.items);
+    array_reset(*m.doors);
 }
 
 // Free map resources
@@ -144,6 +168,7 @@ map_free :: (m: *GenMap) {
     array_free(m.rooms);
     array_free(m.monsters);
     array_free(m.items);
+    array_free(m.doors);
 }
 
 // Get terrain at position (returns ROCK if out of bounds)

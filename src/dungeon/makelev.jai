@@ -1552,6 +1552,363 @@ write_rcavern :: (m: *GenMap, gs: *GenState, r: Rect) {
     }
 }
 
+// Write a destroyed/collapsed room
+// In original: case RM_DESTROYED in DrawPanel
+// Per spec: 10% rock, 30% rubble (wall), rest floor - creates ruined appearance
+write_destroyed :: (m: *GenMap, gs: *GenState, r: Rect) {
+    floor := gs.con.TERRAIN_FLOOR;
+    wall := gs.con.TERRAIN_WALL;
+    floor_terrain := get_region_floor(gs.current_region, gs.default_floor);
+    wall_terrain := get_region_wall(gs.current_region, gs.default_wall);
+
+    // Fill the area with random terrain
+    // 10% rock (unchanged), 30% rubble (wall at lower priority), 60% floor
+    for y: r.y1..r.y2 {
+        for x: r.x1..r.x2 {
+            roll := random(100);
+            if roll < 10 {
+                // 10% - leave as rock (don't write anything)
+                continue;
+            } else if roll < 40 {
+                // 30% - rubble (walls at lower priority)
+                write_at_with_terrain(m, gs, x, y, wall, wall_terrain, PRIO_ROCK_STREAMER);
+            } else {
+                // 60% - floor
+                write_at_with_terrain(m, gs, x, y, floor, floor_terrain, PRIO_ROOM_FLOOR);
+            }
+        }
+    }
+
+    // Add walls around floor tiles for better definition
+    for y: r.y1..r.y2 {
+        for x: r.x1..r.x2 {
+            if map_get(m, x, y) == floor {
+                for dy: -1..1 {
+                    for dx: -1..1 {
+                        if dx == 0 && dy == 0 continue;
+                        nx := x + cast(s32)dx;
+                        ny := y + cast(s32)dy;
+                        if map_get(m, nx, ny) == .ROCK {
+                            write_at_with_terrain(m, gs, nx, ny, wall, wall_terrain, PRIO_ROOM_WALL);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Track as room
+    room: Room;
+    room.bounds = r;
+    room.connected = false;
+    array_add(*m.rooms, room);
+
+    if gs.n_centers < 16 {
+        cx, cy := rect_center(r);
+        gs.centers[gs.n_centers] = cast(u16)(cx + cy * 256);
+        gs.n_centers += 1;
+    }
+}
+
+// Write a room with furnishing grid
+// In original: case RM_GRID in DrawPanel
+// Per spec: uses region's Furnishings[0] (we use pillars) in 2x2 pattern, 5% chance each missing
+write_grid :: (m: *GenMap, gs: *GenState, r: Rect) {
+    floor := gs.con.TERRAIN_FLOOR;
+    wall := gs.con.TERRAIN_WALL;
+    floor_terrain := get_region_floor(gs.current_region, gs.default_floor);
+    wall_terrain := get_region_wall(gs.current_region, gs.default_wall);
+
+    // First create the room with walls (uses region terrain)
+    write_room(m, gs, r);
+
+    // Add furnishing grid (pillars every 2 tiles, with 5% chance of missing)
+    for y: r.y1+2..r.y2-1 {
+        for x: r.x1+2..r.x2-1 {
+            // Check if this is a grid position (every 2 tiles)
+            if (x - r.x1) % 2 == 0 && (y - r.y1) % 2 == 0 {
+                // 95% chance to place furnishing
+                if random(100) >= 5 {
+                    write_at_with_terrain(m, gs, x, y, wall, wall_terrain, PRIO_ROOM_FURNITURE);
+                }
+            }
+        }
+    }
+}
+
+// Write linked life caves (multiple connected cavern systems)
+// In original: case RM_LIFELINK in DrawPanel
+// Similar to LIFECAVE but creates multiple connected cavern clusters
+write_lifelink :: (m: *GenMap, gs: *GenState, panel: Rect) {
+    floor := gs.con.TERRAIN_FLOOR;
+    wall := gs.con.TERRAIN_WALL;
+    floor_terrain := get_region_floor(gs.current_region, gs.default_floor);
+    wall_terrain := get_region_wall(gs.current_region, gs.default_wall);
+
+    // Create 2-3 linked cave regions
+    num_caves := 2 + random(2);  // 2 or 3 caves
+    cave_centers: [4] Point;
+
+    panel_w := rect_width(panel);
+    panel_h := rect_height(panel);
+
+    // Place cave centers spread out
+    for i: 0..num_caves-1 {
+        // Divide panel into regions and place one cave center per region
+        region_x := (panel_w / num_caves) * i;
+        cx := panel.x1 + region_x + (panel_w / num_caves) / 2 + random(4) - 2;
+        cy := panel.y1 + panel_h / 2 + random(panel_h / 3) - panel_h / 6;
+        cave_centers[i] = Point.{cx, cy};
+    }
+
+    // Generate each cave cluster using cellular automata
+    LIFE_PERCENT :: 42;
+    BUFFER :: 2;
+    ITERATIONS :: 15;
+
+    w := panel_w;
+    h := panel_h;
+
+    grid: [..] u8;
+    grid.allocator = temp;
+    array_resize(*grid, w * h);
+
+    next_grid: [..] u8;
+    next_grid.allocator = temp;
+    array_resize(*next_grid, w * h);
+
+    // Initialize: everything is wall
+    for i: 0..grid.count-1 {
+        grid[i] = 1;
+    }
+
+    // Seed cave areas around centers
+    for cave_idx: 0..num_caves-1 {
+        center := cave_centers[cave_idx];
+        radius := 5 + random(3);  // Cave cluster radius
+
+        for gy: 0..h-1 {
+            for gx: 0..w-1 {
+                mx := panel.x1 + cast(s32)gx;
+                my := panel.y1 + cast(s32)gy;
+
+                dist := abs(mx - center.x) + abs(my - center.y);  // Manhattan distance
+                if dist <= radius {
+                    idx := cast(s32)gy * w + cast(s32)gx;
+                    if random(100) < (100 - LIFE_PERCENT) {
+                        grid[idx] = 0;  // Open
+                    }
+                }
+            }
+        }
+    }
+
+    // Run cellular automata
+    for iter: 0..ITERATIONS-1 {
+        for gy: BUFFER..h-BUFFER-1 {
+            for gx: BUFFER..w-BUFFER-1 {
+                idx := cast(s32)gy * w + cast(s32)gx;
+
+                // Count wall neighbors
+                neighbors: s32 = 0;
+                for dy: -1..1 {
+                    for dx: -1..1 {
+                        if dx == 0 && dy == 0 continue;
+                        nidx := (cast(s32)gy + cast(s32)dy) * w + (cast(s32)gx + cast(s32)dx);
+                        if nidx >= 0 && nidx < grid.count && grid[nidx] == 1 neighbors += 1;
+                    }
+                }
+
+                if neighbors >= 5 {
+                    next_grid[idx] = 1;
+                } else if neighbors <= 3 {
+                    next_grid[idx] = 0;
+                } else {
+                    next_grid[idx] = grid[idx];
+                }
+            }
+        }
+
+        for i: 0..grid.count-1 {
+            grid[i] = next_grid[i];
+        }
+    }
+
+    // Connect cave centers with tunnels (ensure connectivity)
+    for i: 0..num_caves-2 {
+        c1 := cave_centers[i];
+        c2 := cave_centers[i + 1];
+
+        // Simple horizontal-then-vertical tunnel
+        x1 := c1.x - panel.x1;
+        y1 := c1.y - panel.y1;
+        x2 := c2.x - panel.x1;
+        y2 := c2.y - panel.y1;
+
+        // Horizontal segment
+        sx: s32 = cast(s32) ifx x1 < x2 then 1 else -1;
+        x := x1;
+        while x != x2 {
+            if x >= 0 && x < w && y1 >= 0 && y1 < h {
+                grid[y1 * w + x] = 0;
+            }
+            x += sx;
+        }
+
+        // Vertical segment
+        sy: s32 = cast(s32) ifx y1 < y2 then 1 else -1;
+        y := y1;
+        while y != y2 {
+            if x2 >= 0 && x2 < w && y >= 0 && y < h {
+                grid[y * w + x2] = 0;
+            }
+            y += sy;
+        }
+    }
+
+    // Write to map
+    for gy: 0..h-1 {
+        for gx: 0..w-1 {
+            idx := cast(s32)gy * w + cast(s32)gx;
+            mx := panel.x1 + cast(s32)gx;
+            my := panel.y1 + cast(s32)gy;
+
+            if grid[idx] == 0 {
+                write_at_with_terrain(m, gs, mx, my, floor, floor_terrain, PRIO_ROOM_FLOOR);
+            }
+        }
+    }
+
+    // Add walls
+    for gy: 1..h-2 {
+        for gx: 1..w-2 {
+            idx := cast(s32)gy * w + cast(s32)gx;
+            if grid[idx] == 0 {
+                mx := panel.x1 + cast(s32)gx;
+                my := panel.y1 + cast(s32)gy;
+                for dy: -1..1 {
+                    for dx: -1..1 {
+                        if dx == 0 && dy == 0 continue;
+                        if map_get(m, mx + cast(s32)dx, my + cast(s32)dy) == .ROCK {
+                            write_at_with_terrain(m, gs, mx + cast(s32)dx, my + cast(s32)dy, wall, wall_terrain, PRIO_ROOM_WALL);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Track as room
+    room: Room;
+    room.bounds = panel;
+    room.connected = false;
+    array_add(*m.rooms, room);
+
+    if gs.n_centers < 16 {
+        cx, cy := rect_center(panel);
+        gs.centers[gs.n_centers] = cast(u16)(cx + cy * 256);
+        gs.n_centers += 1;
+    }
+}
+
+// Write a shaped room from a predefined grid (vault or region map)
+// In original: case RM_SHAPED in DrawPanel, uses WriteMap with region's Grid
+// We use the existing VAULTS array for predefined room layouts
+write_shaped :: (m: *GenMap, gs: *GenState, panel: Rect, depth: s32) {
+    floor := gs.con.TERRAIN_FLOOR;
+    wall := gs.con.TERRAIN_WALL;
+    floor_terrain := get_region_floor(gs.current_region, gs.default_floor);
+    wall_terrain := get_region_wall(gs.current_region, gs.default_wall);
+
+    // Find a suitable vault for this depth
+    suitable_vaults: [32] s32;
+    suitable_count: s32 = 0;
+
+    for vi: 0..VAULTS.count-1 {
+        vault := *VAULTS[vi];
+        if vault.min_depth <= depth {
+            // Check if vault fits in panel
+            if vault.width <= rect_width(panel) - 2 && vault.height <= rect_height(panel) - 2 {
+                suitable_vaults[suitable_count] = cast(s32)vi;
+                suitable_count += 1;
+                if suitable_count >= 32 break;
+            }
+        }
+    }
+
+    if suitable_count == 0 {
+        // No suitable vault, fall back to normal room
+        r := Rect.{panel.x1 + 2, panel.y1 + 2, panel.x2 - 2, panel.y2 - 2};
+        write_room(m, gs, r);
+        return;
+    }
+
+    // Pick a random vault
+    vault := *VAULTS[suitable_vaults[random(suitable_count)]];
+
+    // 50% chance to flip horizontally, 50% to flip vertically (per spec)
+    flip_h := random(2) == 0;
+    flip_v := random(2) == 0;
+
+    // Calculate placement position (centered in panel)
+    start_x := panel.x1 + (rect_width(panel) - vault.width) / 2;
+    start_y := panel.y1 + (rect_height(panel) - vault.height) / 2;
+
+    // Parse and place the vault
+    row: s32 = 0;
+    col: s32 = 0;
+
+    for ch: vault.map_data {
+        if ch == #char "\n" {
+            row += 1;
+            col = 0;
+            continue;
+        }
+
+        // Calculate actual position with flipping
+        actual_col: s32 = cast(s32) ifx flip_h then (vault.width - 1 - col) else col;
+        actual_row: s32 = cast(s32) ifx flip_v then (vault.height - 1 - row) else row;
+
+        mx := start_x + actual_col;
+        my := start_y + actual_row;
+
+        // Map character to terrain
+        if ch == {
+            case #char ".";
+                write_at_with_terrain(m, gs, mx, my, floor, floor_terrain, PRIO_VAULT);
+            case #char "#";
+                write_at_with_terrain(m, gs, mx, my, wall, wall_terrain, PRIO_VAULT);
+            case #char "+";
+                write_at_with_terrain(m, gs, mx, my, .DOOR_CLOSED, null, PRIO_VAULT);
+            case #char "~";
+                write_at(m, gs, mx, my, .WATER, PRIO_VAULT);
+            case #char "^";
+                write_at(m, gs, mx, my, .LAVA, PRIO_VAULT);
+            case #char "_";
+                write_at(m, gs, mx, my, .CHASM, PRIO_VAULT);
+            case #char ">";
+                write_at_with_terrain(m, gs, mx, my, .STAIRS_DOWN, null, PRIO_VAULT);
+            case #char "<";
+                write_at_with_terrain(m, gs, mx, my, .STAIRS_UP, null, PRIO_VAULT);
+        }
+
+        col += 1;
+    }
+
+    // Track as room
+    room: Room;
+    room.bounds = Rect.{start_x, start_y, start_x + vault.width - 1, start_y + vault.height - 1};
+    room.connected = false;
+    array_add(*m.rooms, room);
+
+    if gs.n_centers < 16 {
+        cx := start_x + vault.width / 2;
+        cy := start_y + vault.height / 2;
+        gs.centers[gs.n_centers] = cast(u16)(cx + cy * 256);
+        gs.n_centers += 1;
+    }
+}
+
 // Place room within a panel
 // Returns the rect where room was placed
 place_within_panel :: (panel: Rect, room_w: s32, room_h: s32) -> Rect {
@@ -1706,6 +2063,28 @@ draw_panel :: (m: *GenMap, gs: *GenState, px: s32, py: s32) {
             cavern_r := Rect.{panel.x1 + 1, panel.y1 + 1, panel.x2 - 1, panel.y2 - 1};
             write_rcavern(m, gs, cavern_r);
 
+        case RM_DESTROYED;
+            // Collapsed area with rubble
+            destroyed_r := Rect.{panel.x1 + 2, panel.y1 + 2, panel.x2 - 2, panel.y2 - 2};
+            write_destroyed(m, gs, destroyed_r);
+
+        case RM_GRID;
+            // Room with furnishing grid
+            grid_r := Rect.{panel.x1 + 2, panel.y1 + 2, panel.x2 - 2, panel.y2 - 2};
+            write_grid(m, gs, grid_r);
+
+        case RM_LIFELINK;
+            // Linked life caves
+            write_lifelink(m, gs, panel);
+
+        case RM_SHAPED;
+            // Predefined room from vault/region map
+            write_shaped(m, gs, panel, m.depth);
+
+        case RM_RANDTOWN;
+            // Random town - falls through to normal for now (placeholder)
+            write_room(m, gs, r);
+
         case;
             // Default to normal room
             write_room(m, gs, r);
@@ -1851,8 +2230,11 @@ carve_tunnel :: (m: *GenMap, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32, 
         // Check if we need to turn
         force_turn := false;
 
-        // Force turn near map edges
-        if nx <= 2 || nx >= m.width - 3 || ny <= 2 || ny >= m.height - 3 {
+        // Force turn near map edges (within 4 tiles per spec)
+        // Calculate lookahead position in current direction
+        look_x := x + TunnelDirX[cast(s32)curr_dir] * 4;
+        look_y := y + TunnelDirY[cast(s32)curr_dir] * 4;
+        if look_x <= 0 || look_x >= m.width - 1 || look_y <= 0 || look_y >= m.height - 1 {
             force_turn = true;
         }
 
@@ -1895,6 +2277,18 @@ carve_tunnel :: (m: *GenMap, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32, 
                 while curr_dir == old_dir {
                     curr_dir = cast(TunnelDir) random(4);
                 }
+            }
+
+            // Hard edge clamping: override direction if within 2-3 tiles of edge
+            // Per spec: MakeLev.cpp:3534-3541
+            if x <= 2 {
+                curr_dir = .EAST;
+            } else if x >= m.width - 3 {
+                curr_dir = .WEST;
+            } else if y <= 2 {
+                curr_dir = .SOUTH;
+            } else if y >= m.height - 3 {
+                curr_dir = .NORTH;
             }
         }
 
@@ -2318,11 +2712,19 @@ try_place_vault :: (m: *GenMap, gs: *GenState, depth: s32) -> bool {
 
 // Place doors where floor meets wall with floor on opposite side
 // This finds corridor entrances to rooms
-place_doors_makelev :: (m: *GenMap) {
+// Per spec (Feature.cpp:310-337):
+// - 10% open
+// - ~45% closed+locked (50% of remaining 90%)
+// - ~45% closed+unlocked
+// - ~14% secret (checked separately, can override open)
+place_doors_makelev :: (m: *GenMap, depth: s32 = 1) {
     for y: 1..m.height-2 {
         for x: 1..m.width-2 {
             // Check if this is a wall
             if map_get(m, x, y) != .WALL continue;
+
+            is_vertical := false;
+            is_horizontal := false;
 
             // Check for horizontal door position (floor on left and right)
             if map_get(m, x-1, y) == .FLOOR && map_get(m, x+1, y) == .FLOOR {
@@ -2330,35 +2732,56 @@ place_doors_makelev :: (m: *GenMap) {
                 above := map_get(m, x, y-1);
                 below := map_get(m, x, y+1);
                 if (above == .WALL || above == .ROCK) && (below == .WALL || below == .ROCK) {
-                    // 70% closed, 20% open, 10% secret
-                    roll := random(100);
-                    if roll < 70 {
-                        map_set(m, x, y, .DOOR_CLOSED);
-                    } else if roll < 90 {
-                        map_set(m, x, y, .DOOR_OPEN);
-                    } else {
-                        map_set(m, x, y, .DOOR_SECRET);
-                    }
+                    is_horizontal = true;
                 }
             }
 
             // Check for vertical door position (floor above and below)
-            if map_get(m, x, y-1) == .FLOOR && map_get(m, x, y+1) == .FLOOR {
+            if !is_horizontal && map_get(m, x, y-1) == .FLOOR && map_get(m, x, y+1) == .FLOOR {
                 // Make sure we're not in an open area (need walls left and right)
                 left := map_get(m, x-1, y);
                 right := map_get(m, x+1, y);
                 if (left == .WALL || left == .ROCK) && (right == .WALL || right == .ROCK) {
-                    // 70% closed, 20% open, 10% secret
-                    roll := random(100);
-                    if roll < 70 {
-                        map_set(m, x, y, .DOOR_CLOSED);
-                    } else if roll < 90 {
-                        map_set(m, x, y, .DOOR_OPEN);
-                    } else {
-                        map_set(m, x, y, .DOOR_SECRET);
-                    }
+                    is_vertical = true;
                 }
             }
+
+            if !is_horizontal && !is_vertical continue;
+
+            // Create door with random state per spec
+            // Per spec: 10% open, ~14% secret (overrides open), 50% of remaining locked
+            door: DoorInfo;
+            door.x = x;
+            door.y = y;
+            door.flags = 0;
+
+            if is_vertical {
+                door.flags |= DF_VERTICAL;
+            }
+
+            // Determine door state
+            is_open := random(100) < 10;     // 10% open
+            is_secret := random(100) < 14;   // ~14% secret (overrides open)
+            is_locked := random(2) == 0;     // 50% chance locked (if closed)
+
+            if is_secret {
+                door.flags |= DF_SECRET;
+                map_set(m, x, y, .DOOR_SECRET);
+            } else if is_open {
+                door.flags |= DF_OPEN;
+                map_set(m, x, y, .DOOR_OPEN);
+            } else {
+                // Closed door - check if locked
+                if is_locked {
+                    door.flags |= DF_LOCKED;
+                    // Lock DC scales with depth
+                    door.lock_dc = 10 + depth * 2 + random(5);
+                }
+                map_set(m, x, y, .DOOR_CLOSED);
+            }
+
+            // Add to doors array
+            array_add(*m.doors, door);
         }
     }
 }
@@ -2454,6 +2877,65 @@ place_traps :: (m: *GenMap, depth: s32) {
 
     if traps_placed > 0 && !makelev_quiet {
         print("  Placed % traps on level %\n", traps_placed, depth);
+    }
+}
+
+// Place treasure deposits in fully-enclosed rock tiles
+// Per spec: MakeLev.cpp:2155-2192, count = 1d4 + Depth
+// Treasure is placed in tiles fully surrounded by solid rock
+place_treasure_deposits :: (m: *GenMap, depth: s32) {
+    // Count: 1d4 + Depth
+    num_deposits := (1 + random(4)) + depth;
+    deposits_placed: s32 = 0;
+
+    // Try to find valid positions for deposits
+    // Per spec: Must be in solid rock, fully surrounded by solid rock
+    // Prefers non-base rock terrain (special rock veins)
+    for attempt: 0..num_deposits * 50 - 1 {  // 50 tries per deposit
+        // Random position, avoiding edges
+        x := 2 + random(m.width - 4);
+        y := 2 + random(m.height - 4);
+
+        // Check if position is rock
+        if map_get(m, x, y) != .ROCK continue;
+
+        // Check if fully surrounded by solid rock (all 8 neighbors)
+        all_solid := true;
+        for dy: -1..1 {
+            for dx: -1..1 {
+                if dx == 0 && dy == 0 continue;
+                t := map_get(m, x + cast(s32)dx, y + cast(s32)dy);
+                if t != .ROCK && t != .WALL {
+                    all_solid = false;
+                    break;
+                }
+            }
+            if !all_solid break;
+        }
+
+        if !all_solid continue;
+
+        // Valid deposit location - place a treasure marker
+        // Keep it as rock visually (hidden), but mark with an item
+        // Mining will reveal these as treasures
+
+        // Add an item at this location (will be hidden until uncovered)
+        item: EntityPos;
+        item.x = x;
+        item.y = y;
+        item.cr = depth + 3;  // Treasure is higher quality
+        item.type_id = 999;   // Special treasure marker
+        array_add(*m.items, item);
+
+        deposits_placed += 1;
+
+        if deposits_placed >= num_deposits {
+            break;
+        }
+    }
+
+    if deposits_placed > 0 && !makelev_quiet {
+        print("  Placed % treasure deposits\n", deposits_placed);
     }
 }
 
@@ -2978,11 +3460,16 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
     fixup_tunneling(m, *gs);
 
     // Step 6: Place doors where corridors meet rooms
-    place_doors_makelev(m);
+    // Per spec: 10% open, ~45% locked, ~45% unlocked, ~14% secret
+    place_doors_makelev(m, depth);
 
     // Step 6b: Place traps at doors and bottlenecks
     // Source: MakeLev.cpp:2155-2192
     place_traps(m, depth);
+
+    // Step 6c: Place treasure deposits in solid rock
+    // Per spec: count = 1d4 + Depth, hidden in fully-enclosed rock
+    place_treasure_deposits(m, depth);
 
     // Step 7: Place stairs
     // Source: MakeLev.cpp:1706-1743 (up), 1879-1900 (down)
