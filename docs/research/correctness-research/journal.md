@@ -86,4 +86,56 @@ The `TMonster::Dump()`, `TItem::Dump()` etc. functions could be used to generate
 
 ---
 
+## 2026-01-28: Glyph Rendering Architecture Discovery
+
+### Context
+
+Extended glyphs (GLYPH_FLOOR = 323, GLYPH_WALL = 264, etc.) were rendering as "?" in screenshots because the bitmap font only has 256 characters.
+
+### Initial Misunderstanding
+
+Investigation initially focused on `src/Wcurses.cpp` which contains Unicode mappings for GLYPH_* constants. This led to the assumption that Unicode was the primary rendering path.
+
+### Corrected Understanding
+
+User pointed out that **fonts are the PRIMARY display**:
+
+1. The original Incursion used CP437 bitmap fonts as the main rendering mode
+2. Unicode/ASCII in `Wcurses.cpp` is a **fallback** for pure curses/text terminals
+3. The authoritative lookup table is in `src/Wlibtcod.cpp` lines 448-600
+
+### Key Technical Details
+
+**GLYPH_* constants are aliases** that map to CP437 character codes:
+- `GLYPH_FLOOR (323)` → CP437 code 250 (middle dot)
+- `GLYPH_WALL (264)` → CP437 code 177 (medium shade)
+- `GLYPH_ROCK (265)` → CP437 code 176 (light shade)
+
+**Color is applied separately** from glyphs:
+- Lava (red) and water (blue) share the same glyph image (CP437 code 247)
+- The glyph defines shape, color is applied on top
+
+### Files Examined
+
+| File | Role |
+|------|------|
+| `src/Wlibtcod.cpp` | Primary rendering - CP437 lookup table (authoritative) |
+| `src/Wcurses.cpp` | Fallback rendering - Unicode mapping (NOT primary) |
+| `fonts/*.png` | CP437 bitmap fonts (16x16 grid of 256 chars) |
+
+### Action Taken
+
+- Updated notes.md with "Display and Rendering Architecture" section
+- Added high-priority backlog entry for implementing GLYPH_* → CP437 lookup
+- Our 8x8.png font is already CP437 layout, so only the lookup table is needed
+
+### Verification Implications
+
+When verifying rendering correctness:
+- Use `Wlibtcod.cpp` as the authoritative reference, NOT `Wcurses.cpp`
+- Verify glyph → CP437 mapping produces correct font atlas indices
+- Color application is independent of glyph selection
+
+---
+
 *Future entries should be appended below*

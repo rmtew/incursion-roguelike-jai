@@ -294,6 +294,59 @@ ParsedMonster {
 2. **Cross-reference check** - Verify $"name" references resolve
 3. **Module loading** - Verify Module/Slot/File headers work
 
+## Display and Rendering Architecture
+
+### Key Understanding (Corrected 2026-01-28)
+
+The original Incursion has **two rendering paths**:
+
+1. **Primary: CP437 Bitmap Fonts** (via libtcod)
+   - Uses 256-character fonts in 16x16 grid layout
+   - Characters are Code Page 437 glyphs
+   - This is the MAIN display mode
+
+2. **Fallback: Unicode/ASCII** (via curses)
+   - Used only for pure text terminals
+   - Maps GLYPH_* constants to Unicode code points
+   - NOT the primary rendering path
+
+### GLYPH_* Constants
+
+The `GLYPH_*` constants (256+) are **aliases** that map to CP437 character codes via a lookup table:
+
+| Constant | Value | CP437 Code | Character |
+|----------|-------|------------|-----------|
+| GLYPH_FLOOR | 323 | 250 | Middle dot · |
+| GLYPH_FLOOR2 | 324 | 249 | Small square |
+| GLYPH_WALL | 264 | 177 | Medium shade ▒ |
+| GLYPH_ROCK | 265 | 176 | Light shade ░ |
+| GLYPH_WATER | - | 247 | Almost equal ≈ |
+| GLYPH_LAVA | - | 247 | Almost equal ≈ |
+
+### Color Separation
+
+**Color is applied separately from glyphs.** This allows:
+- Lava (red) and water (blue) to share the same glyph image (CP437 code 247)
+- The glyph defines the shape, color is applied on top
+- This is why the color mapping system and glyph rendering are orthogonal
+
+### Authoritative Reference Files
+
+| File | Purpose |
+|------|---------|
+| `src/Wlibtcod.cpp` lines 448-600 | **Primary** GLYPH_* → CP437 lookup table |
+| `src/Wcurses.cpp` lines 503-644 | Fallback GLYPH_* → Unicode mapping |
+| `inc/Defines.h` | GLYPH_* constant definitions |
+| `fonts/*.png` | CP437 bitmap font images |
+
+### Verification Implications
+
+When verifying rendering correctness:
+1. Use CP437 lookup table from `Wlibtcod.cpp` as the authoritative reference
+2. Do NOT use Unicode mappings from `Wcurses.cpp` (that's fallback only)
+3. Verify glyph → CP437 mapping produces correct font atlas indices
+4. Verify color application is independent of glyph selection
+
 ## References
 
 - `CLAUDE.md` - Project structure and implementation status
@@ -301,3 +354,5 @@ ParsedMonster {
 - `lang/Grammar.acc` - Authoritative grammar specification
 - `lang/Tokens.lex` - Authoritative lexer specification
 - `src/Debug.cpp` - Original dump functions (lines 1856-1978)
+- `src/Wlibtcod.cpp` - Primary glyph rendering (CP437)
+- `src/Wcurses.cpp` - Fallback glyph rendering (Unicode)
