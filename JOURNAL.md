@@ -1479,3 +1479,17 @@ Our 8x8.png font is already in CP437 layout. Once the lookup table is implemente
 Aligned `docs/research/correctness-research/` with preferred subproject structure. See subproject JOURNAL.md for details.
 
 **Changes:** Split monolithic `notes.md` into `README.md` (overview), `NOTES.md` (technical reference), and `BACKLOG.md` (open questions/deferred work).
+
+---
+
+## 2026-01-29: Rendering Pipeline Investigation
+
+Investigated original source to understand how glyph rendering decisions are made. Created `docs/research/specs/rendering-pipeline.md`.
+
+**Key findings:**
+- Glyph is u32 bitfield: bits 0-11 character ID, bits 12-15 FG color, bits 16-19 BG color
+- GLYPH_* constants (256+) are semantic aliases requiring CP437 lookup at render time
+- Authoritative lookup table in `src/Wlibtcod.cpp` lines 448-606
+- Water and lava share same glyph (247), color distinguishes them
+
+This explains the "?" rendering bug - extended glyph IDs weren't being converted to CP437 codes.

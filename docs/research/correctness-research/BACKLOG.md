@@ -16,11 +16,40 @@
 
 ## Deferred Work
 
-### Glyph Rendering Verification
+### Glyph Rendering (HIGH PRIORITY)
 
-**Priority**: High
+**Status:** Spec complete, implementation needed
 
-Implement GLYPH_* → CP437 lookup table based on `src/Wlibtcod.cpp` lines 448-600. Current 8x8.png font is already CP437 layout, so only the lookup table is needed.
+**Spec:** `docs/research/specs/rendering-pipeline.md`
+
+**Tasks:**
+1. [ ] Extract full GLYPH_* → CP437 lookup table from `src/Wlibtcod.cpp` lines 448-606
+2. [ ] Implement `glyph_to_cp437(id: u16) -> u8` function
+3. [ ] Update terminal rendering to apply lookup before font atlas indexing
+4. [ ] Verify extended glyphs (GLYPH_FLOOR, GLYPH_WALL, etc.) render correctly
+
+**Key insight:** Glyph is a u32 bitfield:
+- Bits 0-11: Character ID (may be GLYPH_* constant 256+)
+- Bits 12-15: Foreground color (0-15)
+- Bits 16-19: Background color (0-15)
+
+### Rendering Priority System
+
+**Status:** Spec complete, not yet implemented
+
+When multiple things occupy a cell:
+- Creatures override items
+- Multiple creatures → GLYPH_MULTI (Æ)
+- Multiple items → GLYPH_PILE (*)
+
+### Visibility/Memory System
+
+**Status:** Not yet researched in detail
+
+Map cells track:
+- Whether player has ever seen the cell
+- What the player remembers seeing (Memory field)
+- Current visibility state
 
 ### Phase 2-4 Verification
 

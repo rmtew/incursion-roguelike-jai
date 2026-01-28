@@ -175,4 +175,63 @@ correctness-research/
 
 ---
 
+## 2026-01-29: Rendering Pipeline Investigation
+
+### Motivation
+
+Extended glyphs (GLYPH_FLOOR=323, GLYPH_WALL=264, etc.) were rendering as "?" because we didn't understand how glyph IDs map to rendered characters. This investigation documents the complete rendering pipeline.
+
+### Key Discoveries
+
+**Glyph is a u32 bitfield:**
+```
+Bits 0-11:  Character ID (0-4095, includes GLYPH_* constants)
+Bits 12-15: Foreground color (0-15 ANSI palette)
+Bits 16-19: Background color (0-15 ANSI palette)
+```
+
+**GLYPH_* constants are semantic aliases:**
+- Values 256+ represent semantic meaning (GLYPH_FLOOR, GLYPH_WALL, etc.)
+- Must be converted to CP437 codes (0-255) at render time
+- Lookup table in `src/Wlibtcod.cpp` lines 448-606 is authoritative
+
+**Color separation is intentional:**
+- Water (blue) and Lava (red) share CP437 code 247 (≈)
+- Color field distinguishes them, not the glyph shape
+- This is why FG color is stored separately from character ID
+
+**Runtime storage:**
+- TMonster, TItem, TTerrain all have `Glyph Image` field
+- Field stores complete bitfield (character + colors)
+- Parsed from `Image: color 'char';` syntax in .irh files
+
+### Rendering Decision Flow
+
+From `src/Term.cpp` lines 701-868:
+
+1. Get base terrain glyph from LocationInfo
+2. Check Contents list for creatures/items
+3. Apply priority (creatures > items > features > terrain)
+4. Handle multiples (GLYPH_MULTI for creatures, GLYPH_PILE for items)
+5. Apply visibility rules (unseen → space, remembered → memory, visible → current)
+6. Extract colors and character, call terminal
+
+### Output
+
+Created `docs/research/specs/rendering-pipeline.md` with:
+- Complete Glyph bitfield documentation
+- GLYPH_* to CP437 mapping table
+- Color palette reference
+- Rendering priority rules
+- Verification checklist
+
+### Impact
+
+This investigation would have prevented the "?" glyph bug if done earlier. The fix is clear:
+1. Implement GLYPH_* → CP437 lookup table
+2. Apply lookup before font atlas indexing
+3. Our 8x8.png font is already CP437 layout - no font changes needed
+
+---
+
 *Future entries should be appended below*
