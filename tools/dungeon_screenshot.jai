@@ -64,6 +64,9 @@ TC_WHITE        :: Color.{0.75, 0.75, 0.75, 1.0};
 #load "../src/dungeon/makelev.jai";
 #load "../src/dungeon/generator.jai";
 
+// Glyph to CP437 conversion
+#load "../src/glyph_cp437.jai";
+
 // Convert ANSI color index (0-15) to RGB Color
 ansi_to_rgb :: (ansi: s64) -> Color {
     // Standard 16-color ANSI palette
@@ -250,9 +253,10 @@ save_screenshot :: (m: *GenMap) -> bool {
                 fg = TC_BRIGHT_YELLOW;
             }
 
-            glyph_u8: u8 = ifx glyph > 255 then #char "?" else cast(u8)glyph;
+            // Convert extended glyphs (256+) to CP437 for font atlas
+            glyph_cp437 := glyph_to_cp437(glyph);
             draw_glyph_to_buffer(pixels.data, img_width, img_height, *font,
-                                 glyph_u8, mx * font.glyph_width, my * font.glyph_height, fg, bg);
+                                 glyph_cp437, mx * font.glyph_width, my * font.glyph_height, fg, bg);
         }
     }
 
