@@ -967,3 +967,81 @@ All builds pass:
 **Documentation updates:**
 - Added Jai compiler version (`beta 0.2.025`) to README.md and CLAUDE.md
 - Added directive #7 to CLAUDE.md: check compiler version at session start, ask about language changes if different
+
+---
+
+## 2026-01-28: Phase 5 - Inspection Interface (CLI Tool)
+
+### Overview
+
+Implemented `tools/inspect.jai` - a CLI tool for programmatic dungeon inspection and Claude-driven testing.
+
+### Features
+
+**CLI Flags:**
+- `--seed N, -s N` - Set RNG seed (default: 12345)
+- `--depth N, -d N` - Set dungeon depth (default: 1)
+- `--mode MODE, -m` - Generator mode: ext/extended or ori/original
+- `--batch CMD, -b` - Run single command and exit
+- `--quiet, -q` - Suppress generation messages for clean output
+- `--help, -h` - Show help
+
+**Interactive Commands:**
+- `dump` / `dump json` - ASCII or JSON map output
+- `query X,Y` / `query X,Y json` - Cell contents at coordinates
+- `stats` / `stats json` - Dungeon statistics
+- `rooms` / `monsters` / `items` - List entities
+- `seed [N]` / `depth [N]` / `mode [ext|ori]` - Get/set parameters
+- `generate` - Regenerate with current settings
+- `help` / `quit` - Help and exit
+
+**JSON Output:**
+All commands support JSON mode for programmatic parsing:
+```json
+{
+  "seed": 12345,
+  "depth": 1,
+  "mode": "original",
+  "width": 80,
+  "height": 50,
+  "rooms": 8,
+  "monsters": 5,
+  "items": 15,
+  ...
+}
+```
+
+### Changes
+
+**Files Created:**
+- `tools/inspect.jai` - Main inspection tool
+
+**Files Modified:**
+- `src/dungeon/generator.jai` - Added depth parameter to `generate_dungeon`
+- `src/dungeon/makelev.jai` - Added `makelev_quiet` flag for silent generation
+- `CLAUDE.md` - Removed directive #7 (Jai version check)
+
+### Usage Examples
+
+```bash
+# Quick stats in JSON
+./inspect.exe --quiet --batch "stats json"
+
+# Dump map with specific seed
+./inspect.exe --quiet --seed 99999 --batch "dump"
+
+# Query a specific cell
+./inspect.exe --quiet --batch "query 10,10 json"
+
+# Interactive mode
+./inspect.exe
+> stats
+> query 5,5
+> generate
+> dump
+> quit
+```
+
+### Test Results
+
+All 166 existing tests pass. Inspect tool builds and runs correctly.

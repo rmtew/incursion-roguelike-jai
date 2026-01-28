@@ -8,7 +8,6 @@
 4. **Lexer/Parser: Implement from grammar spec, test against .irh files** - The authoritative reference for lexer/parser implementation is in `lang/Tokens.lex` and `lang/Grammar.acc`. Implement to match these specifications, then validate against actual `.irh` resource files.
 5. **Maintain JOURNAL.md** - Record summaries of changes made in each session by appending new entries. Include what was changed, why, and test results.
 6. **Maintain backlog.md** - Track workarounds, deferred work, and ideas for future improvements. Update when adding workarounds or identifying issues to revisit later.
-7. **Check Jai compiler version** - At session start, ask user for current compiler version. If it differs from the recorded version below, ask what language changes occurred that might affect this codebase (new features, deprecations, syntax changes).
 
 ## Environment
 
@@ -55,6 +54,7 @@ incursion-port/
     terminal/
       window.jai         - Simp-based glyph terminal rendering
   tools/
+    inspect.jai          - CLI inspection tool for programmatic testing
     dungeon_test.jai     - Interactive dungeon viewer (windowed)
     dungeon_screenshot.jai - Headless screenshot generator
     terminal_test.jai    - Terminal rendering test

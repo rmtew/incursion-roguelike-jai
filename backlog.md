@@ -13,8 +13,8 @@
 
 ### Not Started
 - [ ] Phase 1: Resource Baking - Compile-time .irh to runtime tables
-- [ ] Phase 3: Population System - Monsters, items from encounter tables
-- [ ] Phase 5: Inspection Interface - Claude-queryable state dumps
+- [ ] Phase 3: Population System - Monsters, items from encounter tables (using baked resources)
+- [x] Phase 5: Inspection Interface - `tools/inspect.jai` CLI tool (2026-01-28)
 - [ ] Phase 6: Integration & Testing - Wire everything together
 
 ## Dungeon Generator Improvements Needed

@@ -7,6 +7,9 @@
 //
 // Note: This file is loaded by main.jai which handles all imports.
 
+// Global flag to suppress debug/progress messages
+makelev_quiet := false;
+
 // Tunnel termination flags (from original MakeLev.cpp)
 // These control when a tunnel should stop
 TT_CONNECT   :: 0x01;  // Terminate when reach area where Connected flag differs from start
@@ -2449,7 +2452,7 @@ place_traps :: (m: *GenMap, depth: s32) {
         }
     }
 
-    if traps_placed > 0 {
+    if traps_placed > 0 && !makelev_quiet {
         print("  Placed % traps on level %\n", traps_placed, depth);
     }
 }
@@ -2638,8 +2641,10 @@ populate_dungeon :: (m: *GenMap, depth: s32) {
         }
     }
 
-    print("  Populated level %: % monsters, % items (% open tiles)\n",
-          depth, monsters_placed, items_placed, open_count);
+    if !makelev_quiet {
+        print("  Populated level %: % monsters, % items (% open tiles)\n",
+              depth, monsters_placed, items_placed, open_count);
+    }
 }
 
 // Fix-up tunneling: ensure all regions are connected
@@ -2952,7 +2957,7 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
     vault_chance := 20 + m.depth * 5;
     if random(100) < vault_chance {
         if try_place_vault(m, *gs, m.depth) {
-            print("  Placed vault on level %\n", m.depth);
+            if !makelev_quiet print("  Placed vault on level %\n", m.depth);
         }
     }
 
@@ -3019,8 +3024,10 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
     // Source: MakeLev.cpp:3269-3301, Encounter.cpp:514-1125
     populate_dungeon(m, depth);
 
-    print("Generated dungeon (ORIGINAL MakeLev) depth % with % rooms, % up-stairs, % down-stairs, % monsters, % items\n",
-          depth, m.rooms.count, up_stairs.count, down_stairs.count, m.monsters.count, m.items.count);
+    if !makelev_quiet {
+        print("Generated dungeon (ORIGINAL MakeLev) depth % with % rooms, % up-stairs, % down-stairs, % monsters, % items\n",
+              depth, m.rooms.count, up_stairs.count, down_stairs.count, m.monsters.count, m.items.count);
+    }
 
     return down_stairs;
 }

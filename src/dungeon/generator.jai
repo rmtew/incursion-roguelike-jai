@@ -229,9 +229,9 @@ bsp_connect_rooms :: (node: *BSPNode, m: *GenMap, rng: *Random_State) {
 }
 
 // Main dungeon generation function
-generate_dungeon :: (m: *GenMap, seed: u64 = 0, mode: GeneratorMode = .EXTENDED) {
+generate_dungeon :: (m: *GenMap, seed: u64 = 0, mode: GeneratorMode = .EXTENDED, depth: s32 = 1) {
     if mode == .ORIGINAL {
-        generate_dungeon_original(m, cast(u32)seed);
+        generate_dungeon_original(m, cast(u32)seed, depth);
         return;
     }
 
@@ -244,6 +244,7 @@ generate_dungeon :: (m: *GenMap, seed: u64 = 0, mode: GeneratorMode = .EXTENDED)
 
     // Initialize map
     map_init(m);
+    m.depth = depth;
 
     // Create BSP tree covering the map (with border margin)
     root := bsp_create(.{1, 1, m.width - 2, m.height - 2});
@@ -303,7 +304,7 @@ generate_dungeon :: (m: *GenMap, seed: u64 = 0, mode: GeneratorMode = .EXTENDED)
 
 // Original-compatible dungeon generation using MT19937
 // Uses MakeLev panel-based generation
-generate_dungeon_original :: (m: *GenMap, seed: u32) {
+generate_dungeon_original :: (m: *GenMap, seed: u32, depth: s32 = 1) {
     // Use the MakeLev-style generation
-    generate_makelev(m, seed);
+    generate_makelev(m, seed, depth = depth);
 }
