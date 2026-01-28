@@ -8,6 +8,14 @@
 4. **Maintain BACKLOG.md** - Track workarounds, deferred work, and ideas for future improvements. Update when adding workarounds or identifying issues to revisit later.
 5. **Subproject structure** - Research subprojects (in `docs/research/`) can have their own `README.md` (overview, current state), `JOURNAL.md`, and `BACKLOG.md`. When updating a subproject journal, add a brief entry in the root JOURNAL.md referencing the update.
 
+## Environment
+
+- **Shell**: Git Bash on Windows (cmd/terminal)
+- **Python**: Use `py` command (not `python`)
+- **Jai Compiler**: `C:/Data/R/jai/bin/jai.exe`
+- **Jai Version**: `beta 0.2.025` (released 2026-01-19, last verified: 2026-01-28)
+- **IMPORTANT**: Jai is under NDA closed beta. NEVER read, access, or explore any files in the Jai installation directory (`C:/Data/R/jai/`) other than invoking the executable. Do not attempt to read modules, examples, or any other files in that directory tree.
+
 ## Reference Structure
 
 | Location | Purpose |
@@ -18,20 +26,6 @@
 | `docs/research/specs/` | Specifications derived from correctness research |
 | `docs/research/parser-research/` | Lexer/parser implementation notes |
 | `docs/research/scripting/` | Scripting system research |
-
-## Environment
-
-- **Shell**: Git Bash on Windows (cmd/terminal)
-- **Python**: Use `py` command (not `python`)
-- **Jai Compiler**: `C:/Data/R/jai/bin/jai.exe`
-- **Jai Version**: `beta 0.2.025` (released 2026-01-19, last verified: 2026-01-28)
-- **IMPORTANT**: Jai is under NDA closed beta. NEVER read, access, or explore any files in the Jai installation directory (`C:/Data/R/jai/`) other than invoking the executable. Do not attempt to read modules, examples, or any other files in that directory tree.
-
-## Original Incursion Source
-
-**Location**: `C:\Data\R\roguelike - incursion\repo-work\`
-
-For details on key files, resource formats, and grammar specifications, see `docs/research/correctness-research/` and `docs/research/specs/`.
 
 ## Build & Test
 
@@ -133,7 +127,17 @@ When tools fail, crash, produce unexpected output, or dependencies are missing:
 - JOURNAL.md under `### Errors` section - what happened, what was tried
 - BACKLOG.md - for follow-up investigation
 
-## Jai Language Reference
+---
+
+## Project-Specific: Incursion Port
+
+### Original Incursion Source
+
+**Location**: `C:\Data\R\roguelike - incursion\repo-work\`
+
+For details on key files, resource formats, and grammar specifications, see `docs/research/correctness-research/` and `docs/research/specs/`.
+
+### Jai Language Reference
 
 See `docs/research/jai-reference.md` for language patterns, useful modules, and NDA constraints.
 
