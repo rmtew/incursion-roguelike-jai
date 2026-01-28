@@ -198,11 +198,14 @@ map_get :: (m: *GenMap, x: s32, y: s32) -> Terrain {
 }
 
 // Set terrain at position
+// Clears any custom TileDisplay so the terrain's default rendering is used
 map_set :: (m: *GenMap, x: s32, y: s32, terrain: Terrain) {
     if x < 0 || x >= m.width || y < 0 || y >= m.height {
         return;
     }
-    m.tiles[y * m.width + x] = terrain;
+    idx := y * m.width + x;
+    m.tiles[idx] = terrain;
+    m.tile_display[idx].use_custom = false;  // Clear stale display info
 }
 
 // Set terrain with custom display info (for region terrain variety)
