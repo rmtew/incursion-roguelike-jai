@@ -1,12 +1,6 @@
-# Correctness Research - Verification Strategies
+# Correctness Research - Technical Reference
 
-## Goal
-
-Ensure the Jai reimplementation of Incursion faithfully replicates the original game's:
-- Resource parsing (monsters, items, spells, etc.)
-- Game mechanics (combat, skills, magic)
-- Dungeon generation
-- Script/effect logic
+Detailed notes on verification strategies and original source structure.
 
 ## Original Source Location
 
@@ -211,20 +205,6 @@ image.glyph: 'g'
 | `lib/spell.irh` | Spell definitions | Medium |
 | `lib/effect.irh` | Status effects | Medium |
 
-## Open Questions
-
-1. How much does the original parser compute at parse-time vs runtime?
-2. Are there undocumented behaviors in the original we need to match?
-3. What's the minimal viable verification for MVP?
-4. Can we build the original source to use as reference executable?
-
-## Tools to Develop
-
-- [ ] Jai parser dump utility (serialize ParsedX structs)
-- [ ] Golden file test runner
-- [ ] Constant verification script
-- [ ] Diff tool for comparing parsed output
-
 ## Original Dump Functions
 
 The original has `Dump()` methods in `src/Debug.cpp`:
@@ -346,13 +326,3 @@ When verifying rendering correctness:
 2. Do NOT use Unicode mappings from `Wcurses.cpp` (that's fallback only)
 3. Verify glyph → CP437 mapping produces correct font atlas indices
 4. Verify color application is independent of glyph selection
-
-## References
-
-- `CLAUDE.md` - Project structure and implementation status
-- `RECONSTRUCTION-PARSER.md` - Parser implementation details
-- `lang/Grammar.acc` - Authoritative grammar specification
-- `lang/Tokens.lex` - Authoritative lexer specification
-- `src/Debug.cpp` - Original dump functions (lines 1856-1978)
-- `src/Wlibtcod.cpp` - Primary glyph rendering (CP437)
-- `src/Wcurses.cpp` - Fallback glyph rendering (Unicode)

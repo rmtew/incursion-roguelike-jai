@@ -1471,3 +1471,11 @@ Added detailed backlog entry under "Technical Debt > Glyph Rendering (HIGH PRIOR
 ### Impact
 
 Our 8x8.png font is already in CP437 layout. Once the lookup table is implemented, extended glyphs will render correctly with no font changes needed.
+
+---
+
+## 2026-01-29: Correctness Research Restructuring
+
+Aligned `docs/research/correctness-research/` with preferred subproject structure. See subproject JOURNAL.md for details.
+
+**Changes:** Split monolithic `notes.md` into `README.md` (overview), `NOTES.md` (technical reference), and `BACKLOG.md` (open questions/deferred work).

@@ -138,4 +138,41 @@ When verifying rendering correctness:
 
 ---
 
+## 2026-01-29: Subproject Structure Alignment
+
+### Changes Made
+
+Restructured correctness-research to follow preferred subproject structure from CLAUDE.md:
+
+**Before:**
+```
+correctness-research/
+├── notes.md      # Everything in one file
+└── JOURNAL.md
+```
+
+**After:**
+```
+correctness-research/
+├── README.md     # Overview, current state, quick reference
+├── NOTES.md      # Detailed technical reference (renamed for consistent casing)
+├── JOURNAL.md    # Session history
+└── BACKLOG.md    # Open questions, tools to develop, deferred work
+```
+
+### Content Distribution
+
+- **README.md** - Goal, current state, approach summary, verification phases, key references
+- **NOTES.md** - Authoritative specs, verification approaches, phased approach details, file references, concrete examples, rendering architecture
+- **BACKLOG.md** - Open questions, tools to develop checklist, deferred work items, ideas
+
+### Rationale
+
+- Quick orientation via README without wading through technical details
+- Trackable open items in BACKLOG (checkboxes for tools, deferred work)
+- Deep reference material preserved in NOTES
+- Consistent uppercase naming across subproject files
+
+---
+
 *Future entries should be appended below*
