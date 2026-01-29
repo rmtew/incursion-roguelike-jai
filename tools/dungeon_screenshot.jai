@@ -67,65 +67,13 @@ TC_WHITE        :: Color.{0.75, 0.75, 0.75, 1.0};
 // Glyph to CP437 conversion
 #load "../src/glyph_cp437.jai";
 
+// Rendering priority system
+#load "../src/dungeon/render.jai";
+
 // Convert ANSI color index (0-15) to RGB Color
-ansi_to_rgb :: (ansi: s64) -> Color {
-    // Standard 16-color ANSI palette
-    if ansi == {
-        case 0;  return TC_BLACK;
-        case 1;  return TC_BLUE;
-        case 2;  return TC_GREEN;
-        case 3;  return TC_CYAN;
-        case 4;  return TC_RED;
-        case 5;  return TC_MAGENTA;
-        case 6;  return TC_BROWN;
-        case 7;  return TC_GREY;
-        case 8;  return TC_DARK_GREY;
-        case 9;  return TC_BRIGHT_BLUE;
-        case 10; return TC_BRIGHT_GREEN;
-        case 11; return TC_BRIGHT_CYAN;
-        case 12; return TC_BRIGHT_RED;
-        case 13; return TC_BRIGHT_MAGENTA;
-        case 14; return TC_YELLOW;
-        case 15; return TC_BRIGHT_WHITE;
-    }
-    return TC_GREY;  // Default
-}
-
-// Color mapping for terrain
-get_terrain_color :: (t: Terrain) -> Color {
-    if t == {
-        case .ROCK;         return TC_BLACK;
-        case .WALL;         return TC_GREY;
-        case .FLOOR;        return TC_BROWN;
-        case .CORRIDOR;     return Color.{0.4, 0.25, 0.1, 1.0};
-        case .DOOR_CLOSED;  return TC_YELLOW;
-        case .DOOR_OPEN;    return TC_BROWN;
-        case .DOOR_SECRET;  return TC_GREY;
-        case .STAIRS_UP;    return TC_BRIGHT_WHITE;
-        case .STAIRS_DOWN;  return TC_BRIGHT_WHITE;
-        case .WATER;        return TC_BRIGHT_BLUE;
-        case .CHASM;        return TC_BLACK;
-        case .LAVA;         return TC_BRIGHT_RED;
-        case .TRAP;         return TC_BRIGHT_RED;
-        case .TRAP_HIDDEN;  return TC_BROWN;
-        case .PILLAR;       return TC_GREY;
-        case .RUBBLE;       return TC_BROWN;
-    }
-    return TC_WHITE;
-}
-
-monster_at :: (m: *GenMap, x: s32, y: s32) -> bool {
-    for mon: m.monsters {
-        if mon.x == x && mon.y == y return true;
-    }
-    return false;
-}
-
-item_at :: (m: *GenMap, x: s32, y: s32) -> bool {
-    for item: m.items {
-        if item.x == x && item.y == y return true;
-    }
-    return false;
+ansi_to_color :: (ansi: u8) -> Color {
+    r, g, b := ansi_to_rgb(ansi);
+    return Color.{r, g, b, 1.0};
 }
 
 ScreenshotFont :: struct {
@@ -222,36 +170,10 @@ save_screenshot :: (m: *GenMap) -> bool {
 
     for my: 0..m.height-1 {
         for mx: 0..m.width-1 {
-            terrain := map_get(m, mx, my);
-            glyph := terrain_glyph(terrain);
-            fg := get_terrain_color(terrain);
-            bg := TC_BLACK;
-
-            // Check for custom tile display
-            td := map_get_display(m, mx, my);
-            if td != null && td.use_custom {
-                glyph = td.glyph;
-                tc := terrain_color_to_rgb(td.fg_color);
-                fg = Color.{tc.r, tc.g, tc.b, 1.0};
-            }
-
-            // Special backgrounds
-            if terrain == .WATER {
-                bg = TC_BLUE;
-            } else if terrain == .CHASM {
-                bg = Color.{0.1, 0.1, 0.1, 1.0};
-            } else if terrain == .LAVA {
-                bg = TC_RED;
-            }
-
-            // Check for monsters/items
-            if monster_at(m, mx, my) {
-                glyph = #char "M";
-                fg = TC_BRIGHT_RED;
-            } else if item_at(m, mx, my) {
-                glyph = #char "*";
-                fg = TC_BRIGHT_YELLOW;
-            }
+            // Use the render module to get proper priority-based rendering
+            glyph, fg_ansi, bg_ansi := get_cell_render(m, mx, my);
+            fg := ansi_to_color(fg_ansi);
+            bg := ansi_to_color(bg_ansi);
 
             // Convert extended glyphs (256+) to CP437 for font atlas
             glyph_cp437 := glyph_to_cp437(glyph);
