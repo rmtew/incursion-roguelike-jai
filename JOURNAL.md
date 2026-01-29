@@ -1567,3 +1567,49 @@ Monsters and items now display their actual glyphs as defined in the .irh resour
 - Items show their proper equipment glyphs (armor Σ, weapons, etc.)
 
 The `type_id` field can be used for future lookups (name, stats, etc.).
+
+---
+
+## 2026-01-29: Visibility/Memory System Specification
+
+Researched and documented the original Incursion visibility system for correctness alignment.
+
+### Research Findings
+
+**Data Structures** (from `inc/Map.h` lines 25-56):
+- `LocationInfo.Visibility` - u16 bitmask of visibility flags per player
+- `LocationInfo.Memory` - u32 stored glyph (what player remembers seeing)
+- Flags: `VI_VISIBLE` (in FOV), `VI_DEFINED` (ever seen), `VI_EXTERIOR`, `VI_TORCHED`
+
+**Rendering Logic** (from `src/Term.cpp` lines 838-846):
+- If cell visible: show current contents with priority system
+- If defined but not visible: show `Memory` glyph (remembered terrain)
+- If never seen: show `GLYPH_UNSEEN` (space character)
+
+**Memory Assignment** (from `src/Vision.cpp` line 62):
+- When cell becomes visible: `Memory = Glyph` (stores terrain appearance)
+- Features (doors, chests, fountains) update Memory when discovered
+- Creatures and loose items are NOT remembered (only visible in FOV)
+
+**FOV Algorithm** (from `src/Vision.cpp` lines 256-370):
+- Ray casting from player position to edges of viewport
+- Cells block vision if `Opaque` flag set, magical darkness, or obscuring terrain
+- Multiple range checks: `SightRange`, `LightRange`, `ShadowRange`, `BlindRange`
+
+### Specification Created
+
+Full spec at `docs/research/specs/visibility-system.md` including:
+- Data structure definitions
+- Rendering decision flowchart
+- Memory assignment rules
+- FOV algorithm overview
+- 4-phase implementation plan for Jai port
+- Verification checklist
+
+### Next Steps
+
+Implementation deferred pending user direction. The spec outlines:
+1. Phase 1: Add VisibilityInfo struct to GenMap
+2. Phase 2: Implement `mark_cell_visible()` for memory assignment
+3. Phase 3: Update `get_cell_render()` with visibility checks
+4. Phase 4: Implement ray-based FOV calculation

@@ -59,12 +59,20 @@ Entities now look up their actual glyphs from parsed .irh files:
 
 ### Visibility/Memory System
 
-**Status:** Not yet researched in detail
+**Status:** Specification complete, implementation pending
+
+**Spec:** `docs/research/specs/visibility-system.md`
 
 Map cells track:
-- Whether player has ever seen the cell
-- What the player remembers seeing (Memory field)
-- Current visibility state
+- `VI_VISIBLE` - Currently in player's FOV
+- `VI_DEFINED` - Has been seen at least once
+- `Memory` field - Glyph stored when cell first seen
+
+**Implementation Plan (from spec):**
+1. [ ] Data structures: Add `VisibilityInfo` struct with visibility flags + memory glyph
+2. [ ] Memory assignment: Store terrain glyph when cell becomes visible
+3. [ ] Rendering integration: Check visibility in `get_cell_render()`
+4. [ ] FOV algorithm: Ray casting from player to viewport edges
 
 ### Phase 2-4 Verification
 
