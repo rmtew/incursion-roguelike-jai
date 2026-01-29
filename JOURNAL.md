@@ -1936,5 +1936,15 @@ Late-arriving background agent from the previous session had detailed Map.h, Eve
 - Trap constructor detail
 - DF_* naming collision warning
 
+**`04-creature-system.md`**: Further expanded with late-arriving Creature.h agent data:
+- Creature static members: AttrAdj[41][39] bonus matrix, weapon cache (5 static Item pointers)
+- Character: full field listing expanded with skill points (SpentSP/BonusSP/TotalSP), turning (TurnTypes/TurnLevels), favored enemies (FavTypes/FavLevels), study/focus, HP/mana roll arrays, save bonuses, attribute gain tracking, alignment/misc fields, full religion arrays (TempFavour, Anger, FavPenalty, PrayerTimeout, AngerThisTurn, lastPulse, godFlags), spell detail (slots, recent, tattoos)
+- Player: expanded with MMArray[2048], SpellKeys, MapMemoryMask, GallerySlot, MapSP, GraveText, seeds, counters, UI state flags
+- State flags (MS_*) with exact hex values (16 flags)
+- Perception flags (PER_*) with exact hex values (11 flags)
+- Supporting data structures: ActionInfo, EffectInfo, FeatInfoStruct with FeatPrereq/FeatConjunct, SkillInfoStruct
+- Feat prerequisite types (FP_*, 13 values)
+- Key size constants table (15 entries)
+
 ### Summary
-All 18 research documents now have implementation-level detail where available. The three remaining docs (03, 09, 10) have been brought up to the same standard as the four previously expanded docs (01, 02, 04, 16). Research phase complete.
+All 18 research documents now have implementation-level detail where available. Seven key docs (01, 02, 03, 04, 09, 10, 16) expanded with field-level detail from original headers. Research phase complete.

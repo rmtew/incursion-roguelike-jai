@@ -30,9 +30,16 @@ Dir LastMoveDir;            // Last movement direction
 int8 AoO;                   // Attacks of opportunity remaining
 int8 FFCount;               // Flat-footed counter
 int8 HideVal;               // Stealth value
+int8 concentUsed;           // Concentration slots used
 int16 StateFlags;           // MS_* state flags
 int8 AttrDeath;             // Attribute that caused death (drain)
 TargetSystem ts;            // Embedded target/hostility system
+```
+
+### Static Members
+```cpp
+static int8 AttrAdj[ATTR_LAST][BONUS_LAST];  // [41][39] bonus matrix
+static Item *meleeWep, *offhandWep, *missileWep, *thrownWep, *myShield;  // Weapon cache
 ```
 
 ### Perception Precalculations
@@ -109,22 +116,88 @@ uint8 NatureSight;    // Nature sight (see through foliage)
 
 Adds class/race system, equipment slots, and progression.
 
-### Key Fields
+### Core Fields
 ```cpp
-hObj Inv[NUM_SLOTS];           // Equipment slots
-int16 BAttr[7];               // Base attributes (before mods)
-int16 KAttr[ATTR_LAST];       // Known attributes
-int8 SkillRanks[SK_LASTSKILL]; // Skill ranks invested
+hObj Inv[NUM_SLOTS];           // Equipment slots (24 slots)
+hObj defMelee, defRanged, defAmmo, defOffhand; // Default weapon handles
+int16 BAttr[7];               // Base attributes (STR-LUC)
+int16 KAttr[ATTR_LAST];       // Known attributes (41 indices)
+int8 SkillRanks[SK_LASTSKILL]; // Skill ranks invested (49 skills)
 uint16 Feats[(FT_LAST/8)+1];  // Feat bitfield
-uint8 Abilities[CA_LAST];     // Class abilities
+uint8 Abilities[CA_LAST];     // Class abilities (143 abilities)
 rID ClassID[6];               // Up to 6 multiclass slots
 rID RaceID, GodID;            // Race and deity
-int8 Level[3];                // Levels per class
+int8 Level[3];                // Levels per class (max 3 classes)
 uint32 XP, XP_Drained;        // Experience
-int16 alignGE, alignLC;       // Alignment axes
-int16 FavourLev[MAX_GODS];    // Deity favor per god
-int32 SacVals[MAX_GODS][MAX_SAC_CATS+2]; // Sacrifice tracking
-uint16 Spells[MAX_SPELLS+1];  // Known spell flags
+```
+
+### Skill Points
+```cpp
+uint16 SpentSP[6], BonusSP[6], TotalSP[6]; // Per-class skill points
+```
+
+### Turning & Favored Enemies
+```cpp
+uint8 TurnTypes[4], TurnLevels[4];   // Creature types that can be turned
+uint8 FavTypes[12], FavLevels[12];   // Favored enemy types and bonuses
+```
+
+### Study & Focus
+```cpp
+uint8 IntStudy[STUDY_LAST];          // Intensive study progression (10)
+int16 FocusWCount, FocusSCount;      // Weapon/school focus counts
+int16 ExoticCount;                   // Exotic weapon count
+int16 aStoryPluses, tStoryPluses;    // Story bonus tracking
+```
+
+### Leveling Detail
+```cpp
+int8 hpRolls[3][MAX_CHAR_LEVEL];     // HP rolls per class per level [3][11]
+int8 manaRolls[3][MAX_CHAR_LEVEL];   // Mana rolls [3][11]
+int8 SaveBonus[16];                  // Save bonus array
+int16 GainAttr[7][15];              // Attribute gain tracking
+int8 NotifiedLevel;                  // Last notified level
+```
+
+### Alignment & Misc
+```cpp
+int16 alignGE, alignLC;             // Alignment axes (Good/Evil, Law/Chaos)
+uint32 Proficiencies;               // Weapon proficiency bitfield
+uint16 desiredAlign;                // Desired alignment
+hObj Mount;                         // Handle to mount creature
+int16 resChance;                    // Resurrection chance
+uint8 RageCount;                    // Number of rages used
+int32 xpTicks;                      // XP tick counter
+uint32 Personality;                 // Personality type flags
+int16 polyTicks;                    // Polymorph duration counter
+int32 LastRest;                     // Turn count of last rest
+int16 fracFatigue;                  // Fractional fatigue accumulator
+bool isFallenPaladin;               // Has paladin fallen?
+```
+
+### Religion
+```cpp
+int16 FavourLev[MAX_GODS];          // Deity favor per god (25 gods)
+int32 TempFavour[MAX_GODS];         // Temporary favour accumulator
+int16 Anger[MAX_GODS];              // Anger level per god
+int32 SacVals[MAX_GODS][MAX_SAC_CATS+2]; // Sacrifice values [25][12]
+int16 FavPenalty[MAX_GODS];         // Favour penalties
+int16 PrayerTimeout[MAX_GODS];      // Prayer cooldown timers
+int16 AngerThisTurn[MAX_GODS];      // Anger accumulated this turn
+int32 lastPulse[MAX_GODS];          // Last pulse counter per god
+uint16 godFlags[MAX_GODS];          // Per-god flags
+```
+
+### Spells
+```cpp
+uint16 Spells[MAX_SPELLS+1];        // Known spell flags (2049 entries)
+uint8 SpellsLearned[10];            // Spells learned per level
+uint8 SpellSlots[10];               // Spell slots per level
+uint8 BonusSlots[10];               // Bonus spell slots per level
+uint16 RecentSpells[10];            // Recently cast spells
+uint16 RecentSkills[5];             // Recently used skills
+uint16 RecentItems[5];              // Recently used items
+rID Tattoos[10];                    // Magical tattoo resource IDs
 ```
 
 ### Progression Methods
@@ -148,14 +221,30 @@ Player-specific: UI, input, journal, options.
 ### Key Fields
 ```cpp
 Term* MyTerm;                  // Display terminal
-int8 Options[OPT_LAST];       // Game options (~100)
+int8 Options[OPT_LAST];       // Game options (900 entries)
 String Journal;                // Adventure journal
 String MessageQueue[8];        // Message buffer
-rID Macros[MAX_MACROS];        // F-key macros
-QuickKey QuickKeys[MAX_QKEYS]; // Quick bindings
+rID Macros[MAX_MACROS];        // F-key macros (12)
+QuickKey QuickKeys[MAX_QKEYS]; // Quick bindings (40)
 int16 AutoBuffs[64];           // Auto-buff list
-int16 MaxDepths[MAX_DUNGEONS]; // Explored depth per dungeon
+int16 cAutoBuff;               // Current auto-buff iterator
+int16 MaxDepths[MAX_DUNGEONS]; // Explored depth per dungeon (32)
+uint32 MMArray[MAX_SPELLS];    // Metamagic flags per spell (2048)
+int16 SpellKeys[12];           // Spell quick-key bindings
+int16 MapMemoryMask;           // Explored map memory bitmask
+int16 GallerySlot;             // Character gallery slot
+int8 MapSP;                    // Map stack pointer
+String GraveText;              // Gravestone text
+int16 HungerShown;             // Last hunger state shown
+int16 RecentVerbs[5];          // Recently used verbs
+int32 formulaSeed, storeSeed;  // RNG seeds for crafting/stores
+int32 deathCount, rerollCount; // Death and reroll counters
+int16 statMethod;              // Attribute rolling method
 bool WizardMode, ExploreMode;  // Debug modes
+bool VictoryFlag, QuitFlag;    // Game end flags
+bool UpdateMap, DigMode;       // Map/dig state
+bool statiChanged;             // Stati changed since display
+bool shownFF, rerolledPerks;   // UI state flags
 ```
 
 ### Key Methods
@@ -189,6 +278,113 @@ static Creature *mtarg, *rtarg; // Current targets
 - `Movement()` - Execute movement decision
 - `PreBuff()` - Apply pre-combat buffs
 - `MonsterGear()` - Equip from template
+
+## State Flags (MS_*, Creature.StateFlags)
+
+```cpp
+MS_PEACEFUL    0x0001   // Non-hostile by default
+MS_GUARDING    0x0002   // Guarding a location
+MS_FEMALE      0x0004   // Female gender
+MS_KNOWN       0x0008   // Already identified
+MS_INVEN_GOOD  0x0010   // Inventory generated
+MS_CURSED      0x0020   // Under a curse
+MS_BOW_ACTIVE  0x0040   // Bow is readied
+MS_SCRUTINIZED 0x0100   // Player examined closely
+MS_POLY_KNOWN  0x0200   // Polymorph form known
+MS_SEEN_CLOSE  0x0400   // Seen at close range
+MS_CASTING     0x0800   // Currently casting a spell
+MS_HAS_REACH   0x1000   // Has extended reach
+MS_REACH_ONLY  0x2000   // Only reach attacks
+MS_THREAT2     0x4000   // Threatens 2 squares
+MS_STILL_CAST  0x8000   // Still Spell casting
+```
+
+## Perception Flags (PER_*, returned by Perceives())
+
+```cpp
+PER_VISUAL     0x0001   // Normal sight
+PER_INFRA      0x0002   // Infravision
+PER_SCENT      0x0004   // Scent
+PER_BLIND      0x0008   // Blindsight
+PER_PERCEPT    0x0010   // Perception
+PER_TREMOR     0x0020   // Tremorsense
+PER_SHADOW     0x0040   // Shadow perception
+PER_TELE       0x0080   // Telepathy
+PER_DETECT     0x0100   // Detect spell
+PER_TRACK      0x0200   // Tracking
+PER_SHARED     0x0400   // Shared senses
+```
+
+## Supporting Data Structures
+
+### ActionInfo (Monster AI action candidate)
+```cpp
+struct ActionInfo {
+    int8  Act;     // Action type (ACT_SATTACK, etc.)
+    int32 Val;     // Sub-value
+    Thing *Tar;    // Target
+    int8  Pri;     // Priority
+};
+```
+
+### EffectInfo (Monster AI spell/effect candidate)
+```cpp
+struct EffectInfo {
+    rID    eID;      // Effect resource ID
+    Item*  Source;   // Source item or CA_XXX constant
+    uint16 Rating;   // Utility rating
+    uint32 Purpose;  // What this effect is for
+};
+```
+
+### FeatInfoStruct and Prerequisites
+```cpp
+struct FeatConjunct { int32 elt, arg, val; };      // Single prerequisite
+struct FeatDisjunct { FeatConjunct And[5]; };       // Up to 5 AND conditions
+struct FeatPrereq   { FeatDisjunct Or[3]; };        // Up to 3 OR branches
+
+struct FeatInfoStruct {
+    int16      feat;
+    int32      flags;        // FF_* flags
+    const char *name, *desc;
+    FeatPrereq pre;
+};
+```
+
+Prerequisite types (FP_*): `FP_ALWAYS(0)`, `FP_FEAT(1)`, `FP_ABILITY(2)`, `FP_BAB(3)`, `FP_SKILL(4)`, `FP_CR(5)`, `FP_ATTR(6)`, `FP_CASTER_LEVEL(7)`, `FP_WEP_SKILL(8)`, `FP_NOT_PROF(9)`, `FP_PROF(10)`, `FP_ATTACK(11)`, `FP_MTYPE(12)`
+
+### SkillInfoStruct
+```cpp
+struct SkillInfoStruct {
+    uint8 sk;              // Skill enum
+    const char *name;
+    bool imp;              // Implemented?
+    bool active;           // Active use skill?
+    const char *desc;
+    int8 attr1, attr2;     // Governing attributes
+    bool take_min;         // Use min instead of max of attrs
+    int8 armour_penalty;   // Armor check penalty applies?
+};
+```
+
+### Key Size Constants
+
+| Constant | Value | Purpose |
+|---|---|---|
+| ATTR_LAST | 41 | Attribute array size |
+| BONUS_LAST | 39 | Bonus type count |
+| NUM_SLOTS | 24 | Equipment/inventory slots |
+| SK_LASTSKILL | 49 | Number of skills |
+| CA_LAST | 143 | Number of class abilities |
+| STUDY_LAST | 10 | Study types |
+| MAX_SPELLS | 2048 | Maximum spell count |
+| MAX_CHAR_LEVEL | 11 | Maximum character level |
+| MAX_GODS | 25 | Maximum deity count |
+| MAX_SAC_CATS | 10 | Sacrifice categories |
+| MAX_DUNGEONS | 32 | Maximum dungeon count |
+| MAX_MACROS | 12 | Keyboard macro slots |
+| MAX_QKEYS | 40 | Quick-key slots |
+| OPT_LAST | 900 | Option slots |
 
 ## Target System
 
