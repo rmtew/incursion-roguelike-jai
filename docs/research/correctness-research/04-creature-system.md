@@ -256,7 +256,7 @@ bool shownFF, rerolledPerks;   // UI state flags
 - `yn(msg)` - Yes/no prompt
 - `ShowStats()`, `ManageInv()` - UI screens
 
-## Monster Class
+## Monster Class (Monster.cpp)
 
 AI-controlled creatures.
 
@@ -272,12 +272,123 @@ static Creature *mtarg, *rtarg; // Current targets
 ```
 
 ### AI Methods
-- `ChooseAction()` - Main AI decision loop
+- `ChooseAction()` - Main AI decision loop (~1100 lines)
 - `AddAct(act, pri, tar)` - Queue action with priority
 - `SmartDirTo(tx, ty)` - Pathfind toward target
-- `Movement()` - Execute movement decision
+- `Movement()` - Gravity-based movement system
 - `PreBuff()` - Apply pre-combat buffs
-- `MonsterGear()` - Equip from template
+- `Initialize()` - Startup, gear, prebuff, hiding, phasing
+- `ListEffects()` - Build available spell list
+- `AddEffect()` - Add spell with rating to effects array
+- `Inventory()` - Equipment optimization
+- `RateAsTarget()` - Evaluate creatures/items as targets
+- `BadFields()` - Identify terrain to avoid
+- `AlertNew()` - Notify nearby monsters of new things
+- `SetMetamagic()` - Select spell metamagic
+
+### ChooseAction() — Main AI Decision Loop
+
+**Stage 1: Action Collation** — builds `Acts[64]` candidate array with priorities:
+
+1. **State initialization**: resets condition flags (inMelee, isAfraid, isSick, etc.); analyzes target system for melee (`mtarg`) vs ranged (`rtarg`) targets; handles mounted combat (1/3 chance attack mount)
+2. **Fear/fleeing**: HP < 1/3 max or caster mana < 50% → AFRAID; blocked by M_PSYCHO, M_MINDLESS, enraged, or illusion
+3. **Trouble-fixing**: `worstTrouble()` identifies conditions (stoning, bleeding, etc.) → ACT_CAST
+4. **Guarding**: standing guards add ACT_WAIT at P_HIGH if no target
+5. **Hidden/sneak**: coup de grace, melee attacks from hiding
+6. **Shapeshift**: disguise form (out of combat), war form (melee, highest HD), fleeing form (best MOV), random 1/20 while erratic
+7. **Phasing**: hide/afraid/hiding → phase ethereal if available
+8. **Hiding**: aquatic (water), ceiling (dark, lurkers), under items, shadow default
+9. **Item pickup**: rated by value (>200 P_EXTREME, >100 P_URGENT, >50 P_HIGH, else P_MODERATE)
+10. **Equipment**: ACT_EQUIP if inventory not optimized
+11. **Buff spells**: ACT_CAST with EP_BUFF; priority decreases as BuffCount increases; 1/10 chance to decrement BuffCount
+12. **Summoning**: P_LOW when has target
+13. **Escape spells**: in melee + afraid → escape/foil pursuit spells
+14. **Grapple escape**: 50% for non-casters, 100% for casters
+15. **Gate ability**: reserved for higher CR, once per day (SPEC_TIMEOUT)
+16. **Melee actions**: attack spells (P_URGENT), dispel, breath/spit/roar, trip/disarm, bull rush, coup de grace, weapon vs unarmed
+17. **Ranged actions**: breath, roar, ranged attacks, dispel, attack spells
+18. **Thrown weapons**: P_LOW if target exists and not enraged
+19. **Movement**: skip if in melee and not afraid; enraged → move toward enrage target
+
+**Stage 2: Action Selection** — weighted probability distribution:
+```
+For each action i with priority P_i:
+    Add i to aCandidates[1024] array P_i times
+Choose random candidate; on ABORT retry next in circular buffer
+```
+
+### Spell Casting AI
+
+**ListEffects()** enumerates from 4 sources:
+1. Monster spell list (TMonster->GetList(SPELL_LIST))
+2. Template-granted spells
+3. Innate abilities (dragons limited by age category)
+4. Item spells (wands, potions, scrolls — must be identified)
+
+**AddEffect() rating**: Base 1000, penalty = manaCost × 100 / currentMana; EF_COMMON flag → 4× weight multiplier. Skips duplicate buffs and existing fields.
+
+**Spell selection in ACT_CAST**: filters by purpose flags (EP_BUFF, EP_ATTACK, EP_CURSE, EP_SUMMON, EP_ESCAPE, EP_STEALTH, EP_FOIL_PURSUIT, EP_DISPEL, EP_FIX_TROUBLE); random selection from matching spells.
+
+**Friendly fire prevention**: for AoE (ball/beam/bolt), uses `PredictVictimsOfBallBeamBolt()` — aborts if any allies hit OR no enemies hit OR spell hits caster without immunity.
+
+**Event type**: innate → EV_INVOKE, spell → EV_CAST, wand → EV_ZAP, potion → EV_DRINK, scroll → EV_READ, other → EV_ACTIVATE.
+
+### PreBuff() — Initialization Buffs
+Called during Initialize(). Gives monsters natural buffs they could cast:
+- Must be EP_BUFF or AIM_AT_SELF, not EP_PLAYER_ONLY
+- From innate source only (no items)
+- EF_DXLONG/EF_PERSISTANT = always cast; EF_DLONG = 25% cast
+- Domain spells 80% skipped
+- Direct `MagicEvent()` call, bypasses spell slot consumption
+
+### Gravity-Based Movement (Movement())
+Each visible target contributes gravity: `(100 × priority / distance) × direction`
+- Afraid targets: negative gravity (repulsion)
+- Ranged avoidance (d ≤ 5): weak repel
+- Bad fields: 1000× repulsion from field centers
+- Net direction from wx/wy gravity sum → select primary + fallback directions
+- Obstacle avoidance: test square, check bounds, open doors, check features/terrain/fields, try charging, attempt move, retry next direction
+- Stuck detection: tracks last 3 positions in Recent[6]; if stuck → `ts.Wanderlust()`
+
+### SmartDirTo() — Pathfinding
+Three modes:
+- OPT_MON_DJIKSTRA=1: Dijkstra `m->ShortestPath()` for all monsters
+- OPT_MON_DJIKSTRA=2: Dijkstra for pets only, `DirTo()` for others
+- Default: simple `DirTo()` (direct line)
+
+### RateAsTarget() — Target Evaluation
+
+**Items**: base = 10 × min(level, aura) / max(1, CR/3); multipliers: Greedy ×3 (coins), ×3 (gems), Covetous ×2 (magic); cap 126
+
+**Creatures**: 0 if same PartyID, peaceful, same solidarity group, or good alignment mutual respect. Racial antagonism bonuses: undead/living +20, elf/orc +20, gnome/kobold +20, elf/drow +20, halfling/goblin +20, dwarf/orc +20, cat/dog +20, chromatic/metallic dragons +25, elf/dwarf +10. Player always +25. Distance bonus: +max(min(30-dist, 30), 0). Base 5, cap 127.
+
+### Monster Initialization (Initialize())
+1. Initiative: FT_IMPROVED_INITIATIVE → FFCount=0 (first action), else FFCount=20
+2. Peace flag: sapient, non-demon, not leader → 1/20 chance MS_PEACEFUL
+3. HP: CalcValues, CalcHP, set cHP = mHP + THP
+4. Initial targeting: ts.Retarget()
+5. Starting position: climbing creatures start ELEVATED in trees (FT_BRACHIATION or SK_CLIMB > 8)
+6. Hidden start: aquatic (water), ceiling (dark), under items, shadow; random hide value (-5 to +5)
+7. Phasing: CA_PHASE creatures start phased
+8. Item purification: demons/devils/undead remove silver; demons/devils remove blessed; undead 20% curse random non-weapon
+9. Inventory optimization: call Inventory() up to 5 times until MS_INVEN_GOOD
+10. Weapon skills: map FT_WEAPON_MASTERY/SPECIALIST/FOCUS/EXOTIC to WS_* levels
+11. Size fields: huge+ creatures create visual size field
+12. PreBuff, body stati, asleep undressing
+
+### Equipment Optimization (Inventory())
+Slot priority: SL_WEAPON, SL_READY, SL_ARCHERY, SL_LRING, SL_AMULET, SL_BRACERS, SL_GAUNTLETS, SL_BOOTS, SL_HELM, SL_BELT, SL_CLOAK, SL_LIGHT.
+
+For each slot: if equipped and better exists → unequip; if empty → find and equip best.
+- Weapon rating: `(sides × number + bonus) × 100 + (accuracy + speed) × 5) / 100 + level × 3`
+- Armor rating: `arm[0] + arm[1] + arm[2] + coverage + defense + level × 2`
+- Mages (M_MAGE) don't equip armor
+- Sets MS_INVEN_GOOD when complete
+
+### Group Behavior
+- `AlertNew()`: 12-square radius notification — every monster within range considers new thing via `ts.Consider()`
+- No explicit pack tactics — behavior is emergent from individual AI targeting same enemies
+- Charmed/compelled: CHARMED with CH_COMPEL → EV_COMPULSION overrides AI completely
 
 ## State Flags (MS_*, Creature.StateFlags)
 

@@ -2071,3 +2071,14 @@ Twelve docs (01-11, 16) now have implementation-level detail.
 - Attribute death (7 cause strings)
 - canMoveThrough collision detection (6-step check order)
 - MoveAttr movement speed modifier (9 factors)
+
+**Monster.cpp incorporation (agent a6415be)** - Expanded `04-creature-system.md` Monster class section with full AI system from Monster.cpp (~1100-line ChooseAction). Added:
+- ChooseAction() two-stage decision loop (19-step action collation + weighted probability selection)
+- Spell casting AI (ListEffects from 4 sources, AddEffect rating formula, friendly fire prevention via PredictVictimsOfBallBeamBolt)
+- PreBuff() initialization buffs (duration-filtered, direct MagicEvent bypass)
+- Gravity-based Movement() (target gravity, bad field repulsion, obstacle avoidance, stuck detection)
+- SmartDirTo() three pathfinding modes (Dijkstra/pets-only/direct)
+- RateAsTarget() (item evaluation with multipliers, creature evaluation with 12 racial antagonism pairs, player +25 priority, distance bonus)
+- Monster Initialize() 12-step startup (initiative, peace flag, HP, targeting, elevation/hiding/phasing, item purification, weapon skills, size fields, prebuff)
+- Equipment optimization (slot priority, weapon/armor rating formulas, M_MAGE armor restriction)
+- Group behavior (AlertNew 12-square radius, emergent pack tactics, charm/compel override)
