@@ -2096,3 +2096,54 @@ Twelve docs (01-11, 16) now have implementation-level detail.
 - Material hardness (40+ materials, QItem modifiers: Dwarven +10, Adamant ×2, Mithril ×1.5, cursed +50)
 - Item level calculations (weapon QPlus, armor QPlus×1.5)
 - Weapon-specific (DamageType optimization, bane system, ParryVal formula with skill cap)
+
+## 2026-01-30: Social.cpp Correctness Research
+
+Expanded `docs/research/correctness-research/14-social-quest.md` from a brief summary into a comprehensive implementation-level reference covering all of Social.cpp (2565 lines).
+
+### Key Areas Documented
+- **doSocialSanity()** - 11-step validation chain (speaker ability, line of fire, target response, silence, hiding, sleep, rage, paralysis, telepathy fallback, stun/confuse, ENEMY_TO)
+- **Hostility system** - HostilityQual enum (Neutral/Enemy/Ally), HostilityQuant levels, HostilityWhy reasons (24 types), delegation pattern (Player checks defer to Monster perspective)
+- **Social modifier (getSocialMod)** - 30+ racial solidarity/enmity pairs, alignment modifiers, Alluring feat, charm bonus, SOCIAL_MOD stati, comparative strength integration
+- **Comparative strength** - XCR cubic aggregation formula, asymmetric visibility (actor's visible team vs target's full team), Adamant Facade HP-hiding, XCR/XCRtoCR conversion tables
+- **Cow (Intimidation)** - DC = 10 + CR*3 (group: +10 + BestCR*3 + fear save), three result tiers (permanent/semi/temporary fear), gear drop mechanics
+- **Offer Terms** - DC = 5 + CR*2, natural fear requirement, gear tribute on high margins
+- **Quell** - DC = 15 + CR*3, damage penalty formula, evil creature tribute discount (-7 DC), Bluff vs Appraise to avoid payment, exploitation vs resolution alignment branching
+- **Enlist** - DC 15/20/25 by creature type + CR*3, Perform/Appraise skill reductions, PHD budget check, alignment refusal logic, rejoin after amicable dismissal
+- **PHD companion system** - 6 pool types, MaxGroupCR formulas per type, cubic XCR aggregation for group CR, pool overflow rules, FixSummonCR budget fitting
+- **MakeCompanion()** - PHD check with per-type overflow failure, heroic quality bonus (+20 HP for adventurer party members), ally spell cleanup, auto-identification
+- **Barter/Shop pricing** - base cost by item type, 41-entry price tables for shops (120-5000%) and barter (30-500%), diplomacy+social mod index, companion discount (+10 index)
+- **Fast Talk** - DC = 10 + CR + max(Appraise, Concentration), success wastes target turns
+- **Distract** - DC = 10/15 + resistance, retry penalty +5/+2, DISTRACTED stati for 2 turns
+- **Taunt** - DC = 15 + Will*2, ENRAGED for Bluff-level turns
+- **Greet** - random bonus by 300/diplomacy roll (magic mapping, danger warning, item hint, FP restore)
+- **Request** - 6 request types with base DCs 10-20, skill choice (Diplomacy/Intimidate/Bluff), +3 retry penalty, failed non-diplomacy turns target hostile
+- **Surrender** - DC 10 adjusted by comparative strength and lawful bonus, conditional vs unconditional (gold lein vs all treasures), chaotic betrayal 1/3 chance
+- **canTalk()** - sapience check, plant exception for nature skill 10+, M_TALKABLE/M_NOTTALKABLE overrides, MA_ADVENTURER default, M_NOHEAD block, non-talkable type list
+- **isPMType()** - Bluff conceals alignment, disguise penetration (Spot+Appraise, Sharp Senses, Scent, True Sight vs illusion)
+
+**UI/Display system incorporation (agents aa0f7d1, ade1591)** - Expanded `15-ui-display.md` from 136 lines to comprehensive reference covering Message.cpp, Display.cpp, and Player.cpp. Added:
+- XPrint format tag system (parameter tags, event-bound tags, pronoun/gender tags, special block tags)
+- Buffer management (5-level recursive nesting, 130K+4K buffer sizes)
+- Article/determiner look-behind detection (rewinding output buffer to inject NA_A/NA_THE flags)
+- Numeric color codes (negative byte encoding, LITERAL_CHAR glyph mechanism)
+- Name flags (15 NA_* flags controlling article, capitalization, identification, shadow, status prefixes)
+- Message dispatch (6 modes: DPrint, APrint, VPrint, TPrint, Hear, SinglePrintXY)
+- IPrint/IDPrint (POV-based formatting, message queue integration)
+- Message queue system (stack-based, 8 slots, Set/Unset/Print/Empty)
+- Creature name status prefix system (gender, HP ratio 7 tiers, 13 condition stati, hostility, awareness)
+- Item name pipeline (14-field assembly: article through append, color rules for blessed/cursed)
+- Glyph architecture (32-bit packing: 12-bit ID + 5-bit fore + 5-bit back)
+- Thing::PlaceAt (9-step flow with field preservation, creature-first ordering, same-map optimization)
+- PlaceNear (expanding-ring search up to r=40 for players, big creature handling, retry with displacement)
+- Thing::Move (field interaction, engulfed carry, mount sync)
+- Map::Update rendering pipeline (8-step: base glyph, size field, contents iteration with priority, shadow fallback, same-colour fix, visibility check with memory, multi-display indicators, overlay)
+- Overlay system (per-map, activate/deactivate/add/remove glyph operations)
+- Engulfed rendering (ASCII border in engulfer's colour)
+- Player initialization (RecentVerbs, FFCount, default macros)
+- ChooseAction input loop (pre-action checks, arrow key handling, auto-save every 200 actions)
+- Rest system (pre-checks, encounter calculation with flood-fill, watch system, recovery for all creatures on all levels, encounter resolution with sleep/forewarning)
+- REST flags (11 flags controlling rest behavior)
+- SpendHours (awake time limit formula, hostile sight prevention)
+- DaysPassed dungeon regeneration (7-step: strip timed stati, restore traps, repopulate to equilibrium, anti-scumming item stripping, staple item generation)
+- Options system (900-slot byte array, 7 categories by 100-range, file I/O to Options.Dat)
