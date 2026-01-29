@@ -1770,3 +1770,84 @@ VisibilityInfo :: struct {
 - FOV reveals map as player explores
 - Torches illuminate rooms
 - Memory shows previously seen areas in dim colors
+
+## 2026-01-30: Comprehensive Source Architecture Research
+
+### Objective
+
+Systematically research the entire original Incursion C++ source code to document all subsystems, data structures, and algorithms needed for a faithful port.
+
+### Approach
+
+1. Explored existing research directory (27 files across 4 subdirectories)
+2. Inventoried all original source files (47 .cpp, 23 .h headers)
+3. Read all key headers in depth (Base.h, Map.h, Res.h, Creature.h, Events.h, Defines.h)
+4. Created master research index linking all subsystem areas
+5. Wrote 17 detailed research documents covering every major subsystem
+6. Updated master index with completion status
+
+### Key Findings
+
+**Class Hierarchy**: Object > Thing > {Creature, Feature, Item}
+- Creature splits into Character (Player) and Monster
+- Item hierarchy: Item > QItem > {Food/Corpse, Container, Weapon, Armour, Coin}
+- Feature hierarchy: Feature > {Door, Trap, Portal}
+- 21 Resource template types (TMonster, TItem, TEffect, TClass, TRace, etc.)
+
+**Event System**: Central dispatch for ALL game actions
+- EventInfo struct with ~200 fields (combat, encounter, chargen, naming)
+- 190+ event types (EV_MOVE through EV_TERMS)
+- Dispatch via ReThrow() to resource script handlers
+- Macros: PEVENT, DAMAGE, THROW, XTHROW, RXTHROW
+
+**Defines.h**: 45 constant categories, ~4700 lines
+- Major categories: A_* (114 attack types), M_* (114 monster flags), FT_* (200+ feats), CA_* (143 class abilities), SK_* (49 skills), EF_* (105 effect flags)
+
+**Map System**: LocationInfo per-cell has 16 bitfield flags + Visibility + Memory + Glyph + Contents
+- Field effects for area spells
+- Magical terrain system
+- Overlay for animated effects
+
+### Research Documents Created
+
+| File | Subsystem |
+|------|-----------|
+| `master-index.md` | Comprehensive index with priorities |
+| `01-object-registry.md` | Object, Registry, String, Dice, MVal, Array |
+| `02-resource-system.md` | 21 Resource types, rID encoding, Module |
+| `03-event-system.md` | EventInfo, 190+ events, dispatch macros |
+| `04-creature-system.md` | Creature/Character/Player/Monster |
+| `05-combat-system.md` | d20 combat, attack flow, maneuvers |
+| `06-item-system.md` | Item hierarchy, qualities, equipment slots |
+| `07-magic-system.md` | Spells, effects, metamagic, prayer |
+| `08-status-effects.md` | Stati, StatiCollection, fields |
+| `09-map-system.md` | LocationInfo, Map class, LOS |
+| `10-feature-system.md` | Door, Trap, Portal |
+| `11-vision-perception.md` | FOV, 9 perception types, pathfinding |
+| `12-encounter-generation.md` | CR-balanced encounters |
+| `13-skills-feats.md` | Skills, feats, abilities, chargen |
+| `14-social-quest.md` | NPC interaction, companions, quests |
+| `15-ui-display.md` | Terminal, managers, messages |
+| `16-data-tables.md` | Tables, annotations, targeting, debug |
+| `17-values-calcvalues.md` | CalcValues, bonus stacking, d20 rules |
+
+### Research Coverage
+
+**Architecture level (DONE)**: All 26 subsystems documented with class hierarchies, field definitions, method signatures, and porting considerations.
+
+**Implementation level (deferred)**: Function bodies in .cpp files contain exact algorithms and formulas. These should be researched per-system when actively porting each area. Key systems needing implementation reads:
+- Values.cpp: CalcValues() formulas and bonus stacking
+- Fight.cpp: Combat sequence and damage formulas
+- Monster.cpp: AI decision loop
+- Effects.cpp: Individual effect archetype implementations
+
+**Only gap**: Overland system (OverGen.cpp, Overland.cpp) marked as STUB - lower priority for initial dungeon-focused port.
+
+### Porting Architecture Decisions Identified
+
+1. **No inheritance in Jai**: Need tagged unions or composition for Thing/Creature/Item hierarchies
+2. **Virtual dispatch**: Procedure tables or type-switch patterns
+3. **EventInfo**: Massive struct; consider sub-structs by category
+4. **Handle system (hObj)**: Integer indices into flat arrays
+5. **Status effects**: Dynamic array with nesting support
+6. **Bonus stacking**: 39 bonus types with d20 stacking rules - critical for correctness
