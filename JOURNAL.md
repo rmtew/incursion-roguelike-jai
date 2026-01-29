@@ -2028,3 +2028,14 @@ Eleven key docs (01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 16) now have implementa
 - Edge cases (cross-map, engulfed, mounted, illusion, sleeping, SILENCE, plane differences)
 
 Twelve docs (01-11, 16) now have implementation-level detail.
+
+**Inv.cpp incorporation (agent add9af4)** - Expanded `06-item-system.md` with full inventory management detail from Inv.cpp (1631 lines). Promoted to fully-researched. Added:
+- Character slot array vs monster linked list architecture
+- Full equipment slot table (20+ SL_* slots with purposes)
+- 11 wielding constraints (form, reach, magical clothing, armor, fiendish, planar, size, exotic, two-handed, alignment)
+- Weapon exchange system (melee/ranged switching with defaults)
+- PickUp flow with stacking priority
+- Stacking rules and stack splitting
+- Inventory operation timeouts (DEX-modified, feat-reducible)
+- Container system (Insert validation, capacity checks, weight calculation, access time, lock picking DC, dump/pour)
+- Packrat feat effects (2× capacity/weight, +1 max size, ½ access time)

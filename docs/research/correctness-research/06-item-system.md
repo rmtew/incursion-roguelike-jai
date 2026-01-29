@@ -1,7 +1,7 @@
 # Item System
 
 **Source**: `Item.cpp`, `Inv.cpp`, `inc/Item.h`
-**Status**: Architecture researched from headers
+**Status**: Fully researched
 
 ## Class Hierarchy
 
@@ -226,18 +226,127 @@ SL_BELT(12), SL_EYES(13), SL_LSHOULDER(14), SL_RSHOULDER(15),
 
 ## Inventory Management (Inv.cpp)
 
-### Player Inventory
-Fixed slots: `Inv[NUM_SLOTS]` array indexed by SL_* constants
+### Player/Character Inventory
+Fixed slot array: `Inv[SL_LAST]` indexed by SL_* constants.
+Form-based restrictions: `TMON(mID)->HasSlot(sl)` validates slot accessibility for polymorphed characters.
+SL_ARCHERY is a "fake slot" — characters cannot use it directly.
 
 ### Monster Inventory
-Linked list: single `hObj Inv` head, items linked via `Next` field
+Linked list: single `hObj Inv` head, items linked via `Next` field.
+```
+Monster::Inv -> Item1 (Next) -> Item2 (Next) -> Item3 (Next) -> NULL
+```
+`InSlot(slot, eff)` searches linked list for equipped item with `IF_WORN` flag.
+`PickUp()` adds to head of list: `e.EItem->Next = Inv; Inv = e.EItem->myHandle;`
 
-### Key Operations
-- PickUp: Check weight, add to inventory
-- Drop: Remove from inventory, place on map
-- Wield: Move to weapon slot, apply effects
-- TakeOff: Remove from slot, unapply effects
-- Stacking: Items with same iID, Plus, and no special properties can stack
+### Equipment Slots (SL_*)
+| Slot | Purpose | Notes |
+|------|---------|-------|
+| SL_WEAPON | Primary melee weapon | Two-handed fills both WEAPON+READY |
+| SL_READY | Off-hand/ready weapon | Same handle as WEAPON when two-handed |
+| SL_ARCHERY | Ranged weapon | Fake slot, not used by characters |
+| SL_LIGHT | Light source | |
+| SL_INAIR | Currently held item | Default pickup destination |
+| SL_LSHOULDER, SL_RSHOULDER | Shoulder slots | Exchange weapon storage |
+| SL_BELT, SL_BELT1-5 | Belt slots | Exchange weapon storage |
+| SL_EYES | Eye slot | Monocles, masks |
+| SL_CLOTHES | Clothing | Mutually exclusive with magical cloak |
+| SL_ARMOUR | Body armor | Cannot equip while threatened/stuck/prone |
+| SL_BOOTS | Footwear | |
+| SL_CLOAK | Cloaks | Mutually exclusive with magical clothing |
+| SL_LRING, SL_RRING | Ring slots | |
+| SL_AMULET | Amulets | |
+| SL_GAUNTLETS | Gloves | |
+| SL_HELM | Headgear | |
+| SL_BRACERS | Bracers | |
+| SL_PACK | Backpack | |
+
+### Wielding Constraints (Character)
+1. **Form restrictions**: `TMON(mID)->HasSlot(sl)` — polymorphed forms lose slots
+2. **Reach weapon conflicts**: Cannot mix reach and non-reach weapons in WEAPON+READY
+3. **Magical clothing conflicts**: Cannot wear both magical cloak AND magical clothing
+4. **Armor while threatened**: Cannot equip armor while threatened by hostiles
+5. **Armor while stuck/prone**: Cannot equip armor while stuck or prone
+6. **Fiendish restrictions**: Demons/devils/undead cannot use silver items; fiends cannot use blessed items
+7. **Planar restrictions**: Incorporeal characters cannot use material items unless ghost-touch
+8. **Weapon size restrictions**: Item must fit character's size
+9. **Exotic weapons**: Some require specific feat (`WEP_SKILL` effect)
+10. **Two-handed weapons**: Auto-fills both WEAPON+READY if both empty and player confirms
+11. **Alignment warnings**: Holy vs evil, unholy vs good, lawful vs chaotic, balance vs non-neutral
+
+### Weapon Exchange System (Character::Exchange)
+Switches between melee and ranged weapon sets:
+- Stores `defMelee`, `defOffhand`, `defRanged`, `defAmmo` defaults
+- If currently wielding melee → switch to ranged + ammo
+- Otherwise → switch to melee + offhand
+- Old weapons stored in shoulder/belt slots
+- Handles two-handed conflicts automatically
+
+### PickUp Flow (Character)
+1. Weight check: `e.EItem->Weight() > MaxPress()` → ABORT
+2. Silver/blessed item check for fiends
+3. Stacking: first try equipped slots, then auto-stow to pack
+4. Default: place in SL_INAIR (hand)
+
+### Stacking Rules
+- `TryStack()` merges items with matching properties
+- Active slots prevent stacking (except WG_THROWN weapons)
+- Multi-item stacks split via `TakeOne()` when wielding
+- Swap() can split stacks when Alt-held, prompts via `OneSomeAll()`
+
+### Inventory Operation Timeouts
+```
+Wield:  QD(2000) / (100 + 10 * Mod(A_DEX))
+PickUp: FE(1500) / (100 + 10 * Mod(A_DEX))
+Drop:   FE(1000) / (100 + 10 * Mod(A_DEX))
+```
+Quick Draw / Faster Than Eye feats reduce by 4×.
+
+## Container System (Inv.cpp)
+
+### Container Structure
+`Contents` — hObj pointer to first item (linked list). Items inside have `Parent` pointer back to container.
+
+### Insert(EventInfo &e, bool force)
+**Validation:**
+- No hands check, raging check
+- Container can't contain itself
+- Silver/blessed item handling for fiends
+- Incorporeal/planar restrictions
+- Locked container → auto pick lock attempt
+
+**Capacity checks:**
+- `u.c.WeightLim` — maximum weight
+- `u.c.Capacity` — maximum item count
+- `u.c.MaxSize` — maximum individual item size
+- `u.c.CType` — restricted item type
+- FT_FASTER_THAN_THE_EYE (Packrat): doubles weight limit and capacity, increases max size by 1
+
+**Logic:** Attempts stacking with existing items first, then links to end of list.
+
+### XInsert(Item *it)
+Force insert without event handling. Returns bool. Checks weight/capacity silently, auto-stacks if possible.
+
+### Container Weight Calculation
+```cpp
+int32 Container::Weight(bool psych_might) {
+    j = sum of all contained item weights;
+    j -= ((TITEM(iID)->u.c.WeightMod * j) / 100);  // Weight reduction modifier
+    j += TITEM(iID)->Weight;                         // Add container's own weight
+    return j;
+}
+```
+
+### Container Access Time
+`AccessTime()` adds time cost for deeply nested containers. Each nesting level adds its individual timeout cost. Packrat feat halves the time.
+
+### PickLock (Container)
+DC = 19 + dungeon depth. Success removes LOCKED status. Failure applies DO_NOT_PICKUP status until rest.
+
+### Dump/Pour Operations
+- `DumpOutContents()` — empties container to ground
+- `PourInContents()` — transfers contents to another container
+- Both validate silver/blessed/planar restrictions per item
 
 ## TItem Resource Template
 
