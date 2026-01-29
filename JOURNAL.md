@@ -2054,3 +2054,20 @@ Twelve docs (01-11, 16) now have implementation-level detail.
 - Terrain entry/leave events and region transitions
 - TerrainEffects (fall, sticky, elevation)
 - Passive detection (move silently vs listen, secret door detection, mining, close identification)
+
+**Creature.cpp incorporation (agent afb27f3)** - Expanded `04-creature-system.md` with Creature.cpp core mechanics (3356 lines). Added:
+- DoTurn() 20-step per-turn processing (paralysis escape, terrain damage, resilience, engulfment, grappling, hunger/exercise, divine intervention, flat-footed, fatigue regen, combat readiness, mana recovery, status update, field effects, poison, disease, bleeding, natural/inherent regen, periodic effects)
+- Mana recovery quadratic formula (ManaPulse, Concentration skill threshold 35-80%)
+- Creature constructor initialization (7 steps)
+- AddTemplate and Multiply (breeding/offspring)
+- Hunger system (9 states from STARVED to BLOATED, Fasting ability, size scaling)
+- Encumbrance system (strength-based with size multipliers, 5 EN_* levels)
+- Fatigue system (LoseFatigue, unconsciousness threshold, Essiah favor)
+- Challenge Rating calculation (template adjustments, character total levels)
+- Flanking mechanics (adjacent ally opposite, Uncanny Dodge prevention)
+- Saving throw bonus sources and exercise gains
+- Planes of existence (6 PHASE_* types)
+- Illusion system (isRealTo, disbelief, spectral/improved flags)
+- Attribute death (7 cause strings)
+- canMoveThrough collision detection (6-step check order)
+- MoveAttr movement speed modifier (9 factors)

@@ -573,6 +573,183 @@ When an ally/leader/mount hits the creature, tolerance before turning hostile:
 - Same-party hit: Leader attempts SK_DIPLOMACY DC 15 to diffuse
 - On turning hostile: all friendly creatures on map also turn hostile to attacker
 
+## DoTurn() — Per-Turn Processing (Creature.cpp, lines 1246-1722)
+
+### Processing Order
+1. **Paralysis escape**: with 15+ ranks in Concentration or Escape Artist, can break paralysis on DC 18 Fort save
+2. **Terrain damage**: crushed if in solid terrain on material plane (unless earthmeld/ghostwalk); suffocation if aquatic in non-water
+3. **Resilience**: FT_RESILIENT passively regenerates 1 HP every 3 turns if not at full
+4. **Ripple check**: detects invisible/phased creatures within 3 squares
+5. **Engulfment processing**: phase escape checks, Escape Artist DC to break free, digestion attacks from engulfer
+6. **Grappling**: FT_CHOKE_HOLD attempt to knock out; FT_EARTHS_EMBRACE crush damage
+7. **Hunger & exercise**: random 1/30 chance; attribute abuse/exercise based on hunger state; armor penalty; depth-based risk exercise
+8. **Divine intervention**: random 1/10 chance if character; 75% patron god, else random; checks anger vs tolerance
+9. **Flat-footed management**: increments FFCount; removes RAGING and FLAWLESS_DODGE when appropriate
+10. **Fatigue regeneration**: CA_FATIGUE_REGEN recovers 1 FP after 50+ FFCount; otherwise reset to 30
+11. **Combat readiness**: updates AoO based on DEX modifier; FT_COMBAT_REFLEXES adds 1; FT_MOBILITY adds 1; gaze/proximity attacks trigger
+12. **Mana recovery**: quadratic formula (see below)
+13. **Status update**: `UpdateStati()` processes all status durations
+14. **Field effects**: applies continual field effects
+15. **Poison processing**: for each POISONED status, every `cval` turns: Fort save vs `sval` DC; success increments Mag (saves needed); if Mag >= lval: overcome poison with CON exercise; failure: apply effect, halt action
+16. **Disease pulse**: separate disease handling via DiseasePulse()
+17. **Bleeding**: if has blood type, take damage each turn
+18. **Natural regeneration**: REGEN status: Mag% chance to regenerate 1 HP per 100 ranks each turn
+19. **Periodic effects**: PERIODIC status effects trigger every Val turns
+20. **Inherent regeneration**: CA_REGEN ability regenerates HP directly; costs increased hunger
+
+### Mana Recovery System
+```
+Recovery requires 35-80% of max mana depending on Concentration skill.
+Quadratic formula: time = N² to recover from N% loss.
+
+if (uMana > 0) {
+    if (!isPlayer() || cMana() >= (nhMana() * min(35+SkillLevel(SK_CONCENT)*2, 80)) / 100) {
+        if (ManaPulse > 0) {
+            ManaPulse--;
+        } else {
+            uMana--;
+            N = (tMana() - (cMana() + hMana)) * 20 / max(1, tMana());
+            ManaPulse = N * 100 / max(1, tMana());
+        }
+    }
+}
+```
+
+## Creature Initialization
+
+### Constructor
+1. Parent Thing constructor call
+2. Set `tmID = mID = _mID` (true and current monster ID)
+3. Assert monster data exists
+4. Set `Flags = F_SOLID`
+5. Clear targeting system counter (`ts.tCount = 0`)
+6. Determine gender: M_ALL_FEMALE → female; else 50% random (unless M_NEUTER or M_ALL_MALE)
+7. Initialize fatigue and mana pulse to 0
+
+### AddTemplate(rID tID)
+- Checks CanAddTemplate() for validity
+- Sets TEMPLATE status (Mag = visibility flag)
+- Resolves attack conflicts (keeps higher damage attack)
+- Grants new feats and skills from template
+- Updates image appearance, recalculates values
+- Re-equips if monster, updates map display
+
+### Multiply(val, split, msg)
+- Creates offspring copies of creature
+- Copies mana pools; grants equipment from template/monster
+- Applies GENERATION status (Mag = depth)
+- Initializes offspring; splits or duplicates HP
+
+## Hunger System
+
+### Hunger States (ordered worst to best)
+STARVED → FAINTING → WEAK → STARVING → HUNGRY → PECKISH → CONTENT → SATIATED → BLOATED
+
+### GetHungrier(amt)
+- Large creatures need 2× food (size scaling)
+- Fasting ability: 66% of CR reduction per level
+- Hunger value decreases food state; hitting 0 advances to worse state
+
+## Encumbrance System
+
+### Encumbrance()/MaxPress()
+- Uses strength-based table with size multipliers
+- Affected by items in all slots
+- IGNORE_SLOT_WEIGHT status exempts specific items
+- Returns: EN_NONE, EN_LIGHT, EN_MODERATE, EN_HEAVY, EN_EXTREME
+- Affects DEX penalties and movement speed
+
+## Fatigue System
+
+### LoseFatigue(amt, avoid)
+- `cFP` tracks current fatigue (can go negative)
+- At `-Attr[A_FAT]`: Fort save or fall asleep (SLEEP_FATIGUE)
+- Essiah favor: good creatures get divine help when fighting while fatigued
+- Stat change triggers CalcValues() recalculation if crosses into/out of negative
+
+## Challenge Rating
+
+```cpp
+int16 ChallengeRating(bool allow_neg) {
+    CR = TMON(mID)->CR;
+    // Adjust for all templates
+    StatiIterNature(this, TEMPLATE)
+        CR = TTEM(S->eID)->CR.Adjust(CR);
+    // Characters use total class levels instead
+    if (isCharacter())
+        CR = Level[0] + Level[1] + Level[2];
+    return allow_neg ? CR : max(0, CR);
+}
+```
+
+## Flanking (isFlanking)
+- Checks if this creature is flanking target c
+- Requires adjacent ally opposite the target
+- Uncanny Dodge with 4+ ranks prevents flanking
+- Returns true if ally is hostile to target and adjacent
+
+## Saving Throws
+
+### Three types: FORT, REF, WILL
+
+### Bonus sources:
+- Base attribute saves
+- SAVE_BONUS stati
+- Skills (Balance, Poison Use, Pick Pockets)
+- Feats (Hardiness)
+- Rest bonus (+4)
+
+### Exercise gains:
+- Successful saves vs high DC grant attribute exercise
+- Different exercise for poison/disease vs instant death saves
+
+## Planes of Existence
+```cpp
+PHASE_MATERIAL   // Normal plane
+PHASE_ETHEREAL   // Spirits, invisible creatures
+PHASE_ASTRAL     // Astral plane
+PHASE_NEGATIVE   // Negative energy plane (undead)
+PHASE_SHADOW     // Shadow plane
+PHASE_VORTEX     // Elemental vortices
+```
+`onPlane()` returns current plane state. Creatures on different planes can pass through each other.
+
+## Illusion System
+- `isIllusion()` — checks ILLUSION status
+- `isRealTo(Creature *watcher)` — disbelief check (Will save vs illusion DC)
+- `getIllusionFlags()` — returns IL_IMPROVED, IL_SPECTRAL, etc.
+- `getIllusioncraft()` — gets caster skill level
+- Spectral illusions require LOS to caster
+- TRUE_SIGHT, blindsight, tremorsense, scent can penetrate illusions
+
+## Attribute Death
+```cpp
+const char* CauseOfDeath[] = {
+    "withering", "numbing", "unhealth",
+    "brain damage", "catatonia", "ego annihilation",
+    "the Hand of Fate"
+};
+```
+Each ability score drain (STR-LUC + special) can trigger death via `ThrowDmg(EV_DEATH, AD_DAST+i, ...)`.
+
+## canMoveThrough — Collision Detection
+Checks in order:
+1. Solidity test (unless ghostwalk/incorporeal)
+2. Door/obstacle checks
+3. Feature WALKON events
+4. Creature collisions: illusions (check if real), hidden creatures (size-dependent), non-hostile (size-dependent), elevation differences, incorporeal/swarm types, different planes
+
+## MoveAttr — Movement Speed Modifier
+Factors (100% = normal, 130% = faster, 70% = slower):
+- Base MOV attribute
+- Terrain MoveMod
+- Features on terrain
+- Water terrain (70% normally, 100% if aquatic, bonus for swim skill)
+- Region size restrictions (half speed in tight regions)
+- Woodland Stride (negates terrain penalties)
+- Incorporeal/aerial movement (no penalties)
+- Blindness penalty (double time if blind without Blind-Fight feat)
+
 ## Player Memory Structures
 
 Per-player knowledge tracking, accessed via `MONMEM/ITMMEM/EFFMEM/REGMEM(xID, player)`:
