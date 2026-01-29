@@ -2039,3 +2039,18 @@ Twelve docs (01-11, 16) now have implementation-level detail.
 - Inventory operation timeouts (DEX-modified, feat-reducible)
 - Container system (Insert validation, capacity checks, weight calculation, access time, lock picking DC, dump/pour)
 - Packrat feat effects (2× capacity/weight, +1 max size, ½ access time)
+
+**Move.cpp incorporation (agent ac94b1e)** - Expanded `05-combat-system.md` movement section from 24 lines to comprehensive coverage of Move.cpp (1259+ lines). Added:
+- Walking validation, mount delegation, encumbrance abort
+- Movement cost (terrain MoveMod, monster banking system with 5-unit bank and 12-segment floor)
+- Immobilization states (STUCK escape DC, PRONE standing, CONFUSED random walk, AFRAID movement restriction)
+- Passability checks (creatures, doors, illusions, bump penalties)
+- Flying/swimming/phasing (aquatic, amphibious, aerial, plane-based)
+- Jump mechanics (mounted/unmounted, DC formulas, max range, failure recovery, FT_MANTIS_LEAP)
+- Push/pull (grapple breaking, displacement, friendly vs hostile)
+- AoO from movement (reach weapon closing DC with size modifier, disengage BAB check, flee auto-AoO)
+- Trap interaction (discovery, auto-disarm, trigger conditions, FT_FEATHERFOOT)
+- Field interaction (sticky terrain balance DC, blocker fields, illusory terrain)
+- Terrain entry/leave events and region transitions
+- TerrainEffects (fall, sticky, elevation)
+- Passive detection (move silently vs listen, secret door detection, mining, close identification)

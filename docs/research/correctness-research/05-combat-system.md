@@ -124,29 +124,109 @@ Trip, Disarm, Sunder - each has specific opposed check formulas
 - Extra damage when: flanking, target flat-footed, target denied Dex
 - Damage: +Nd6 (based on rogue level)
 
-## Movement System (Move.cpp)
+## Movement System (Move.cpp, 1259+ lines)
 
-### Walking
-- `EV_MOVE` event
-- Movement cost based on terrain and creature speed
-- `MoveTimeout(from_x, from_y)` calculates speed
+### Walking (Creature::Walk)
+- `EV_MOVE` event — main movement handler
+- Converts direction or coordinates to target square (tx, ty)
+- Boundary check: rejects movement to dungeon outer walls (even for ghosts)
+- Mount delegation: if creature has MOUNT status, delegates movement to the mount
 
-### Passability
-- `canMoveThrough(e, tx, ty, blocked_by)` - comprehensive check
-- Considers: terrain solidity, creature occupancy, flying/swimming/phasing
-- Returns blocking entity if blocked
+### Movement Cost
+- `MoveTimeout(ox, oy)` based on terrain `TTER(terrain)->MoveMod`
+- Base formula: `(Attr[A_MOV] * 5 + 100)`
+- Encumbrance abort: if `(Attr[A_MOV] * 5 + 100) <= 0` → ABORT
+- **Monster banking system**: slow monsters (MOV < 0) bank up to 5 units per turn; prevents minimum 12-segment timeout floor (allows player first strike)
 
-### Special Movement
-- Flying: ignores ground terrain
-- Swimming: required for water terrain
-- Phasing: moves through walls
-- Jumping: `EV_JUMP` - leap over obstacles
-- Pushing: `EV_PUSH` - push creatures/objects
+### Immobilization States
+- **STUCK**: escape check DC 15+power via SK_ESCAPE_ART, with STR exercise; failure = 20 timeout penalty
+- **PRONE**: requires standing up (consumes action, may provoke AoO); FT_INSTANT_STAND feat allows instant stand via REF save DC 15 or SK_BALANCE check
+- **CONFUSED**: random direction; SK_BALANCE DC 18 to avoid, REF DC 20 if charging; failure = stumble damage + 12 timeout
+- **AFRAID**: cannot move toward feared creature unless FT_LION_HEART feat
 
-### Movement and AoO
-Moving out of a threatened square provokes AoO unless:
-- Using 5-foot step
-- Creature has specific feats (Spring Attack, etc.)
+### Passability (canMoveThrough)
+- `canMoveThrough(e, tx, ty, blocked_by)` — fills `blocked_by` with obstruction
+- **Creatures**: invisible → prompt attack/abort; friendly → displacement; monsters with CR ≥ 6+5 and STR 4+ higher can displace
+- **Doors**: secret doors block; regular doors → auto-open dialog per OPT_AUTOOPEN
+- **Unseen obstacles**: +6 timeout penalty, memory flagged with GLYPH_ROCK
+- **Known obstacles**: +3 timeout penalty
+- **Illusions**: stored separately, handled via disbelief check
+
+### Flying/Swimming/Phasing
+- **Aquatic (M_AQUATIC)**: must stay in water (TF_WATER); cannot leave to land
+- **Amphibious (M_AMPHIB)**: no water restrictions
+- **Regular in water**: monsters treat water as barrier; players can enter, removes HIDING (HI_WATER)
+- **Aerial (isAerial)**: skips jump check, trap triggers, and fall terrain effects
+- **Phasing**: `onPlane()` returns PHASE_MATERIAL/ETHEREAL/VORTEX; can pass through creatures on different planes; RippleCheck(3) breaks invisibility when moving
+
+### Jump Mechanics
+**Prerequisites**: cannot jump while GRAPPLED, GRABBED, GRAPPLING, PRONE, STUCK, or already aerial; requires LineOfFire
+
+**Mounted jump**:
+- Rider: SK_RIDE check DC = 10 + dist×5
+- Mount: SK_JUMP check DC = 10 + dist×5
+- Max range: 2 + mount's SK_JUMP/5 tiles
+
+**Unmounted jump**:
+- SK_JUMP check DC = 10 + dist×5
+- Max range: 2 + SK_JUMP/4 tiles
+
+**Failure recovery**: stumble to random nearby location (weighted toward destination, avoids traps, max 50 iterations)
+
+**Success**: EV_LAND event; tumbling check (SK_TUMBLE DC 20) avoids AoO without FT_ACROBATIC feat
+
+**FT_MANTIS_LEAP**: charging status extended by jump distance
+
+### Push/Pull (EV_PUSH)
+- **STUCK**: pushed creature takes 1d6 extra damage if pusher is hostile
+- **PRONE/GRAPPLED/GRABBED**: cannot be pushed
+- **GRAPPLING**: breaks grapple automatically (removes both GRABBED and GRAPPLED from opponent)
+- Displacement via `ThrowXY(EV_PUSH)`; failed push returns creature to original position
+- Friendly allies: "You displace..." message; hostile: push past + AoO
+
+### Attacks of Opportunity from Movement
+
+**Closing with reach weapons** (8 adjacent squares checked):
+- Requires MS_HAS_REACH flag + WT_REACH weapon flag
+- Must be hostile, threatening, perceivable, same plane
+- Closing DC: `WeaponSaveDC(weapon, WT_REACH)` with size modifier (attacker SIZ - defender SIZ) × 4
+- REF save needed; penalty -2 to -8 depending on size
+- Charging into reach: extra AoO + damage if hit
+
+**Leaving threatened area** (8 adjacent squares checked):
+- Excludes hiding, prone, sleeping, stunned, grappling, paralyzed, blind, or afraid creatures
+- **Flee**: automatic AoO
+- **Disengage**: BAB vs AC melee check — escape if `myHit + roll >= crHit + 11`
+- **Abort**: return to original square
+
+### Trap Interaction During Movement
+- **Known trap (FOUND)**: SK_HANDLE_DEV auto-disarm check (DC varies with trap level); SK_SEARCH DC = 20 + trapLevel - 5×mundane; +30 timeout penalty on discovery
+- **Unknown trap**: SK_SEARCH check to discover; failure marks TS_SEARCHED with retry bonus
+- **Trigger**: when stepping on trap (not aerial/illusion); creator can walk over own traps if unthreatened; calls `TriggerTrap(e, foundBefore)`
+- **FT_FEATHERFOOT**: avoids triggering found traps
+
+### Field Interaction During Movement
+- **Sticky terrain**: if not PASS_SLIME, SK_BALANCE DC 14 + depth; failure → STUCK status
+- **Blocker fields (FI_BLOCKER)**: tests isTarget(); "unseen barrier" message; +6 timeout penalty
+- **Illusory terrain**: disbelief check if creature perceives difference
+
+### Terrain Entry/Leave Events
+- EV_LEAVE on source terrain → EV_ENTER on destination terrain
+- Region change events: separate EV_LEAVE → EV_ENTER for larger areas
+- Size requirement check: cannot enter if too large for region
+- Feature events: EV_LEAVE for features at source, EV_WALKON at destination
+
+### Terrain Effects (TerrainEffects, lines 1265-1462)
+Applied after movement:
+- **Fall terrain (TF_FALL)**: falling through terrain, damage accumulation
+- **Sticky terrain**: SK_BALANCE DC 14 + depth; CA_PASS_SLIME / CA_WOODLAND_STRIDE exempt
+- **Elevation**: tree climbing, ceiling perching, climb checks
+
+### Passive Detection During Movement
+- **Move silently vs listen**: SK_MOVE_SIL roll (skill + 10 + 1d10) vs SK_LISTEN (skill + 1d20); failure reveals hidden creatures, awakens sleeping ones
+- **Secret door detection**: elves/drow with CA_SHARP_SENSES, CA_STONEWORK_SENSE, or PERCEPTION; SK_SEARCH DC 15; success reveals door; failure marks DF_SEARCHED with retry bonus
+- **Mining detection**: SK_MINING/2 + CA_STONEWORK_SENSE×2 range; detects TF_DEPOSIT flag terrain
+- **Close identification**: MS_SEEN_CLOSE flag; auto-identifies M_CLOSEID creatures
 
 ## EventInfo Combat Fields
 
