@@ -2082,3 +2082,17 @@ Twelve docs (01-11, 16) now have implementation-level detail.
 - Monster Initialize() 12-step startup (initiative, peace flag, HP, targeting, elevation/hiding/phasing, item purification, weapon skills, size fields, prebuff)
 - Equipment optimization (slot priority, weapon/armor rating formulas, M_MAGE armor restriction)
 - Group behavior (AlertNew 12-square radius, emergent pack tactics, charm/compel override)
+
+**Item.cpp incorporation (agent acab84f)** - Expanded `06-item-system.md` with Item.cpp implementation detail (2933 lines). Added:
+- Armor value formulas (ArmVal with material bonuses, CovVal shield size comparison, DefVal, PenaltyVal with 6 quality modifiers + Armor Optimization feat)
+- Mithril weight category shift (Heavy→Medium, Medium→Light)
+- Corpse system (freshness, disease DC formula, weight by size, eating nutrition by size, cannibalism)
+- Food mechanics (incremental eating, satiation, Slow Metabolism)
+- Item creation (constructor, factory routing to 6 subclasses, Initialize with effect/quality/bane application, SetFlavors)
+- Stacking rules (operator== with 8 checks, TryStack merging, poison merge by relative quantity)
+- Item identification (MakeKnown with effect memory, IdentByTrial with INT exercise, VisibleID auto-ID)
+- Item damage system (6-step processing, 9 destruction message types, container spill, Spellbreaker XP)
+- Weight system (base formula, QItem quality modifiers, Psychometric Might)
+- Material hardness (40+ materials, QItem modifiers: Dwarven +10, Adamant ×2, Mithril ×1.5, cursed +50)
+- Item level calculations (weapon QPlus, armor QPlus×1.5)
+- Weapon-specific (DamageType optimization, bane system, ParryVal formula with skill cap)

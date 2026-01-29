@@ -178,6 +178,20 @@ Key methods:
 - `MaxDexBonus(c)` - Maximum Dex bonus in armor
 - `isGroup(gr)` - Armor group (light/medium/heavy/shield)
 
+### Armor Value Formulas
+
+**ArmVal(typ)**: base from template `ti->u.a.Arm[typ]` + Plus (if known) + material bonuses (Adamant: +1/+2/+3 by weight; Orcish/Dwarven: +1)
+
+**CovVal**: for shields, depends on FT_SHIELD_EXPERT + size comparison (larger=10, same=8, +1=4, +2=2, much larger=1); for armor, base from template + Plus
+
+**DefVal**: for shields, same as CovVal base + FT_SHIELD_FOCUS (+2); for armor, base from template + Plus
+
+**PenaltyVal**: base from template (negative) + quality modifiers:
+- Graceful: halves penalty; Elven: +2; Orcish: -1; Darkwood: +2; Mithril: +3; Agility: penalty = 0
+- For skills: adds 2; Armor Optimization feat: further reduces by (val-2)/3; minimum 0
+
+**GetGroup()**: Mithril shifts Heavy→Medium, Medium→Light (affects quality eligibility)
+
 ## Food & Corpse
 
 ```cpp
@@ -191,6 +205,17 @@ int16 LastDiseaseDCCheck;
 ```
 
 Methods: `Eat(e)`, `isFresh()`, `fullyDecayed()`, `noDiseaseDC()`
+
+### Corpse System
+- Fresh: less than 12 hours old; fully decayed: more than 14 days
+- Disease DC: base 8-25 by creature type, +1 per 2 hours after 6 hours, higher for undead
+- Weight by size: Tiny=50, Small=500, Medium=1500, Large=4000, Huge=10000, Gargantuan=250000, Colossal=1000000; statues ×5
+- Eating: incremental (5 units per action); nutrition by size (Tiny=1, Small=10, Medium=25, Large=50, Huge=100); cannibalism alignment penalty; disease risk via Wild Lore check
+
+### Food Mechanics
+- Nutrition from `TITEM(iID)->Nutrition`
+- Satiation tracking: full at CONTENT level; bloated limit: BLOATED + 500
+- Slow Metabolism: 1/3 nutrition need; large creatures: hold 2× more
 
 ## Container
 
@@ -393,15 +418,122 @@ Generation tables: `DungeonItems[]`, `MonsterItems[]`, `IllusionItems[]`, `Chest
 Static factory: `Item::GenItem(Flags, rID, Depth, Luck, ItemGen*)` - probabilistic item generation
 Static factory: `Item::Create(rID)` - create specific item by resource ID
 
+## Item Creation and Initialization
+
+### Constructor
+Sets `iID`, `Timeout = -1`, `cHP = MaxHP()`, `Image` from template, `eID = 0`, `Quantity = 1`, `Known = IFlags = 0`, `Plus = 0`, `GenNum = theGame->ItemGenNum++`. Wands get 30-50 charges; staffs get 20-29 charges; lights set Age from template lifespan.
+
+### Factory — Item::Create(rID)
+Routes to subclass: T_CORPSE/FIGURE/STATUE → Corpse; T_FOOD → Food; T_WEAPON/BOW/MISSILE/STAFF → Weapon; T_CONTAIN/CHEST → Container; T_ARMOUR/BOOTS/GAUNTLETS/SHIELD → Armour; all others → base Item.
+
+### Initialize(in_play)
+- Rope: quantity 6 or 20 randomly
+- Effect application (if eID): changes base item (BASE_ITEM), applies initial plus (INITIAL_PLUS), adds qualities from ITEM_QUALITIES list, sets bane from BANE_LIST
+- Fires EV_BIRTH event
+
+### Flavor Assignment — Game::SetFlavors()
+Assigns random visual/textual flavors to unidentified potions and scrolls; stores in player-specific effect memory.
+
+## Item Stacking Rules
+
+### operator==() — Equality for Stacking
+Items can stack when ALL match:
+1. Same type (T_COIN always stackable; T_CONTAIN/T_WAND never stack)
+2. T_WEAPON/BOW/ARMOUR: all 8 quality slots must match
+3. Different GenNum: both must be fully identified (KN_MAGIC, KN_PLUS, KN_BLESS)
+4. Non-easy-stack: names must match exactly
+5. Identical status effects (except POISONED, SUMMONED, BOOST_PLUS, EXTRA_QUALITY, HOME_REGION)
+6. Both must have identical poison types/magnitudes (OPT_POISON_MERGE: slightly more lenient)
+7. Light items: same Age (remaining fuel)
+8. Same Plus, cHP, Flavor, iID, eID; inscriptions merged intelligently
+
+### TryStack()
+Merges: `Quantity += other.Quantity`, `Known |= other.Known`. Poison merging: random chance based on relative quantities. Removes source item.
+
+## Item Identification
+
+### MakeKnown(k)
+Sets Known flags. When fully identified (KN_MAGIC + KN_PLUS): clears inscriptions. For scrolls/wands/rings/etc with eID: marks effect as known in player memory. Potions: marks PKnown. Notifies player via journal.
+
+### IdentByTrial(Item, Quality)
+Auto-identifies on use. Grants INT exercise (random(6) + max(1, level/2), cap 60).
+
+### VisibleID()
+Auto-identifies when wielder is detected via PER_DETECT or PER_SHADOW. Handles EF_USERID and EF_AUTOID flags.
+
+## Item Damage System (Item::Damage)
+
+### Processing Order
+1. Corporeal check: force/emptyness items immune
+2. Owner resistance: apply creature's resistance to damage type
+3. Hardness calculation: from material + owner bonus; halved if halfHardness flag
+4. Special: attacking own items ignores hardness; Sunder feat = 2× damage
+5. Damage distribution: spreads across quantity for stacked items
+6. Destruction: container contents spill out with 1.5× hardness damage to contents
+7. Spellbreaker ability: XP for destroying magical items (scaled by item vs player level)
+
+### Destruction Messages (by damage type)
+| Damage | Partial | Full |
+|--------|---------|------|
+| Sonic/Potion | "crack" | "shatter" |
+| Fire + Potion | "boil" | "boil and explode" |
+| Fire + Metal | "melt" | "melt into slag" |
+| Fire + Other | "burn" | "burn up" |
+| Acid | "melt" | "melt away" |
+| Disintegration | — | "disintegrate" |
+| Necrotic | "wither" | "wither away" |
+| Rust | "rust" | "rust away completely" |
+| Default | "is damaged" | "is destroyed" |
+
+## Weight System
+
+### Base Weight
+`TITEM(iID)->Weight × Quantity`. Zero-weight fallback: coins = Quantity/500, missiles = Quantity/5, default = Quantity/2.
+
+### Quality Weight Modifiers (QItem::Weight)
+- Elven: 75%; Dwarven: 125%; Darkwood/Mithril: 50%; Featherlight: 25%
+- Food with Psychometric Might: 1/3 weight
+
 ## Material Utilities
 
+### MaterialHardness(mat, DType)
+40+ materials × damage types. Key values:
+- Paper: -1 to 5; Cloth: 3-5; Leather: 10; Dragon hide: 15; Wood: 5
+- Copper/Silver/Gold: 5; Iron: 10; Mithril: 15; Adamant: 20
+- Indestructible: -1 (immune) vs all
+- Rust (AD_RUST): 0 for iron/copper, -1 for others
+- Acid: -1 for glass/gemstone
+
+### QItem::Hardness Modifiers
+Dwarven: +10; Orcish/Silver: ÷2; Adamant/Darkwood: ×2; Mithril: ×1.5; Plus ≥ 0: +Plus×5; Cursed: +50
+
+### Material Query Functions
 ```cpp
-int16 MaterialHardness(int8 Mat, int8 DType);
-bool MaterialIsMetallic(int8 mat);
-bool MaterialIsWooden(int8 mat);
-bool MaterialIsOrganic(int8 mat);
-bool MaterialIsCorporeal(int8 mat);
+MaterialIsMetallic(mat);   // Iron, copper, gold, silver, metal, mithril, adamant, platinum
+MaterialIsWooden(mat);     // Wood, ironwood, darkwood
+MaterialIsOrganic(mat);    // Veggy, wax, flesh, cloth, leather, paper, bone, dragon hide, webbing, wooden
+MaterialIsCorporeal(mat);  // Everything except force and emptyness
 ```
+
+## Item Level Calculations
+
+### Weapon::ItemLevel()
+Base from Item::ItemLevel (cost level or LevelAdjust). Random weapons: QPlus from Plus + quality modifier table. Bounded: max(base, Plus×2).
+
+### Armour::ItemLevel()
+Similar: QPlus + (QPlus × 150) / 100. Bounded: max(base, Plus×2).
+
+## Weapon-Specific
+
+### DamageType(target)
+Selects optimal from slashing/piercing/blunt based on weapon flags. Against creatures: analyzes target resistance, picks type with lowest defense. Immune types (resistance = -1) treated as 999999.
+
+### Bane System
+- Bane = 0: none; Bane = monster type ID: direct; Bane = -2: lookup BANE_LIST from effect
+- RandomBane(): assigns from 30+ monster types
+
+### ParryVal
+Base from template + Elven(+1)/Orcish(-1) + skill modifier (WS_NOT_PROF: -4, else +2 per level above proficient). Cap: 2× template value. Minimum 0.
 
 ## Porting Considerations
 
