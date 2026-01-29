@@ -1948,3 +1948,25 @@ Late-arriving background agent from the previous session had detailed Map.h, Eve
 
 ### Summary
 All 18 research documents now have implementation-level detail where available. Seven key docs (01, 02, 03, 04, 09, 10, 16) expanded with field-level detail from original headers. Research phase complete.
+
+**`06-item-system.md`**: Further expanded with late-arriving Item.h agent data:
+- IFlags constants with exact hex values (11 flags)
+- KN_* knowledge flags with hex values (9 flags)
+- Weapon group constants (WG_*, 22 entries with hex bitmask values)
+- Weapon/armor quality constants organized by category with numeric IDs
+- TItem resource template with union detail (weapon/armor/container/light stats)
+- ItemGen struct for item generation with 6 extern generation tables
+- Material utility free functions
+- Additional weapon methods (bane management, grapple, wield/unwield)
+
+**`07-magic-system.md`**: Major expansion with late-arriving Magic.h agent data:
+- Magic class section: globals (ZapX/ZapY/ZapMap/ZapImage), area delivery methods (ABallBeamBolt unified handler, PredictVictims AI helper, ATouch/AGlobe/AField/ABarrier), core processing pipeline (isTarget/CalcEffect/MagicEvent/MagicStrike/MagicHit/MagicXY)
+- Area range constants (AR_*, 18 types from AR_NONE through AR_CONE)
+- Complete effect archetype table with EA_ codes and method names (33 entries + 8 additional methods)
+- EffectValues with proper field types (not generic ints)
+- EF_* flags organized by 9 categories (duration, frequency, targeting, damage, level caps, generation, naming, alignment, misc)
+- Magic school constants (SC_*, 8 schools with hex bitmask values)
+- Saving throw types (SN_*, 22 types)
+- Damage type constants (AD_*, 94+ types in 7 categories: physical, elemental, status, drain, special attack, alignment, other)
+
+Nine key docs (01, 02, 03, 04, 06, 07, 09, 10, 16) now have implementation-level detail.
