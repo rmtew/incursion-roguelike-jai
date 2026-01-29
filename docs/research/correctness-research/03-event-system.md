@@ -64,14 +64,60 @@ Magic: `isSpell`, `isBlessed`, `isCursed`, `effDisbelieved`, `actIllusion`, `vic
 
 Output control: `Silence` (suppress ALL output), `Terse` (suppress non-essential)
 
+### Positional/Directional Fields
+```cpp
+int16 x, y, z;          // Position and direction
+int16 sp;                // Spell number
+int16 EvFlags;           // Event-specific flags
+int32 EParam, EParam2;   // Generic integer parameters
+```
+
+### Additional Combat Fields
+```cpp
+int8 vRange;             // Range
+int8 vRadius;            // Area radius
+int8 vOpp1, vOpp2;       // Opposed check values
+int8 vRideCheck;         // Ride check result
+int8 vChainCount, vChainMax; // Chain attack tracking
+int8 vPenetrateBonus;    // Spell resistance penetration
+Item *remainingAmmo;     // Ammunition tracking
+uint32 MM;               // Metamagic flags
+```
+
 ### String Fields (24 strings)
-For message generation: `GraveText`, `strDmg`, `strHit`, `strDef`, naming components (`nPrefix`, `nBase`, `nOf`, `nAdjective`, `nFlavour`, etc.)
+**Message strings:** `GraveText`, `strDmg`, `strXDmg`, `strHit`, `strDef`, `strOpp1`, `strOpp2`, `strBlastDmg`
+
+**Naming system (for EV_PRINT_NAME):** `nPrefix`, `nCursed`, `nPrequal`, `nPostqual`, `nNamed`, `nBase`, `nAppend`, `nOf`, `nAdjective`, `nFlavour`, `nInscrip`, `nMech`, `nArticle`, `nPlus`, `Text`, `enDump`
 
 ### Encounter Generation Fields (~40 fields)
-`enTerrain`, `enCR`, `enDepth`, `enXCR`, encounter part fields (`ep_mID`, `ep_tID`, etc.)
+**Encounter-level:** `enTerrain`, `enCR`, `enDepth`, `enXCR`, `enID`, `enRegID`, `enAlign`, `enPurpose`, `enFlags`, `enFreaky`, `enSleep`, `enType`, `enPartyID`, `enDriftGE`, `enDriftLC`, `enConstraint`
 
-### Character Creation Fields
-`chType`, `chList`, `chResult`, `chSource`, `chCriteria` (function pointer)
+**Per-part:** `epMinAmt`, `epMaxAmt`, `epAmt`, `epFreaky`, `epWeight`, `epMType`, `ep_monCR`, `ep_mountCR`, `ep_mID`, `ep_tID`, `ep_tID2`, `ep_tID3`, `ep_hmID`, `ep_htID`, `ep_htID2`, `ep_pID`, `ep_iID`, `epXCR`, `eimXCR`
+
+### Dungeon Generation Fields
+```cpp
+Rect cPanel, cMap, cRoom; // Current panel/map/room during generation
+int16 vDepth, vLevel;     // Generation depth/level
+int16 terraKey, terrainListIndex; // Terrain mutation keys
+```
+
+### Resource Selection Fields
+```cpp
+uint32 chType;            // Resource type to choose
+uint16 chList;            // Resource list
+bool chMaximize;          // Maximize selection
+bool chBestOfTwo;         // Best-of-two selection
+rID chResult;             // Chosen resource ID
+rID chSource;             // Source constraint
+bool (*chCriteria)(EventInfo&, rID); // Custom filter callback
+```
+
+### Illusion Fields
+```cpp
+uint16 illFlags;          // Illusion flags
+char illType;             // Illusion type
+rID ill_eID;              // Illusion effect resource ID
+```
 
 ## Event Types (EV_* Constants)
 

@@ -1889,3 +1889,52 @@ Continued from previous session where comprehensive source architecture research
 ### Summary
 
 Total research docs: 18 files covering 26 subsystems. Four key docs expanded with ~600 additional lines of detail from re-reading original source headers. Master index updated. All research complete at architecture level; implementation-level .cpp algorithms remain deferred to per-system porting as planned.
+
+## 2026-01-30: Final Research Incorporation (Map, Event, Feature)
+
+### Context
+Late-arriving background agent from the previous session had detailed Map.h, Events.h, and Feature.h field-level data. Incorporated this data into the remaining three research documents.
+
+### Changes
+
+**`03-event-system.md`**: Added implementation-level EventInfo fields:
+- Positional/directional fields (x, y, z, sp, EvFlags, EParam, EParam2)
+- Additional combat fields (vRange, vRadius, vOpp1/2, vRideCheck, chain tracking, vPenetrateBonus, remainingAmmo, MM metamagic flags)
+- Expanded string fields with full naming system for EV_PRINT_NAME (nPrefix through enDump)
+- Encounter generation fields (encounter-level and per-part, ~40 fields)
+- Dungeon generation fields (Rect cPanel/cMap/cRoom, vDepth/vLevel, terrain mutation keys)
+- Resource selection fields (chType, chList, chMaximize, chBestOfTwo, chResult, chSource, chCriteria callback)
+- Illusion fields (illFlags, illType, ill_eID)
+
+**`09-map-system.md`**: Major expansion with implementation-level detail:
+- Field struct full definition (eID, FType, Image, cx/cy/rad, Dur, Creator, Next, Color)
+- MTerrain struct (x, y, old, pri, key) and TerraRecord struct (key, Duration, SaveDC, DType, pval, eID, Creator)
+- EncMember struct (14 fields: mID through padding)
+- Overlay class with MAX_OVERLAY_GLYPHS=250, hObj m, IsGlyphAt
+- All Map private fields: nextAvailableTerraKey, inGenerate, SpecialDepths, CurrThing, static Fraction vision helpers
+- Complete static generation arrays: weights (4x 1024-entry), open positions (2048), corners/centers, Con[143], RM/RC weights, flood arrays
+- Static encounter generation: EncMem[100], uniform arrays
+- Additional public fields: PercentSI, inDaysPassed, SpecialsLevels[64], Day, FieldCount, BreedCount, PreviousAuguries
+- Additional query methods: spatial queries, container queries, FirstThing/NextThing
+- 16 room shape writers (WriteCircle through WriteWalls)
+- Full pathfinding API with PQ operations and parameter detail
+- Complete encounter generation API (9 thEnGen variants + internal pipeline)
+- Message queue, noise, and miscellaneous methods
+- Supporting types: Thing base class, StatiCollection, Status struct, StatiIter macros
+- Constants and globals (MAX_OVERLAY_GLYPHS, MAX_ENC_MEMBERS, LAST_DUNCONST, etc.)
+- DF_* naming collision note (door flags vs damage flags vs danger flags)
+
+**`10-feature-system.md`**: Added constant values and constructor detail:
+- Door flags with exact hex values (DF_VERTICAL 0x01 through DF_PICKED 0x80)
+- Trap state flags (TS_FOUND through TS_NORESET)
+- Portal type constants (POR_UP_STAIR 1 through POR_RETURN 10)
+- Terrain feature flags (TF_SOLID through TF_LAST=28, bit indices not bitmasks)
+- Thing flags (F_SOLID through F_ALTAR, hex bitmasks)
+- Feature type constants (T_PORTAL 10 through T_BARRIER 15)
+- Feature constructor logic (both variants)
+- Complete method signatures for all four classes
+- Trap constructor detail
+- DF_* naming collision warning
+
+### Summary
+All 18 research documents now have implementation-level detail where available. The three remaining docs (03, 09, 10) have been brought up to the same standard as the four previously expanded docs (01, 02, 04, 16). Research phase complete.
