@@ -1969,4 +1969,21 @@ All 18 research documents now have implementation-level detail where available. 
 - Saving throw types (SN_*, 22 types)
 - Damage type constants (AD_*, 94+ types in 7 categories: physical, elemental, status, drain, special attack, alignment, other)
 
-Nine key docs (01, 02, 03, 04, 06, 07, 09, 10, 16) now have implementation-level detail.
+**`08-status-effects.md`**: Major expansion with late-arriving Status.cpp agent data:
+- Promoted from architecture to fully-researched status
+- Detailed GainTempStati 6-step application process (validation, enchantment stacking, memory allocation with lazy growth, initialization, back-references, post-application with callbacks and events)
+- _FixupStati consolidation process (merge, sort, rebuild index, compact)
+- Five removal strategies with full signatures and behavior (RemoveStati, RemoveOnceStati, RemoveEffStati with event handling, RemoveStatiFrom, RemoveStatiSource)
+- CleanupRefedStati genericization logic (SS_ATTK sources persist without source object)
+- Complete stacking rules: enchantment stacking, attack-based genericization, 5 conflict pairs
+- Full StatiOn callback table (25+ status types with specific behaviors)
+- Full StatiOff callback table (20+ status types with specific behaviors including STONING petrification, HUNGER starvation, SINGING cascade, SLIP_MIND auto-save)
+- Item StatiOn/StatiOff (DISPELLED/BOOST_PLUS/SUMMONED/ILLUSION)
+- 15 status types with special handling (PERIODIC skip, SLOW_POISON, HUNGER, ACTING, TRAP_EVENT, etc.)
+- Field type flags (FI_*, 10 types)
+- Complete field lifecycle (creation, movement with SIZE field fitting, removal, enter/leave callbacks)
+- PTerrainAt illusory terrain perception
+- UpdateStati per-turn processing with 7-step logic
+- Field duration semantics
+
+Ten key docs (01, 02, 03, 04, 06, 07, 08, 09, 10, 16) now have implementation-level detail.
