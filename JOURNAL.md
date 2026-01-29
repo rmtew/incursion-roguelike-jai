@@ -1538,3 +1538,32 @@ All 7 checks pass in dungeon_verify:
 ### Visual Result
 
 Monsters now display varied letters (r, g, o, T, D, etc.) with appropriate colors instead of all 'M'. Items show proper glyphs (potions, scrolls, weapons) instead of all '*'. Multiple entities at same cell show Æ or * as appropriate.
+
+---
+
+## 2026-01-29: Resource Database Glyph Lookup
+
+Replaced random glyph generation with actual lookups from the parsed resource database.
+
+### Changes
+
+**CR-based lookup functions** (`src/resource/runtime.jai`):
+- `find_monster_by_cr(db, cr_min, cr_max, rng_seed)` - find monsters in CR range
+- `find_monster_by_cr_fuzzy(db, target_cr, tolerance, rng_seed)` - fuzzy CR matching
+- `find_item_by_level(db, level_min, level_max, rng_seed)` - find items by level
+- `find_item_by_level_fuzzy(db, target_level, tolerance, rng_seed)` - fuzzy level matching
+
+**Entity creation updated** (`src/dungeon/makelev.jai`):
+- Monster creation now looks up from `db.monsters` by CR
+- Item creation uses `assign_item_from_db()` helper
+- `type_id` field stores index into resource database
+- Fallback to `select_monster_glyph`/`select_item_glyph` if no match found
+
+### Result
+
+Monsters and items now display their actual glyphs as defined in the .irh resource files:
+- A goblin (CR 1/2) shows 'g' in green
+- A kobold shows 'k'
+- Items show their proper equipment glyphs (armor Σ, weapons, etc.)
+
+The `type_id` field can be used for future lookups (name, stats, etc.).

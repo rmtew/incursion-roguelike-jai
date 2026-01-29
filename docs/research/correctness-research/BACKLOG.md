@@ -37,12 +37,25 @@
 
 ### Rendering Priority System
 
-**Status:** Spec complete, not yet implemented
+**Status:** COMPLETE
 
 When multiple things occupy a cell:
 - Creatures override items
 - Multiple creatures → GLYPH_MULTI (Æ)
 - Multiple items → GLYPH_PILE (*)
+
+**Implementation:** `src/dungeon/render.jai`
+
+### Resource Database Glyph Lookup
+
+**Status:** COMPLETE
+
+Entities now look up their actual glyphs from parsed .irh files:
+- `find_monster_by_cr_fuzzy()` matches monsters by CR
+- `find_item_by_level_fuzzy()` matches items by level
+- `type_id` field stores index for future stat lookups
+
+**Implementation:** `src/resource/runtime.jai`, `src/dungeon/makelev.jai`
 
 ### Visibility/Memory System
 

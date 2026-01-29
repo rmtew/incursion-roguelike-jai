@@ -2929,8 +2929,9 @@ place_treasure_deposits :: (m: *GenMap, depth: s32) {
         item.x = x;
         item.y = y;
         item.cr = depth + 3;  // Treasure is higher quality
-        item.type_id = 999;   // Special treasure marker
-        item.glyph, item.fg_color = select_item_glyph(item.cr, false, false);
+        item.type_id = 999;   // Special treasure marker (overwritten if found in db)
+        db := get_resource_db();
+        assign_item_from_db(db, *item);
         array_add(*m.items, item);
 
         deposits_placed += 1;
@@ -3308,6 +3309,9 @@ populate_panel :: (m: *GenMap, room_index: s32, room: Room, depth_cr: s32, party
         }
     }
 
+    // Get resource database for monster lookups
+    db := get_resource_db();
+
     // Place monsters in this room
     for i: 0..monster_count-1 {
         // Determine if this should be an aquatic monster
@@ -3337,8 +3341,17 @@ populate_panel :: (m: *GenMap, room_index: s32, room: Room, depth_cr: s32, party
         sleep_threshold := random(100) + 1;
         mon.is_sleeping = sleep_threshold > 50;  // ~50% sleeping
 
-        // Set glyph and color based on monster properties
-        mon.glyph, mon.fg_color = select_monster_glyph(mon.cr, is_aquatic, is_aerial);
+        // Look up actual monster from resource database by CR
+        rng_seed := random(cast(s32)0x7FFFFFFF);
+        rmonster := find_monster_by_cr_fuzzy(db, mon.cr, 3, cast(u64)rng_seed);
+        if rmonster != null {
+            mon.glyph = rmonster.glyph;
+            mon.fg_color = rmonster.fg_color;
+            mon.type_id = cast(s32)(rmonster - db.monsters.data);  // Store index
+        } else {
+            // Fallback to generated glyph if no monster found
+            mon.glyph, mon.fg_color = select_monster_glyph(mon.cr, is_aquatic, is_aerial);
+        }
 
         array_add(*m.monsters, mon);
         monsters_placed += 1;
@@ -3357,7 +3370,9 @@ populate_panel :: (m: *GenMap, room_index: s32, room: Room, depth_cr: s32, party
             item.room_index = room_index;
             item.cr = depth_cr;
             item.is_chest = true;
-            item.glyph, item.fg_color = select_item_glyph(item.cr, true, false);
+            // Chests always use chest glyph
+            item.glyph = GLYPH_CHEST;
+            item.fg_color = 6;  // Brown
             array_add(*m.items, item);
             items_placed += 1;
         }
@@ -3378,7 +3393,8 @@ populate_panel :: (m: *GenMap, room_index: s32, room: Room, depth_cr: s32, party
             } else {
                 item.is_good = true;
             }
-            item.glyph, item.fg_color = select_item_glyph(item.cr, false, false);
+            // Look up actual item from resource database
+            assign_item_from_db(db, *item);
             array_add(*m.items, item);
             items_placed += 1;
         }
@@ -3392,7 +3408,7 @@ populate_panel :: (m: *GenMap, room_index: s32, room: Room, depth_cr: s32, party
             item.y = y;
             item.room_index = room_index;
             item.cr = cast(s32) max(0, depth_cr / 2 - 4);  // Lower tier
-            item.glyph, item.fg_color = select_item_glyph(item.cr, false, false);
+            assign_item_from_db(db, *item);
             array_add(*m.items, item);
             items_placed += 1;
         }
@@ -3408,6 +3424,7 @@ populate_panel :: (m: *GenMap, room_index: s32, room: Room, depth_cr: s32, party
             item.room_index = room_index;
             item.cr = depth_cr;
             item.is_staple = true;
+            // Staples use specific glyph types (potions, scrolls, food)
             item.glyph, item.fg_color = select_item_glyph(item.cr, false, true);
             array_add(*m.items, item);
             items_placed += 1;
@@ -3952,5 +3969,20 @@ select_item_glyph :: (cr: s32, is_chest: bool, is_staple: bool) -> u16, u8 {
         colors  :: u8.[14, 11, 13, 15];  // yellow, cyan, magenta, white
         idx := cast(s32)(random(cast(s32)choices.count));
         return choices[idx], colors[idx];
+    }
+}
+
+// Assign item glyph/color from resource database
+// Uses item.cr as the target level, with fuzzy matching
+assign_item_from_db :: (db: *ResourceDB, item: *EntityPos) {
+    rng_seed := random(cast(s32)0x7FFFFFFF);
+    ritem := find_item_by_level_fuzzy(db, item.cr, 5, cast(u64)rng_seed);
+    if ritem != null {
+        item.glyph = ritem.glyph;
+        item.fg_color = ritem.fg_color;
+        item.type_id = cast(s32)(ritem - db.items.data);  // Store index
+    } else {
+        // Fallback to generated glyph
+        item.glyph, item.fg_color = select_item_glyph(item.cr, false, false);
     }
 }

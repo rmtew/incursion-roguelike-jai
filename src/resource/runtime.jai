@@ -179,3 +179,109 @@ color_to_ansi :: (color_const: s64) -> u8 {
     // This is a simplified mapping
     return 7;  // Default to grey
 }
+
+// ============================================================================
+// CR-Based Lookup Functions
+// ============================================================================
+
+// Find a random monster with CR in range [cr_min, cr_max]
+// Returns null if no matching monster found
+find_monster_by_cr :: (db: *ResourceDB, cr_min: s32, cr_max: s32, rng_seed: u64) -> *RMonster {
+    // Count matching monsters first
+    count: s32 = 0;
+    for mon: db.monsters {
+        if mon.cr >= cr_min && mon.cr <= cr_max {
+            count += 1;
+        }
+    }
+
+    if count == 0 return null;
+
+    // Pick a random one
+    target := cast(s32)(rng_seed % cast(u64)count);
+    idx: s32 = 0;
+    for *mon: db.monsters {
+        if mon.cr >= cr_min && mon.cr <= cr_max {
+            if idx == target {
+                return mon;
+            }
+            idx += 1;
+        }
+    }
+
+    return null;
+}
+
+// Find a random monster with exact CR (or closest available)
+// If exact CR not found, searches within +/- tolerance
+find_monster_by_cr_fuzzy :: (db: *ResourceDB, target_cr: s32, tolerance: s32, rng_seed: u64) -> *RMonster {
+    // Try exact CR first
+    result := find_monster_by_cr(db, target_cr, target_cr, rng_seed);
+    if result != null return result;
+
+    // Expand search range
+    for offset: 1..tolerance {
+        result = find_monster_by_cr(db, target_cr - offset, target_cr + offset, rng_seed);
+        if result != null return result;
+    }
+
+    // Last resort: any monster
+    if db.monsters.count > 0 {
+        idx := rng_seed % cast(u64)db.monsters.count;
+        return *db.monsters[idx];
+    }
+
+    return null;
+}
+
+// Find a random item with level in range [level_min, level_max]
+// Returns null if no matching item found
+find_item_by_level :: (db: *ResourceDB, level_min: s32, level_max: s32, rng_seed: u64) -> *RItem {
+    // Count matching items first
+    count: s32 = 0;
+    for item: db.items {
+        item_level := cast(s32) item.level;
+        if item_level >= level_min && item_level <= level_max {
+            count += 1;
+        }
+    }
+
+    if count == 0 return null;
+
+    // Pick a random one
+    target := cast(s32)(rng_seed % cast(u64)count);
+    idx: s32 = 0;
+    for *item: db.items {
+        item_level := cast(s32) item.level;
+        if item_level >= level_min && item_level <= level_max {
+            if idx == target {
+                return item;
+            }
+            idx += 1;
+        }
+    }
+
+    return null;
+}
+
+// Find a random item with level close to target
+find_item_by_level_fuzzy :: (db: *ResourceDB, target_level: s32, tolerance: s32, rng_seed: u64) -> *RItem {
+    // Try exact level first
+    result := find_item_by_level(db, target_level, target_level, rng_seed);
+    if result != null return result;
+
+    // Expand search range
+    for offset: 1..tolerance {
+        min_level := cast(s32) max(0, target_level - offset);
+        result = find_item_by_level(db, min_level, target_level + cast(s32)offset, rng_seed);
+        if result != null return result;
+    }
+
+    // Last resort: any item
+    if db.items.count > 0 {
+        idx := rng_seed % cast(u64)db.items.count;
+        return *db.items[idx];
+    }
+
+    return null;
+}
