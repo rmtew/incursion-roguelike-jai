@@ -61,10 +61,10 @@ Object (Base.h)
 
 ### 1.1 Object & Registry System
 - **Status**: DONE (01-object-registry.md)
-- **Source**: `Base.cpp`, `Registry.cpp`, `inc/Base.h`
-- **Key Types**: Object, hObj (handle), Registry, String, Dice, Array, MVal, Rect, Dictionary, Fraction, Parser
-- **Scope**: Handle-based object system, serialization (save/load), ARCHIVE_CLASS macro, oThing/oCreature/oItem accessor macros
-- **Notes**: Object is the root class. Registry manages all game objects via hObj handles. All persistent objects use ARCHIVE_CLASS for serialization. String class has custom buffer management with Canary guard values.
+- **Source**: `Base.cpp`, `Registry.cpp`, `VMachine.cpp`, `inc/Base.h`, `inc/Res.h`
+- **Key Types**: Object, hObj (handle), Registry (65536-entry hash), String (tmpstr pool, color codes), Dice, Array/NArray/OArray, MVal, VMachine (63 opcodes, 64 registers, 8192 stack)
+- **Scope**: Handle-based object system (handles start at 128), serialization (ARCHIVE_CLASS), RegNode collision chaining, String temp pool (64000 entries), IncursionScript VM (VCode instruction format, system objects 1-10), Array growth strategy
+- **Notes**: Registry::Get() is second-most-called function (profiled). VMachine bridges scripts to C++ via auto-generated Dispatch.h. String uses negative chars for color codes. MVal has two-phase Adjust() algorithm (VType then BType).
 
 ### 1.2 Resource System
 - **Status**: DONE (02-resource-system.md)
@@ -318,11 +318,11 @@ Object (Base.h)
 
 ## 11. Data & Configuration
 
-### 11.1 Tables & Static Data
+### 11.1 Tables, Globals & Static Data
 - **Status**: DONE (16-data-tables.md)
-- **Source**: `Tables.cpp`
-- **Scope**: Saving throw tables, static arrays, hard-coded game data
-- **Notes**: No active code, purely data definitions. Important for mechanical correctness.
+- **Source**: `Tables.cpp`, `inc/Globals.h`
+- **Scope**: Saving throw tables, static data arrays, 75 TextVal lookup arrays (enum-to-string mappings), 30+ calculation breakdown variables (spell power/DC/skill), 13 event dispatch Throw variants, game state globals, message/print system functions
+- **Notes**: Globals.h declares core singletons (theGame, theRegistry, T1), event dispatch functions, print system (XPrint/DPrint/TPrint), and all static data tables. Tables.cpp provides pure data definitions.
 
 ### 11.2 Annotations
 - **Status**: DONE (16-data-tables.md)
@@ -331,10 +331,10 @@ Object (Base.h)
 - **Notes**: Annotations extend Resources with typed metadata. Used for equipment grants, tile definitions, ability specifications.
 
 ### 11.3 Targeting System
-- **Status**: DONE (16-data-tables.md)
+- **Status**: DONE (04-creature-system.md Target System section, 16-data-tables.md)
 - **Source**: `Target.cpp`, `inc/Target.h`
-- **Scope**: Target selection, hostility determination, target types (TargetType enum), target tracking for AI
-- **Notes**: Targeting integrates with combat, magic, and AI systems. Hostility is multi-level (friendly, neutral, hostile).
+- **Scope**: Target selection, three-tier hostility evaluation (Specific → LowPriorityStati → Racial), 32-target fixed array, HostilityWhyType (23 reason codes), TargetType enum (creatures, areas, items, orders, memory flags), damage thresholds for turning hostile
+- **Notes**: TargetSystem is embedded in every Creature. Evaluates hostility through three tiers with proof chains explaining *why* each relationship exists. Supports racial feuds, alignment conflicts, leader relationships, status effects, and personal grudges. Full detail in doc 04.
 
 ### 11.4 Debug & Dump
 - **Status**: DONE (16-data-tables.md)

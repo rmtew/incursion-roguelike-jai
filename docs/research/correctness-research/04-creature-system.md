@@ -1,8 +1,8 @@
 # Creature System
 
-**Source**: `Creature.cpp`, `Character.cpp`, `Player.cpp`, `Monster.cpp`, `Create.cpp`
-**Headers**: `inc/Creature.h`
-**Status**: Architecture researched from headers; implementation details need per-function research during porting
+**Source**: `Creature.cpp`, `Character.cpp`, `Player.cpp`, `Monster.cpp`, `Create.cpp`, `Target.cpp`
+**Headers**: `inc/Creature.h`, `inc/Target.h`
+**Status**: Fully researched
 
 ## Class Hierarchy
 
@@ -32,6 +32,7 @@ int8 FFCount;               // Flat-footed counter
 int8 HideVal;               // Stealth value
 int16 StateFlags;           // MS_* state flags
 int8 AttrDeath;             // Attribute that caused death (drain)
+TargetSystem ts;            // Embedded target/hostility system
 ```
 
 ### Perception Precalculations
@@ -184,13 +185,230 @@ static Creature *mtarg, *rtarg; // Current targets
 ### AI Methods
 - `ChooseAction()` - Main AI decision loop
 - `AddAct(act, pri, tar)` - Queue action with priority
-- `RateAsTarget(t)` - Evaluate target attractiveness
-- `Retarget()` - Find new targets
 - `SmartDirTo(tx, ty)` - Pathfind toward target
 - `Movement()` - Execute movement decision
 - `PreBuff()` - Apply pre-combat buffs
 - `MonsterGear()` - Equip from template
-- `TurnHostileTo(cr)`, `Pacify(cr)` - Hostility management
+
+## Target System
+
+**Source**: `inc/Target.h`, `src/Target.cpp` (1642 lines)
+
+Every Creature has an embedded `TargetSystem ts` that tracks what it considers enemies, allies, and targets. The system maintains a "proof chain" explaining *why* each relationship exists.
+
+### HostilityWhyType Enum (23 values)
+
+Reason codes for hostility/friendliness:
+
+| Value | Meaning |
+|---|---|
+| `HostilityDefault` | No particular reason |
+| `HostilityFeud` | Racial feud (e.g., Elf vs Drow) |
+| `HostilityMindless` | Mindless creature attacks everything |
+| `HostilityPeaceful` | Peaceful creature |
+| `HostilityGood` | Both good-aligned |
+| `HostilityOutsider` | Outsider alignment conflict |
+| `HostilityDragon` | Dragon alignment conflict |
+| `HostilitySmite` | Good smites evil |
+| `HostilityLeader` | Leader/follower relationship |
+| `HostilityMount` | Mount obeys rider |
+| `HostilityDefendLeader` | Defends its leader |
+| `HostilityYourLeaderHatesMe` | Target's leader is hostile to me |
+| `HostilityYourLeaderIsOK` | OK with target's leader |
+| `HostilityParty` | Same party |
+| `HostilityFlag` | Hostile by nature (M_HOSTILE) |
+| `HostilitySolidarity` | Same race solidarity |
+| `HostilityEID` | Effect-based (carries rID) |
+| `HostilityTarget` | Personal memory/grudge |
+| `HostilityFood` | Carnivore/herbivore wants food |
+| `HostilityEvil` | Evil attacks the weak |
+| `HostilityAlienation` | Creature out of element |
+| `HostilityCharmed` | Charmed |
+| `HostilityCommanded` | Commanded |
+
+### Hostility Evaluation Structures
+
+```cpp
+// Why hostile/friendly
+struct HostilityWhy {
+    HostilityWhyType type;
+    union {
+        struct { uint8 ma; } solidarity;      // MA_* type
+        struct { uint8 m1, m2; } feud;        // Racial feud pair
+        struct { rID eid; } eid;              // Effect resource
+    } data;
+};
+
+// Qualitative assessment
+enum HostilityQual { Neutral, Enemy, Ally };
+
+// Quantitative strength
+enum HostilityQuant {
+    Apathy=0, Minimal=1, Tiny=2, Weak=10, Medium=20, Strong=30
+};
+
+// Combined hostility result
+struct Hostility {
+    HostilityQual quality;
+    HostilityQuant quantity;
+    HostilityWhy why;
+};
+```
+
+### Three-Tier Hostility Evaluation
+
+Evaluation flows: **SpecificHostility** → **LowPriorityStatiHostility** → **RacialHostility**
+
+#### Tier 1: SpecificHostility (highest priority)
+Personal/relationship checks in order:
+1. Player-vs-player: always Neutral
+2. Self: Strong Ally
+3. CHARMED (CH_DOMINATE/CH_COMMAND): Strong Ally
+4. CHARMED (CH_CHARM): Strong Neutral
+5. Illusion check: if not real, Neutral
+6. Existing Target memory: use stored Enemy/Ally/Leader
+7. Leader relationships: defend leader, follow leader's disposition
+8. Target's leader: if hostile to me → Enemy
+9. PartyID match: Strong Ally
+10. Target's leader OK: check lower tiers
+11. Fall through to Tier 2
+
+#### Tier 2: LowPriorityStatiHostility (medium priority)
+Status effect checks:
+1. ENEMY_TO stati: Medium Enemy
+2. ALLY_TO stati: Strong Neutral
+3. NEUTRAL_TO stati: Medium Neutral
+4. CHARMED(CH_CALMED): Strong Neutral
+5. Fall through to Tier 3
+
+#### Tier 3: RacialHostility (lowest priority)
+Race/type-based defaults:
+1. Mindless: solidarity check only, then Strong Enemy
+2. Peaceful: Weak Neutral
+3. Outsider alignment conflict: Strong Enemy
+4. Dragon alignment conflict: Strong Enemy
+5. Racial feuds (7 pairs at Medium, Elf/Dwarf at Weak):
+   - Undead/Living, Elf/Orc, Gnome/Kobold, Elf/Drow, Halfling/Goblin, Dwarf/Orc, Cat/Dog
+6. Solidarity (same-race friendship): Strong for Lizardfolk/Illithid, Medium for many others
+7. M_HOSTILE flag: Strong Enemy
+8. Evil creature: Tiny Enemy if CR >= target
+9. Carnivore/Herbivore food: Tiny Enemy if CR >= target
+10. Good mutual respect: Weak Neutral
+11. Good smites evil: Weak Enemy
+12. OrderAttackNeutrals: Tiny Enemy
+13. Alienation: Tiny Enemy (animals, elementals out of element)
+
+### TargetType Enum
+
+**Creature relationships:** TargetInvalid, TargetEnemy, TargetAlly, TargetLeader, TargetSummoner, TargetMaster, TargetMount
+
+**Spatial/item targets:** TargetArea, TargetWander, TargetItem
+
+**Orders (15 types):** OrderStandStill, OrderDoNotAttack, OrderAttackNeutrals, OrderHide, OrderDoNotHide, OrderWalkInFront/InBack/NearMe/ToPoint, OrderBeFriendly, OrderAttackTarget, OrderTakeWatches, OrderGiveMeItem, OrderReturnHome, OrderNoPickup
+
+**Memory flags (5):** MemoryCantHitPhased, MemoryCantHitWImmune, MemoryElemResistKnown, MemoryMeleeDCKnown, MemoryRangedDCKnown
+
+### Target Struct
+```cpp
+struct Target {
+    TargetType type;
+    uint16 priority;            // Higher = more important
+    uint16 vis;                 // Visible now? (perception flags)
+    TargetWhy why;              // Reason + turn of birth
+    union {
+        struct { hObj c; uint32 damageDoneToMe; } Creature;
+        struct { uint8 x, y; } Area;
+        struct { hObj i; } Item;
+    } data;
+};
+```
+
+### TargetSystem (32-target fixed array)
+```cpp
+struct TargetSystem {
+    Target t[32];               // NUM_TARGETS = 32
+    uint8 tCount;
+    bool shouldRetarget;
+
+    // Three-tier evaluation
+    Hostility RacialHostility(Creature *me, Creature *t);
+    Hostility SpecificHostility(Creature *me, Creature *t);
+    Hostility LowPriorityStatiHostility(Creature *me, Creature *t);
+
+    // Target management
+    void RateAsTarget(Creature *me, Thing *t, Target &newT);
+    Target* GetTarget(Thing *thing);
+    bool addCreatureTarget(Creature *targ, TargetType type);
+    bool addTarget(Target &newT);
+    void removeCreatureTarget(Creature *targ, TargetType type);
+    bool giveOrder(Creature *me, Creature *master, TargetType order, ...);
+
+    // Events/reactions
+    void ItHitMe(Creature *me, Creature *t, int16 damage);
+    void Liberate(Creature *me, Creature *lib);
+    void Pacify(Creature *me, Creature *t);
+    void Wanderlust(Creature *me, Thing *t=NULL);
+    void HearNoise(Creature *me, uint8 x, uint8 y);
+    void TurnHostileTo(Creature *me, Creature *hostile_to);
+    void TurnNeutralTo(Creature *me, Creature *neutral_to);
+    void Consider(Creature *me, Thing *t);
+
+    // Full rebuild
+    void Retarget(Creature *me, bool force=false);
+    void ForgetOrders(Creature *me, int ofType=-1);
+    void Clear();
+};
+```
+
+### Retarget Algorithm
+1. If not forced, sets `shouldRetarget = true` and returns (deferred)
+2. Copies existing targets to temp buffer (1024 entries)
+3. Checks engulfed creature
+4. Scans all tiles within `MAX_TARG_DIST = 18` Chebyshev distance
+5. For each creature/item: calls `RateAsTarget()`
+6. Sorts by priority (leaders first, then descending priority, then type, then pointer tiebreak)
+7. Deduplicates, copies top 32 back
+
+### ItHitMe Damage Thresholds
+When an ally/leader/mount hits the creature, tolerance before turning hostile:
+- Ally: `damageDoneToMe > 5 + CHA_mod*2`
+- Leader: `damageDoneToMe > 10 + CHA_mod*2`
+- Mount/Summoner: `damageDoneToMe > 10 + CHA_mod*2` / `15 + CHA_mod*2`
+- Same-party hit: Leader attempts SK_DIPLOMACY DC 15 to diffuse
+- On turning hostile: all friendly creatures on map also turn hostile to attacker
+
+## Player Memory Structures
+
+Per-player knowledge tracking, accessed via `MONMEM/ITMMEM/EFFMEM/REGMEM(xID, player)`:
+
+### MonMem
+```cpp
+struct MonMem {
+    unsigned Battles:8, Deaths:8, Kills:8, pKills:8;
+    unsigned Attacks:9, Resists:8, Immune:16;
+    unsigned Seen:1, Fought:1, Feats:16, Flags:5;
+};
+```
+
+### ItemMem
+```cpp
+struct ItemMem {
+    unsigned Known:1, ProfLevel:3, Tried:1, Mastered:1, Unused:2;
+};
+```
+
+### EffMem
+```cpp
+struct EffMem {
+    unsigned FlavorID:32, PFlavorID:32;
+    unsigned Known:1, Tried:1, PKnown:1, PTried:1;
+};
+```
+
+### RegMem
+```cpp
+struct RegMem { unsigned int Seen; };  // 32-bit area bitmask
+```
 
 ## Porting Considerations
 
@@ -204,3 +422,5 @@ static Creature *mtarg, *rtarg; // Current targets
 5. **Equipment slots** - Fixed array for Character, linked list for Monster; unify in Jai
 6. **The 41 attributes** - ATTR_LAST=41; use a fixed array
 7. **Feat bitfield** - 200+ feats packed in uint16 array; use Jai bit operations
+8. **TargetSystem** - 32-target fixed array is straightforward; the three-tier hostility evaluation requires careful porting of racial/alignment/status checks
+9. **Memory structs** - Bitfield packing; use Jai bit operations or byte-level storage

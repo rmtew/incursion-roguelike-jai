@@ -1851,3 +1851,41 @@ Systematically research the entire original Incursion C++ source code to documen
 4. **Handle system (hObj)**: Integer indices into flat arrays
 5. **Status effects**: Dynamic array with nesting support
 6. **Bonus stacking**: 39 bonus types with d20 stacking rules - critical for correctness
+
+## 2026-01-30: Research Review Pass & Supplementary Detail
+
+### Context
+
+Continued from previous session where comprehensive source architecture research was completed. A late-arriving background agent had returned detailed analysis of Base.h/Globals.h/Target.h that wasn't incorporated into the committed research docs. This session re-read those source headers and incorporated the missing detail.
+
+### Work Done
+
+**Re-read source headers** (Base.h, Globals.h, Res.h, Target.h) to capture detail lost from expired background agents. Three parallel research agents returned comprehensive results:
+
+1. **Base.h agent**: String internals (tmpstr pool of 64000, canary guards, color codes via negative chars), Registry hash table (65536 entries, RegNode collision chaining, handle allocation from 128), VMachine (all 63 opcodes with semantics, VCode 32-bit instruction format, system objects 1-10, execution model), Array growth strategy, Dice roll semantics (negative Number handling), MVal two-phase Adjust algorithm.
+
+2. **Globals.h/Res.h agent**: All 75 TextVal lookup arrays (45 display name + 30 CONSTNAMES), 30+ calculation breakdown variables (spell power/DC/skill check), 13 event Throw variants, game state globals, all 21 resource subclass fields with complete method signatures, Module class with cache and XOR-obfuscated text segments.
+
+3. **Target.h agent**: HostilityWhyType (23 reason codes), three-tier hostility evaluation (SpecificHostility → LowPriorityStatiHostility → RacialHostility with full evaluation order), TargetSystem (32-target fixed array), TargetType enum (creatures, areas, items, 15 order types, 5 memory flags), RateAsTarget/Retarget algorithms, ItHitMe damage thresholds (ally 5+CHA*2, leader 10+CHA*2), racial feud table, MonMem/ItemMem/EffMem/RegMem bitfield structures.
+
+**Updated 4 research documents** with supplementary detail:
+- `01-object-registry.md`: Expanded from 127 to ~350 lines. Added String method signatures, Registry algorithms (Get/RegisterObject/Remove), VMachine complete opcode table, Array concrete instantiations, Dice roll semantics, MVal Adjust phases.
+- `02-resource-system.md`: Expanded from 193 to ~300 lines. Added full Resource base class methods, all 21 resource subclass field listings, Module cache/segment details, Game class fields and methods, supporting structures (TAttack, EffectValues, Status bitfield, Annotation union, EncPart, Tile, DebugInfo).
+- `04-creature-system.md`: Expanded from 207 to ~320 lines. Added entire Target System section covering HostilityWhyType, three-tier evaluation with full ordering, TargetType enum, Target struct, TargetSystem methods, Retarget algorithm, ItHitMe thresholds, player memory structures.
+- `16-data-tables.md`: Expanded from 166 to ~360 lines. Added game state globals, 75 TextVal arrays (complete list), calculation breakdown variables, static data tables, event dispatch functions, global free functions, print system.
+
+**Updated master-index.md** with improved cross-references:
+- Section 1.1: Now references VMachine, Registry hash size, String pool
+- Section 11.1: Now includes Globals.h scope (75 TextVal arrays, print system, event dispatch)
+- Section 11.3: Now cross-references doc 04 for detailed TargetSystem, mentions three-tier evaluation
+
+**Review pass** across all 18 research documents confirmed:
+- All docs structurally consistent
+- Status labels accurate for scope (architecture-level vs fully-researched)
+- Cross-references between docs valid
+- No gaps in subsystem coverage (only Overland remains STUB, intentionally)
+- The 4 updated docs now have implementation-level detail for their covered structures
+
+### Summary
+
+Total research docs: 18 files covering 26 subsystems. Four key docs expanded with ~600 additional lines of detail from re-reading original source headers. Master index updated. All research complete at architecture level; implementation-level .cpp algorithms remain deferred to per-system porting as planned.
