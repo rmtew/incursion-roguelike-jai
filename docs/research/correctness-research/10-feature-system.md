@@ -1,7 +1,7 @@
 # Feature System
 
 **Source**: `Feature.cpp`, `inc/Feature.h`
-**Status**: Architecture researched from headers
+**Status**: Fully researched
 
 ## Class Hierarchy
 
@@ -72,12 +72,32 @@ Describe(Player *p)          // Description text
 Zapped(EventInfo &e)         // Magical effect on door
 ```
 
-### Door Operations
-- Open: Check locked/stuck → EV_OPEN
-- Close: EV_CLOSE
-- Lock/Unlock: EV_UNLOCK (requires key or lockpick)
-- Break: Apply damage → check vs door HP → DF_BROKEN
-- Secret detection: Perception check to find hidden doors
+### Door Initialization
+Two modes:
+- **Normal**: 10% open, 90% closed. Of closed: 50% locked. ~14% secret overall.
+- **Weimer**: All doors start locked and solid.
+
+### EV_OPEN Flow
+1. Validate: must have hands (not M_NOHANDS), material plane
+2. Cannot open broken or already-open doors
+3. **Lock picking (if locked, not wizard-locked)**:
+   - Check TRIED status (prevents immediate retry)
+   - `SK_LOCKPICKING` vs DC = `14 + dungeon_depth` (+10 if wizard-locked)
+   - Retry bonus carries forward (+2 per attempt via `BoostRetry()`)
+   - Success: clear DF_LOCKED, award `90 + (diff-14)*10` XP
+   - Failure: set TRIED status (temporary)
+4. Open: clear F_SOLID, set DF_OPEN, clear DF_SECRET, timeout 15
+
+### EV_CLOSE
+Validate hands, material plane, not broken, not already closed. Set F_SOLID, clear DF_OPEN. Timeout 15.
+
+### SetImage() Logic
+1. Determine orientation from adjacent solids
+2. Secret: display as adjacent terrain, set F_INVIS, mark solid/opaque
+3. Open: show `+`, not solid
+4. Closed: GLYPH_VLINE or GLYPH_HLINE by orientation
+5. Broken: GLYPH_BDOOR
+6. Wizard-locked: RED background
 
 ## Trap Class
 
@@ -113,6 +133,23 @@ Trap(rID _fID, rID _tID)
     , TrapFlags(0), tID(_tID)
     { SetImage(); }
 ```
+
+### TriggerTrap Process
+1. **Discovery**: if not found before, all perceiving players learn of trap
+2. **Saving throw DC**: `15 + trap_level` (+5 if not previously found)
+   - Non-mundane traps: combine trap + magic save types
+   - FT_FEATHERFOOT: auto-avoid if previously found
+3. **Execute**: set isTrap, caster level=12, ReThrow(EV_EFFECT)
+4. **Outcome**:
+   - Victim revealed, action halted
+   - XP to trap placer (RESET_BY): `100 + 25 × victim_CR`
+   - If trap kills monster: also award kill XP
+   - Auto-disarms after triggering (sets TS_DISARMED)
+
+### Trap SetImage
+- Show GLYPH_TRAP or GLYPH_DISARMED based on state
+- Invisible (F_INVIS) until TS_FOUND set
+- Color from `TEFF(tID)->ef.cval`
 
 ### Trap Types
 Defined by TFeature resources with:
@@ -152,10 +189,20 @@ Enter(EventInfo &e)
 EnterDir(Dir d)
 ```
 
-### Level Transitions
-- Stairs up: `EV_ASCEND`
-- Stairs down: `EV_DESCEND`
-- Depth management: `MoveDepth(NewDepth, safe)`
+### EnterDir() Logic
+- UP_STAIR: only via UP direction
+- DOWN_STAIR: only via DOWN direction
+- Default: via CENTER direction
+
+### Portal::Enter() Level Transition
+**Down/Up stairs**: `MoveDepth(m->Depth ± 1, true)` with player confirmation for unsafe areas.
+
+**Dungeon entry**: `GetDungeonMap(TFEAT(fID)->xID, 1, player, NULL)`, store ENTERED_AT status, place at EnterX/EnterY.
+
+**Return portal**: Find ENTERED_AT status with matching portal, place at original location, clean up status.
+
+### PRE_ENTER Validation
+- Dwarven Focus check: if focused creature is on this level, block with ABORT ("will not flee while <Obj> still lives!")
 
 ## Feature Template (TFeature)
 
@@ -235,6 +282,75 @@ T_FEATURE  13
 T_ALTAR    14
 T_BARRIER  15
 ```
+
+## Feature HP and Damage (EV_DAMAGE)
+
+### Damage Processing
+1. Material hardness: `MaterialHardness(TFEAT(fID)->Material, e.DType)` → -1 = immune, ≥0 = reduction
+2. Sunder feat/quality: ×2 damage multiplier
+3. Actual damage: `e.aDmg = e.vDmg - hardness`
+4. If aDmg > 0: `cHP -= aDmg`
+
+### Destruction (cHP ≤ 0)
+Messages vary by damage type: SONIC="shatters", ACID="eaten away", FIRE="burns down", other="destroyed".
+- Broadcast sound at range 20
+- Clear actor's ACTING status
+- If trapped door destroyed: trap triggers automatically
+- Remove(true) destroys feature
+
+### Door-Specific Damage
+- Planar immunity: damage passes through if on different planes
+- Piercing non-blunt: 1/3 damage
+- Wizard-locked: ×2 HP multiplier
+- STR exercise on successful break (random 1-12)
+- Repeating kicks: OPT_REPEAT_KICK auto-repeats (max 20 attempts)
+
+## Level Transition System (Limbo)
+
+### Limbo Queue
+Manages entities following player across levels:
+```cpp
+struct LimboEntry {
+    hObj h;           // Entity handle
+    int16 x, y;      // Position on new map
+    rID mID;          // Target dungeon
+    int16 Depth;      // Target depth
+    int16 OldDepth;   // Source depth
+    int32 Arrival;    // Turn number to place
+    String Message;   // Entry message
+};
+```
+
+**EnterLimbo()**: Remove entity from old map, add to queue with arrival time.
+**LimboCheck()**: Called each turn; when `Arrival ≤ Turn`, place entity at target location.
+
+### Player::MoveDepth() Flow
+1. Store level stats, save game
+2. Clear movement statuses (SPRINTING, ENGULFED, GRAPPLED, etc.)
+3. Navigate: depth≤0 → ABOVE_DUNGEON, depth>max → BELOW_DUNGEON, else same dungeon
+4. Collect followers: nearby monsters where `ts.isLeader(this)`, remove from old map
+5. Dwarven Focus check: if target on this level, XP penalty + lose focus
+6. Find safe landing: random position, avoid solid/vault/pits if safe mode
+7. Place player + followers, refresh display, NoteArrival()
+
+### GetDungeonMap() Caching
+```cpp
+DungeonID[i]      // Resource ID of dungeon
+DungeonSize[i]    // Max depth
+DungeonLevels[i]  // Array of map handles per depth
+```
+Generates maps on demand, stores handles for reuse. Links stairs across intermediate depths.
+
+## Status Types Used by Features
+- ACTING - Door being kicked repeatedly
+- TRIED - Lock pick attempted (prevents immediate retry)
+- RETRY_BONUS - Cumulative skill check bonus
+- WIZLOCK - Magical lock (harder DC, mental open)
+- DWARVEN_FOCUS - Prevents fleeing from target
+- ENTERED_AT - Remembers entry portal for return
+- RESET_BY - Trap placer (for XP distribution)
+- XP_GAINED - Trap already awarded XP
+- SUMMONED - Temporary feature (removed on status loss)
 
 ## Porting Status
 

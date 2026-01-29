@@ -2004,3 +2004,14 @@ All 18 research documents now have implementation-level detail where available. 
 - Skill point calculation
 
 Eleven key docs (01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 16) now have implementation-level detail.
+
+**Feature.cpp incorporation (agent ae71b8a)** - Expanded `10-feature-system.md` with full implementation detail from Feature.cpp. Promoted to fully-researched. Added:
+- Door initialization (normal: 10% open, 90% closed, 50% of closed locked, ~14% secret; Weimer: all locked/solid)
+- EV_OPEN lock picking flow (DC = 14 + depth, +10 wizard-locked, retry bonus via BoostRetry, XP formula)
+- EV_CLOSE validation, SetImage() orientation/state logic
+- TriggerTrap process (DC = 15 + level, +5 if not found, FT_FEATHERFOOT auto-avoid, XP to placer)
+- Portal::Enter() level transitions (down/up stairs, dungeon entry, return portal)
+- PRE_ENTER Dwarven Focus validation
+- Feature HP/damage system (material hardness, sunder ×2, door-specific 1/3 piercing, destruction messages)
+- Level transition/limbo system (LimboEntry struct, MoveDepth flow, GetDungeonMap caching)
+- Status types used by features (9 types)
