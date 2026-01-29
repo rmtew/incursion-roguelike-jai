@@ -74,6 +74,24 @@ Map cells track:
 3. [ ] Rendering integration: Check visibility in `get_cell_render()`
 4. [ ] FOV algorithm: Ray casting from player to viewport edges
 
+### Lighting System
+
+**Status:** Specification complete, implementation pending
+
+**Spec:** `docs/research/specs/lighting-system.md`
+
+Lighting affects both map generation and visibility:
+- Torch placement on walls (TF_TORCH terrain)
+- Room lit chance decreases with depth (50% - 4%/depth)
+- Light level affects floor glyph color (yellow/brown)
+- Vision ranges: SightRange, LightRange, ShadowRange, InfraRange, BlindRange
+
+**Implementation Plan (from spec):**
+1. [ ] Cell lighting data: Add Lit, Bright, Shade, Dark, mLight flags
+2. [ ] Torch tracking: Place torches, calculate light propagation
+3. [ ] Vision range calculation: Based on stats, equipment, abilities
+4. [ ] FOV integration: Use light ranges in visibility decisions
+
 ### Phase 2-4 Verification
 
 Deferred until Phase 1 (parser verification) is complete:

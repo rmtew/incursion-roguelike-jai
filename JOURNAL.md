@@ -1613,3 +1613,58 @@ Implementation deferred pending user direction. The spec outlines:
 2. Phase 2: Implement `mark_cell_visible()` for memory assignment
 3. Phase 3: Update `get_cell_render()` with visibility checks
 4. Phase 4: Implement ray-based FOV calculation
+
+---
+
+## 2026-01-29: Lighting System Specification
+
+Researched the lighting system that interacts with visibility.
+
+### Research Findings
+
+**Cell Lighting Flags** (from `inc/Map.h`):
+- `Lit` - Cell is illuminated by terrain or torch
+- `Bright` - Brightly lit (near torch center, gets yellow color)
+- `Shade` - Floor can have light-level coloring applied
+- `Dark` - Magical darkness (blocks vision)
+- `mLight` - Magical light (overrides darkness)
+
+**Creature Vision Ranges** (from `inc/Creature.h`, `src/Values.cpp`):
+- `SightRange` - Maximum visual distance (base 12-15 + WIS modifier)
+- `LightRange` - Personal light source radius (equipped torch/lantern)
+- `ShadowRange` - Distance for dim shape perception (LightRange * 2)
+- `InfraRange` - Infravision/darkvision range (from CA_INFRAVISION)
+- `BlindRange` - Blindsight (echolocation, reduced by metal helm/large weapons)
+
+**Torch System** (from `src/MakeLev.cpp`):
+- Torch terrain (TF_TORCH flag) placed on walls
+- Room lit chance: 50% - 4% per depth (ROOM_LIT_CHANCE - LIT_CHANCE_DEPTH_MOD)
+- Torch density: 1 in TORCH_DENSITY (10) wall tiles
+- Light radius: 8 tiles with LOS check
+- Light levels: 3=bright (yellow), 2=medium (brown), 1=dim
+
+**Visibility Integration** (from `src/Vision.cpp`):
+- `dist > SightRange`: Can't see at all
+- `dist > ShadowRange && !Lit`: Can't see (too far in darkness)
+- `dist > LightRange && !Lit`: VI_DEFINED only (shadow, see shape not details)
+- Otherwise: VI_VISIBLE | VI_DEFINED (full visibility)
+
+**Shadow Rendering** (from `src/Term.cpp`):
+- Creatures perceived only via PER_SHADOW show as GLYPH_UNKNOWN (?) in SHADOW color
+
+### Relationship with Visibility System
+
+Lighting and visibility are tightly coupled:
+1. Dungeon generation places torches and calculates `Lit` flags
+2. FOV calculation uses creature's vision ranges + cell `Lit` status
+3. Rendering shows full detail, shadow, or memory based on visibility state
+
+### Specification Created
+
+Full spec at `docs/research/specs/lighting-system.md` including:
+- Cell lighting data structures
+- Vision range calculations with all modifiers
+- Torch placement algorithm
+- Light level effects on glyph colors
+- Integration with FOV visibility decisions
+- 4-phase implementation plan
