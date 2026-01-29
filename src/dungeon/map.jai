@@ -110,6 +110,10 @@ EntityPos :: struct {
     is_good: bool;      // Item is high quality (IG_GOOD)
     is_staple: bool;    // Item is essential consumable (IG_STAPLE)
     is_chest: bool;     // Item is a chest/container
+
+    // Rendering (set at spawn time from resource database)
+    glyph: u16;         // Character code or GLYPH_* constant (256+)
+    fg_color: u8;       // ANSI color index (0-15)
 }
 
 // Door flags (from Defines.h:920-930)

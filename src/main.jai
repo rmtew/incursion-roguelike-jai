@@ -27,6 +27,9 @@
 #load "resource/runtime.jai";
 #load "resource/bake.jai";
 
+// Load glyph constants (needed by render.jai and makelev.jai)
+#load "glyph_cp437.jai";
+
 // Load RNG and dungeon generation
 #load "rng.jai";
 #load "dungeon/map.jai";
@@ -34,6 +37,7 @@
 #load "dungeon/weights.jai";
 #load "dungeon/makelev.jai";
 #load "dungeon/generator.jai";
+#load "dungeon/render.jai";
 
 // Load tests
 #load "tests.jai";

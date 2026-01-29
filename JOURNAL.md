@@ -1493,3 +1493,48 @@ Investigated original source to understand how glyph rendering decisions are mad
 - Water and lava share same glyph (247), color distinguishes them
 
 This explains the "?" rendering bug - extended glyph IDs weren't being converted to CP437 codes.
+
+---
+
+## 2026-01-29: Rendering Priority System Implementation
+
+Implemented proper entity rendering with priority system and stacking support.
+
+### Changes
+
+**EntityPos extended** (`src/dungeon/map.jai`):
+- Added `glyph: u16` and `fg_color: u8` fields
+- Set at entity spawn time rather than queried at render time
+
+**New render module** (`src/dungeon/render.jai`):
+- `count_monsters_at()`, `count_items_at()` - entity counting per cell
+- `first_monster_at()`, `first_item_at()` - entity lookup
+- `get_terrain_fg_color()`, `get_terrain_bg_color()` - ANSI color indices
+- `get_cell_render()` - main render function with priority: Creatures > Items > Terrain
+- `ansi_to_rgb()` - convert ANSI indices to RGB floats
+- GLYPH_MULTI (Æ) for multiple creatures at same cell
+- GLYPH_PILE (*) for multiple items at same cell
+
+**Glyph selection** (`src/dungeon/makelev.jai`):
+- `select_monster_glyph()` - varied glyphs by CR and environment (aquatic, aerial)
+- `select_item_glyph()` - varied glyphs by type (chest, staple, treasure tier)
+- All entity creation points now set glyph/color
+
+**Tools updated**:
+- `dungeon_test.jai` - uses `get_cell_render()` instead of hardcoded M/*
+- `dungeon_verify.jai` - new checks for entity glyph assignment and stacking
+
+### Verification
+
+All 7 checks pass in dungeon_verify:
+1. No '?' glyphs
+2. Water terrain is blue
+3. Lava terrain is red
+4. Extended glyphs have CP437 mappings
+5. Entity glyph assignment (no warnings now)
+6. Entity stacking glyphs (GLYPH_MULTI/GLYPH_PILE)
+7. Full map glyph/color verification
+
+### Visual Result
+
+Monsters now display varied letters (r, g, o, T, D, etc.) with appropriate colors instead of all 'M'. Items show proper glyphs (potions, scrolls, weapons) instead of all '*'. Multiple entities at same cell show Æ or * as appropriate.

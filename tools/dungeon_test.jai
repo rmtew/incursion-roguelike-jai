@@ -40,6 +40,7 @@ stbi_write :: #import "stb_image_write";
 #load "../src/dungeon/weights.jai";
 #load "../src/dungeon/makelev.jai";
 #load "../src/dungeon/generator.jai";
+#load "../src/dungeon/render.jai";
 
 // Glyph to CP437 conversion (must be before terminal/window.jai)
 #load "../src/glyph_cp437.jai";
@@ -47,7 +48,7 @@ stbi_write :: #import "stb_image_write";
 // Terminal rendering
 #load "../src/terminal/window.jai";
 
-// Color mapping for terrain
+// Color mapping for terrain (fallback)
 get_terrain_color :: (t: Terrain) -> Color {
     if t == {
         case .ROCK;         return TC_BLACK;
@@ -70,20 +71,10 @@ get_terrain_color :: (t: Terrain) -> Color {
     return TC_WHITE;
 }
 
-// Check if there's a monster at this position
-monster_at :: (m: *GenMap, x: s32, y: s32) -> bool {
-    for mon: m.monsters {
-        if mon.x == x && mon.y == y return true;
-    }
-    return false;
-}
-
-// Check if there's an item at this position
-item_at :: (m: *GenMap, x: s32, y: s32) -> bool {
-    for item: m.items {
-        if item.x == x && item.y == y return true;
-    }
-    return false;
+// Convert ANSI color index to Color struct
+ansi_to_color :: (ansi: u8) -> Color {
+    r, g, b := ansi_to_rgb(ansi);
+    return Color.{r, g, b};
 }
 
 // Font data for software rendering
@@ -143,36 +134,10 @@ save_screenshot :: (m: *GenMap) -> bool {
     // Render each tile
     for my: 0..m.height-1 {
         for mx: 0..m.width-1 {
-            terrain := map_get(m, mx, my);
-            glyph := terrain_glyph(terrain);
-            fg := get_terrain_color(terrain);
-            bg := TC_BLACK;
-
-            // Check for custom tile display
-            td := map_get_display(m, mx, my);
-            if td != null && td.use_custom {
-                glyph = td.glyph;
-                tc := terrain_color_to_rgb(td.fg_color);
-                fg = Color.{tc.r, tc.g, tc.b};
-            }
-
-            // Special backgrounds
-            if terrain == .WATER {
-                bg = TC_BLUE;
-            } else if terrain == .CHASM {
-                bg = Color.{0.1, 0.1, 0.1};
-            } else if terrain == .LAVA {
-                bg = TC_RED;
-            }
-
-            // Check for monsters/items
-            if monster_at(m, mx, my) {
-                glyph = #char "M";
-                fg = TC_BRIGHT_RED;
-            } else if item_at(m, mx, my) {
-                glyph = #char "*";
-                fg = TC_BRIGHT_YELLOW;
-            }
+            // Use the render module to get proper priority-based rendering
+            glyph, fg_ansi, bg_ansi := get_cell_render(m, mx, my);
+            fg := ansi_to_color(fg_ansi);
+            bg := ansi_to_color(bg_ansi);
 
             // Convert extended glyphs (256+) to CP437 for font atlas lookup
             glyph_cp437 := glyph_to_cp437(glyph);
@@ -349,40 +314,10 @@ render_dungeon_to_terminal :: (term: *Terminal, m: *GenMap, view_x: s32, view_y:
             mx := view_x + cast(s32)tx;
             my := view_y + cast(s32)ty;
 
-            terrain := map_get(m, mx, my);
-            glyph := terrain_glyph(terrain);
-            fg := get_terrain_color(terrain);
-            bg := TC_BLACK;
-
-            // Check for custom tile display (from region terrain)
-            td := map_get_display(m, mx, my);
-            if td != null && td.use_custom {
-                glyph = td.glyph;
-                tc := terrain_color_to_rgb(td.fg_color);
-                fg = Color.{tc.r, tc.g, tc.b};
-            }
-
-            // Special background for water/chasm/lava
-            if terrain == .WATER {
-                bg = TC_BLUE;
-            } else if terrain == .CHASM {
-                bg = Color.{0.1, 0.1, 0.1};
-            } else if terrain == .LAVA {
-                bg = TC_RED;
-            }
-
-            // Check for monsters (override terrain display)
-            if monster_at(m, mx, my) {
-                glyph = #char "M";  // Monster
-                fg = TC_BRIGHT_RED;
-                // Keep terrain background
-            }
-            // Check for items (only if no monster)
-            else if item_at(m, mx, my) {
-                glyph = #char "*";  // Item
-                fg = TC_BRIGHT_YELLOW;
-                // Keep terrain background
-            }
+            // Use the render module to get proper priority-based rendering
+            glyph, fg_ansi, bg_ansi := get_cell_render(m, mx, my);
+            fg := ansi_to_color(fg_ansi);
+            bg := ansi_to_color(bg_ansi);
 
             terminal_set(term, cast(s32)tx, cast(s32)ty, glyph, fg, bg);
         }

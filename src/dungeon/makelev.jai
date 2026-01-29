@@ -2930,6 +2930,7 @@ place_treasure_deposits :: (m: *GenMap, depth: s32) {
         item.y = y;
         item.cr = depth + 3;  // Treasure is higher quality
         item.type_id = 999;   // Special treasure marker
+        item.glyph, item.fg_color = select_item_glyph(item.cr, false, false);
         array_add(*m.items, item);
 
         deposits_placed += 1;
@@ -3336,6 +3337,9 @@ populate_panel :: (m: *GenMap, room_index: s32, room: Room, depth_cr: s32, party
         sleep_threshold := random(100) + 1;
         mon.is_sleeping = sleep_threshold > 50;  // ~50% sleeping
 
+        // Set glyph and color based on monster properties
+        mon.glyph, mon.fg_color = select_monster_glyph(mon.cr, is_aquatic, is_aerial);
+
         array_add(*m.monsters, mon);
         monsters_placed += 1;
     }
@@ -3353,6 +3357,7 @@ populate_panel :: (m: *GenMap, room_index: s32, room: Room, depth_cr: s32, party
             item.room_index = room_index;
             item.cr = depth_cr;
             item.is_chest = true;
+            item.glyph, item.fg_color = select_item_glyph(item.cr, true, false);
             array_add(*m.items, item);
             items_placed += 1;
         }
@@ -3373,6 +3378,7 @@ populate_panel :: (m: *GenMap, room_index: s32, room: Room, depth_cr: s32, party
             } else {
                 item.is_good = true;
             }
+            item.glyph, item.fg_color = select_item_glyph(item.cr, false, false);
             array_add(*m.items, item);
             items_placed += 1;
         }
@@ -3386,6 +3392,7 @@ populate_panel :: (m: *GenMap, room_index: s32, room: Room, depth_cr: s32, party
             item.y = y;
             item.room_index = room_index;
             item.cr = cast(s32) max(0, depth_cr / 2 - 4);  // Lower tier
+            item.glyph, item.fg_color = select_item_glyph(item.cr, false, false);
             array_add(*m.items, item);
             items_placed += 1;
         }
@@ -3401,6 +3408,7 @@ populate_panel :: (m: *GenMap, room_index: s32, room: Room, depth_cr: s32, party
             item.room_index = room_index;
             item.cr = depth_cr;
             item.is_staple = true;
+            item.glyph, item.fg_color = select_item_glyph(item.cr, false, true);
             array_add(*m.items, item);
             items_placed += 1;
         }
@@ -3839,4 +3847,110 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
     }
 
     return down_stairs;
+}
+
+// ============================================================================
+// Glyph Selection for Entities
+// ============================================================================
+
+// Select a monster glyph and color based on CR and environment
+// This provides visual variety until full resource database lookup is implemented
+select_monster_glyph :: (cr: s32, is_aquatic: bool, is_aerial: bool) -> u16, u8 {
+    // Aquatic monsters
+    if is_aquatic {
+        if cr <= 2 {
+            return #char "f", 9;   // Fish, bright blue
+        } else if cr <= 5 {
+            return #char "S", 9;   // Sea serpent, bright blue
+        } else {
+            return #char "K", 11;  // Kraken, bright cyan
+        }
+    }
+
+    // Aerial monsters
+    if is_aerial {
+        if cr <= 2 {
+            return #char "B", 6;   // Bat, brown
+        } else if cr <= 5 {
+            return #char "E", 7;   // Eye/beholder-like, grey
+        } else {
+            return #char "W", 15;  // Wraith/phantom, white
+        }
+    }
+
+    // Land creatures by CR tier
+    if cr <= 1 {
+        // Low level: vermin, small animals
+        choices :: u16.[#char "r", #char "k", #char "g", #char "s"];
+        colors  :: u8.[6, 2, 2, 10];  // brown, green, green, bright green
+        idx := cast(s32)(random(cast(s32)choices.count));
+        return choices[idx], colors[idx];
+    } else if cr <= 3 {
+        // Goblins, orcs, wolves
+        choices :: u16.[#char "o", #char "g", #char "h", #char "w"];
+        colors  :: u8.[2, 10, 6, 7];  // green, bright green, brown, grey
+        idx := cast(s32)(random(cast(s32)choices.count));
+        return choices[idx], colors[idx];
+    } else if cr <= 6 {
+        // Trolls, ogres, gnolls
+        choices :: u16.[#char "T", #char "O", #char "G", #char "H"];
+        colors  :: u8.[2, 6, 6, 12];  // green, brown, brown, bright red
+        idx := cast(s32)(random(cast(s32)choices.count));
+        return choices[idx], colors[idx];
+    } else if cr <= 10 {
+        // Giants, demons, powerful undead
+        choices :: u16.[#char "D", #char "&", #char "V", #char "L"];
+        colors  :: u8.[12, 12, 13, 13];  // bright red, bright red, magenta, magenta
+        idx := cast(s32)(random(cast(s32)choices.count));
+        return choices[idx], colors[idx];
+    } else {
+        // Ancient/epic creatures
+        choices :: u16.[#char "D", #char "&", #char "A", #char "@"];
+        colors  :: u8.[14, 14, 15, 13];  // yellow, yellow, white, magenta
+        idx := cast(s32)(random(cast(s32)choices.count));
+        return choices[idx], colors[idx];
+    }
+}
+
+// Select an item glyph and color based on type and tier
+select_item_glyph :: (cr: s32, is_chest: bool, is_staple: bool) -> u16, u8 {
+    // Chests always use chest glyph
+    if is_chest {
+        return GLYPH_CHEST, 6;  // Brown
+    }
+
+    // Staple items (consumables) - potions, scrolls, food
+    if is_staple {
+        choices :: u16.[GLYPH_POTION, GLYPH_SCROLL, GLYPH_FOOD, GLYPH_HERB];
+        colors  :: u8.[9, 15, 6, 10];  // bright blue, white, brown, bright green
+        idx := cast(s32)(random(cast(s32)choices.count));
+        return choices[idx], colors[idx];
+    }
+
+    // Regular items by CR tier
+    if cr <= 2 {
+        // Low tier: simple weapons, basic armor, coins
+        choices :: u16.[GLYPH_WEAPON, GLYPH_SWORD, GLYPH_COIN, GLYPH_LARMOUR];
+        colors  :: u8.[7, 7, 14, 6];  // grey, grey, yellow, brown
+        idx := cast(s32)(random(cast(s32)choices.count));
+        return choices[idx], colors[idx];
+    } else if cr <= 5 {
+        // Mid tier: better equipment
+        choices :: u16.[GLYPH_SWORD, GLYPH_MARMOUR, GLYPH_SHIELD, GLYPH_RING];
+        colors  :: u8.[15, 7, 7, 14];  // white, grey, grey, yellow
+        idx := cast(s32)(random(cast(s32)choices.count));
+        return choices[idx], colors[idx];
+    } else if cr <= 8 {
+        // High tier: magical items
+        choices :: u16.[GLYPH_WAND, GLYPH_STAFF, GLYPH_RING, GLYPH_AMULET];
+        colors  :: u8.[9, 6, 14, 13];  // bright blue, brown, yellow, magenta
+        idx := cast(s32)(random(cast(s32)choices.count));
+        return choices[idx], colors[idx];
+    } else {
+        // Epic tier: rare artifacts
+        choices :: u16.[GLYPH_CROWN, GLYPH_GEM, GLYPH_BOOK, GLYPH_FIGURE];
+        colors  :: u8.[14, 11, 13, 15];  // yellow, cyan, magenta, white
+        idx := cast(s32)(random(cast(s32)choices.count));
+        return choices[idx], colors[idx];
+    }
 }

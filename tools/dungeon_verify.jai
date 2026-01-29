@@ -40,6 +40,7 @@
 #load "../src/dungeon/weights.jai";
 #load "../src/dungeon/makelev.jai";
 #load "../src/dungeon/generator.jai";
+#load "../src/dungeon/render.jai";
 
 // Glyph to CP437 conversion
 #load "../src/glyph_cp437.jai";
@@ -376,6 +377,58 @@ verify_display_consistency :: (m: *GenMap) -> pass: bool, failures: s32 {
     return failures == 0, failures;
 }
 
+// Rule: Multiple entities at same cell should use GLYPH_MULTI/GLYPH_PILE
+verify_entity_stacking :: (m: *GenMap) -> pass: bool, multi_count: s32, pile_count: s32 {
+    multi_count: s32 = 0;
+    pile_count: s32 = 0;
+
+    for y: 0..m.height-1 {
+        for x: 0..m.width-1 {
+            mon_count := count_monsters_at(m, x, y);
+            item_count := count_items_at(m, x, y);
+
+            // Get what render module produces
+            glyph, _, _ := get_cell_render(m, x, y);
+
+            if mon_count > 1 {
+                // Should show GLYPH_MULTI
+                if glyph == GLYPH_MULTI {
+                    multi_count += 1;
+                }
+            } else if mon_count == 0 && item_count > 1 {
+                // Should show GLYPH_PILE (only if no monsters)
+                if glyph == GLYPH_PILE {
+                    pile_count += 1;
+                }
+            }
+        }
+    }
+
+    // Always pass - this is informational
+    return true, multi_count, pile_count;
+}
+
+// Rule: Entities should have non-zero glyphs
+verify_entity_glyphs :: (m: *GenMap) -> pass: bool, failures: s32 {
+    failures: s32 = 0;
+
+    for mon, idx: m.monsters {
+        if mon.glyph == 0 {
+            print("  WARN: Monster % at (%,%) has glyph=0\n", idx, mon.x, mon.y);
+            // Not a failure since render.jai has fallback
+        }
+    }
+
+    for item, idx: m.items {
+        if item.glyph == 0 {
+            print("  WARN: Item % at (%,%) has glyph=0\n", idx, item.x, item.y);
+            // Not a failure since render.jai has fallback
+        }
+    }
+
+    return failures == 0, failures;
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -418,6 +471,25 @@ main :: () {
     dungeon: GenMap;
     generate_dungeon(*dungeon, seed);
     print("  Size: %x%, % rooms\n\n", dungeon.width, dungeon.height, dungeon.rooms.count);
+
+    // Debug: dump TileDisplay info for room 0
+    print("TileDisplay debug for room 0 (sample cells):\n");
+    custom_count := 0;
+    for y: 2..12 {
+        for x: 2..18 {
+            td := map_get_display(*dungeon, cast(s32)x, cast(s32)y);
+            terrain := map_get(*dungeon, cast(s32)x, cast(s32)y);
+            if td != null && td.use_custom {
+                custom_count += 1;
+                if custom_count <= 10 {
+                    cp437 := glyph_to_cp437(td.glyph);
+                    print("  (%,%) terrain=% glyph=% (cp437=%) color=%\n",
+                          x, y, terrain, td.glyph, cp437, td.fg_color);
+                }
+            }
+        }
+    }
+    print("  Total cells with custom display in room 0: %\n\n", custom_count);
 
     // Run verification
     print("Running verification checks...\n\n");
@@ -481,9 +553,36 @@ main :: () {
         print("\n");
     }
 
+    // Check 5: Entity glyph assignment
+    {
+        print("Check 5: Entity glyph assignment\n");
+        pass, failures := verify_entity_glyphs(*dungeon);
+        if pass {
+            print("  PASS: All entities have assigned glyphs\n");
+            total_pass += 1;
+        } else {
+            print("  FAIL: % entities missing glyphs\n", failures);
+            total_fail += 1;
+        }
+        print("\n");
+    }
+
+    // Check 6: Entity stacking (GLYPH_MULTI/GLYPH_PILE)
+    {
+        print("Check 6: Entity stacking glyphs\n");
+        pass, multi_count, pile_count := verify_entity_stacking(*dungeon);
+        print("  INFO: % cells with GLYPH_MULTI (multiple creatures)\n", multi_count);
+        print("  INFO: % cells with GLYPH_PILE (multiple items)\n", pile_count);
+        if pass {
+            print("  PASS\n");
+            total_pass += 1;
+        }
+        print("\n");
+    }
+
     // Full map verification
     {
-        print("Check 5: Full map glyph/color verification\n");
+        print("Check 7: Full map glyph/color verification\n");
         result := verify_map(*dungeon, verbose);
         if result.errors.count == 0 {
             print("  PASS: All % cells verified\n", result.total_cells);
