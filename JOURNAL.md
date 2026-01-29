@@ -1986,4 +1986,21 @@ All 18 research documents now have implementation-level detail where available. 
 - UpdateStati per-turn processing with 7-step logic
 - Field duration semantics
 
-Ten key docs (01, 02, 03, 04, 06, 07, 08, 09, 10, 16) now have implementation-level detail.
+**`05-combat-system.md`**: Major expansion with late-arriving Values.cpp agent data:
+- Promoted from architecture to fully-researched status
+- CalcValues() central engine: full attribute list (35+ attributes, perception ranges, derived stats), 10-step flow
+- Bonus stacking system: AttrAdj[41][39] matrix, AddBonus vs StackBonus dual system, WESMAX macro, concentration burn, percentage attribute multiplicative stacking, magic resistance diminishing returns
+- Known stacking issues (penalty deduplication bug, planned fix not implemented)
+- Saving throw calculation: monster (MonGoodSaves + GoodSave/PoorSave tables) and character (per-class flags + ability mods + feat bonuses)
+- Attack bonus calculation: full formula, BAB sources, weapon finesse, weapon skill bonus table (7 levels with hit/damage/speed/AC)
+- Weapon damage by grip (two-handed 1.5×, one-handed, off-hand, ranged, thrown)
+- AC/Defense calculation with size modifier table and special cases
+- Damage resistance: ResistLevel() with 7 source types, immunity check, stacking formula (diminishing returns)
+- HP calculation: character (base 20 + per-class rolls + feats + size multipliers + death check) and monster (CalcHP with options + CON + summoned bonus)
+- Encumbrance penalties (4 load levels × 5 attributes)
+- Fatigue penalties (fatigued vs exhausted)
+- Hunger penalties (4 states × 4 attributes)
+- Rage bonuses (small race variant)
+- Skill point calculation
+
+Eleven key docs (01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 16) now have implementation-level detail.
