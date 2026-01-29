@@ -2015,3 +2015,16 @@ Eleven key docs (01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 16) now have implementa
 - Feature HP/damage system (material hardness, sunder ×2, door-specific 1/3 piercing, destruction messages)
 - Level transition/limbo system (LimboEntry struct, MoveDepth flow, GetDungeonMap caching)
 - Status types used by features (9 types)
+
+**Vision.cpp incorporation (agent a97fa74)** - Expanded `11-vision-perception.md` with full implementation detail from Vision.cpp. Promoted to fully-researched. Added:
+- HUGE_PATH_MACRO Bresenham-like line algorithm (straight, diagonal, slope comparison)
+- LineOfVisualSight (opaque + dark + obscure checks, NatureSight bypass)
+- LineOfFire (solid + wall checks only, more permissive)
+- VisionPath/BlindsightVisionPath cone tracing
+- VisionThing main FOV function (5 sense passes: visual, blindsight, perception, tremor, wizard sight)
+- MarkAsSeen three-tier visibility logic (visible/shadow/unseen with distance + light checks)
+- Player::CalcVision() with companion perception pooling (HAS_ANIMAL)
+- Full Perceives() 735-line flow (early returns, distance checks, 12 perception types, companion recursion, hiding/invisibility/far darkness)
+- Edge cases (cross-map, engulfed, mounted, illusion, sleeping, SILENCE, plane differences)
+
+Twelve docs (01-11, 16) now have implementation-level detail.
