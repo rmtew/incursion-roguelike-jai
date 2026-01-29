@@ -38,6 +38,7 @@
 #load "dungeon/makelev.jai";
 #load "dungeon/generator.jai";
 #load "dungeon/render.jai";
+#load "dungeon/visibility.jai";
 
 // Load tests
 #load "tests.jai";

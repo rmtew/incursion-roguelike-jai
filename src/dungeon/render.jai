@@ -104,7 +104,33 @@ get_terrain_bg_color :: (t: Terrain) -> u8 {
 // Priority: Creatures > Items > Terrain
 // Multiple creatures: GLYPH_MULTI (Æ)
 // Multiple items: GLYPH_PILE (*)
-get_cell_render :: (m: *GenMap, x: s32, y: s32) -> u16, u8, u8 {
+//
+// If use_visibility is true, applies visibility filtering:
+// - Not visible and not defined: show blank space
+// - Defined but not visible: show remembered terrain (dimmed)
+// - Visible: show full contents
+get_cell_render :: (m: *GenMap, x: s32, y: s32, use_visibility: bool = false) -> u16, u8, u8 {
+    // Check visibility first if enabled
+    if use_visibility {
+        vis := get_visibility(m, x, y);
+        if vis == null {
+            // Out of bounds - show blank
+            return GLYPH_UNSEEN, 0, 0;
+        }
+
+        // Not visible
+        if !(vis.flags & VI_VISIBLE) {
+            if vis.flags & VI_DEFINED {
+                // Previously seen - show memory (dimmed)
+                return vis.memory_glyph, dim_color(vis.memory_fg), 0;
+            } else {
+                // Never seen - blank
+                return GLYPH_UNSEEN, 0, 0;
+            }
+        }
+        // Cell is visible - continue to full render below
+    }
+
     terrain := map_get(m, x, y);
 
     // Start with terrain defaults
@@ -166,6 +192,36 @@ get_cell_render :: (m: *GenMap, x: s32, y: s32) -> u16, u8, u8 {
     }
 
     return glyph, fg_color, bg_color;
+}
+
+// ============================================================================
+// Color Dimming for Memory Display
+// ============================================================================
+
+// Dim a color for displaying remembered (but not currently visible) cells
+// Converts bright colors to their dim equivalents
+dim_color :: (color: u8) -> u8 {
+    if color == {
+        // Bright colors -> dim equivalents
+        case 9;  return 1;   // BRIGHT_BLUE -> BLUE
+        case 10; return 2;   // BRIGHT_GREEN -> GREEN
+        case 11; return 3;   // BRIGHT_CYAN -> CYAN
+        case 12; return 4;   // BRIGHT_RED -> RED
+        case 13; return 5;   // BRIGHT_MAGENTA -> MAGENTA
+        case 14; return 6;   // YELLOW -> BROWN
+        case 15; return 7;   // WHITE -> GREY
+
+        // Normal colors -> darker versions (shadow/dark grey)
+        case 1;  return 8;   // BLUE -> DARK_GREY
+        case 2;  return 8;   // GREEN -> DARK_GREY
+        case 3;  return 8;   // CYAN -> DARK_GREY
+        case 4;  return 8;   // RED -> DARK_GREY
+        case 5;  return 8;   // MAGENTA -> DARK_GREY
+        case 6;  return 8;   // BROWN -> DARK_GREY
+        case 7;  return 8;   // GREY -> DARK_GREY
+    }
+    // BLACK and DARK_GREY stay as is
+    return color;
 }
 
 // ============================================================================

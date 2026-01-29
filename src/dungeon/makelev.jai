@@ -2810,6 +2810,108 @@ is_solid_not_door :: (m: *GenMap, x: s32, y: s32) -> bool {
     return (t == .WALL || t == .ROCK) && !is_door(t);
 }
 
+// ============================================================================
+// Lighting Placement
+// ============================================================================
+
+// Lighting constants (from MakeLev.cpp)
+ROOM_LIT_CHANCE      :: 50;   // Base % chance room is lit
+LIT_CHANCE_DEPTH_MOD :: 4;    // % reduction per depth
+TORCH_DENSITY        :: 10;   // 1-in-N wall tiles get torch in lit rooms
+
+// Place torches in rooms based on depth
+// Source: MakeLev.cpp lighting system
+place_room_lights :: (m: *GenMap, gs: *GenState, depth: s32) {
+    torches_placed: s32 = 0;
+
+    for room, room_idx: m.rooms {
+        // Check if room should be lit (chance decreases with depth)
+        lit_chance := ROOM_LIT_CHANCE - (LIT_CHANCE_DEPTH_MOD * depth);
+        if lit_chance < 5 lit_chance = 5;  // Minimum 5% chance
+
+        if random(100) >= lit_chance continue;
+
+        // This room is lit - place torches on wall tiles adjacent to floor
+        r := room.bounds;
+
+        // Check walls around the room perimeter
+        // Top wall
+        for x: r.x1..r.x2 {
+            if is_wall_adjacent_to_floor(m, x, r.y1 - 1, .SOUTH) {
+                if random(TORCH_DENSITY) == 0 {
+                    place_torch(m, x, r.y1 - 1);
+                    torches_placed += 1;
+                }
+            }
+        }
+        // Bottom wall
+        for x: r.x1..r.x2 {
+            if is_wall_adjacent_to_floor(m, x, r.y2 + 1, .NORTH) {
+                if random(TORCH_DENSITY) == 0 {
+                    place_torch(m, x, r.y2 + 1);
+                    torches_placed += 1;
+                }
+            }
+        }
+        // Left wall
+        for y: r.y1..r.y2 {
+            if is_wall_adjacent_to_floor(m, r.x1 - 1, y, .EAST) {
+                if random(TORCH_DENSITY) == 0 {
+                    place_torch(m, r.x1 - 1, y);
+                    torches_placed += 1;
+                }
+            }
+        }
+        // Right wall
+        for y: r.y1..r.y2 {
+            if is_wall_adjacent_to_floor(m, r.x2 + 1, y, .WEST) {
+                if random(TORCH_DENSITY) == 0 {
+                    place_torch(m, r.x2 + 1, y);
+                    torches_placed += 1;
+                }
+            }
+        }
+    }
+
+    if torches_placed > 0 && !makelev_quiet {
+        print("  Placed % torches on level %\n", torches_placed, depth);
+    }
+}
+
+// Check if a wall tile is adjacent to floor in the specified direction
+is_wall_adjacent_to_floor :: (m: *GenMap, x: s32, y: s32, dir: Dir) -> bool {
+    // Must be a wall tile
+    t := map_get(m, x, y);
+    if t != .WALL return false;
+
+    // Check the tile in the specified direction
+    adj_x := x + DirX(dir);
+    adj_y := y + DirY(dir);
+    adj_t := map_get(m, adj_x, adj_y);
+
+    return adj_t == .FLOOR;
+}
+
+// Place a torch at the given position
+place_torch :: (m: *GenMap, x: s32, y: s32) {
+    if !map_in_bounds(m, x, y) return;
+
+    // Record torch position for lighting calculation
+    torch: TorchPos;
+    torch.x = x;
+    torch.y = y;
+    array_add(*m.torch_positions, torch);
+
+    // Torches are visual markers on walls - we'll use a custom glyph
+    // Set tile display to show torch character (GLYPH_TORCH defined in glyph_cp437.jai)
+    td := map_get_display(m, x, y);
+    if td != null {
+        td.glyph = GLYPH_TORCH;
+        td.fg_color = YELLOW;  // Bright yellow/orange for torch
+        td.use_custom = true;
+    }
+}
+
 // Place traps at doors and corridor bottlenecks
 // Source: MakeLev.cpp:2155-2192
 place_traps :: (m: *GenMap, depth: s32) {
@@ -3805,6 +3907,10 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
     for room: m.rooms {
         furnish_room(m, room);
     }
+
+    // Step 5.7: Place torches and calculate lighting
+    // Source: MakeLev.cpp ROOM_LIT_CHANCE, TORCH_DENSITY
+    place_room_lights(m, *gs, depth);
 
     // Step 6: Place doors where corridors meet rooms
     // Per spec: 10% open, ~45% locked, ~45% unlocked, ~14% secret

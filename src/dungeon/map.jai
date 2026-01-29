@@ -127,6 +127,24 @@ DF_SECRET   :: 0x20;  // Door is secret (hidden)
 DF_BROKEN   :: 0x40;  // Door has been broken down
 DF_SEARCHED :: 0x80;  // Door has been searched for traps
 
+// Visibility flags (per cell, per player - single player for now)
+VI_VISIBLE  :: 0x01;  // Currently in field of view
+VI_DEFINED  :: 0x02;  // Has been seen at least once (memory exists)
+
+// Per-cell visibility info
+VisibilityInfo :: struct {
+    flags: u8;         // VI_* flags
+    memory_glyph: u16; // Remembered glyph when cell was last seen
+    memory_fg: u8;     // Remembered foreground color
+    lit: bool;         // Cell is illuminated (by torch or other light source)
+}
+
+// Torch position for lighting calculation
+TorchPos :: struct {
+    x: s32;
+    y: s32;
+}
+
 // Door information for tracking state
 DoorInfo :: struct {
     x: s32;
@@ -158,6 +176,10 @@ GenMap :: struct {
 
     // Doors with state tracking
     doors: [..] DoorInfo;
+
+    // Visibility system
+    visibility: [MAP_WIDTH * MAP_HEIGHT] VisibilityInfo;
+    torch_positions: [..] TorchPos;
 }
 
 // Initialize a new map filled with rock
@@ -178,11 +200,20 @@ map_init :: (m: *GenMap, width: s32 = MAP_WIDTH, height: s32 = MAP_HEIGHT) {
         td.use_custom = false;
     }
 
+    // Clear visibility info
+    for *vis: m.visibility {
+        vis.flags = 0;
+        vis.memory_glyph = 0;
+        vis.memory_fg = 0;
+        vis.lit = false;
+    }
+
     // Clear arrays
     array_reset(*m.rooms);
     array_reset(*m.monsters);
     array_reset(*m.items);
     array_reset(*m.doors);
+    array_reset(*m.torch_positions);
 }
 
 // Free map resources
@@ -191,6 +222,7 @@ map_free :: (m: *GenMap) {
     array_free(m.monsters);
     array_free(m.items);
     array_free(m.doors);
+    array_free(m.torch_positions);
 }
 
 // Get terrain at position (returns ROCK if out of bounds)

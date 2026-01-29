@@ -1668,3 +1668,105 @@ Full spec at `docs/research/specs/lighting-system.md` including:
 - Light level effects on glyph colors
 - Integration with FOV visibility decisions
 - 4-phase implementation plan
+
+---
+
+## 2026-01-29: Visibility and Lighting System Implementation
+
+### Overview
+
+Implemented field of view (FOV) visibility with torch-based lighting integration, allowing:
+- Unseen cells show as blank space
+- Previously seen cells show remembered terrain (memory) in dimmed colors
+- Currently visible cells show full contents with entity rendering
+- Lit rooms (via torches) extend visibility beyond personal light range
+
+### Data Structures Added
+
+**VisibilityInfo** (`src/dungeon/map.jai`):
+```jai
+VisibilityInfo :: struct {
+    flags: u8;         // VI_VISIBLE, VI_DEFINED
+    memory_glyph: u16; // Remembered glyph
+    memory_fg: u8;     // Remembered color
+    lit: bool;         // Cell is illuminated
+}
+```
+
+**GenMap extensions**:
+- `visibility: [MAP_WIDTH * MAP_HEIGHT] VisibilityInfo` - per-cell visibility state
+- `torch_positions: [..] TorchPos` - torch locations for lighting calculation
+
+### Visibility Module (`src/dungeon/visibility.jai`)
+
+**Core functions**:
+- `calculate_lighting()` - marks cells within TORCH_RADIUS (7) of torches as lit
+- `calculate_fov()` - ray-casts from player position, marks VI_VISIBLE | VI_DEFINED
+- `has_line_of_sight()` - Bresenham line algorithm checking for opaque terrain
+- `mark_visible()` - sets flags and stores terrain in memory
+
+**Vision ranges**:
+- `SIGHT_RANGE` (15) - maximum vision in lit areas
+- `LIGHT_RANGE` (4) - personal torch radius
+- `SHADOW_RANGE` (8) - dim perception (see shapes but not details)
+
+### Torch Placement (`src/dungeon/makelev.jai`)
+
+**`place_room_lights()`**:
+- Called after room furnishing (Step 5.7 in generation)
+- Lit room chance: 50% - 4% per depth (min 5%)
+- Torch density: 1 in 10 wall tiles adjacent to floor
+- Torch glyph shown on walls (GLYPH_TORCH in bright yellow)
+
+### Rendering Integration (`src/dungeon/render.jai`)
+
+**`get_cell_render()` updated**:
+- Added `use_visibility: bool = false` parameter for backwards compatibility
+- If not visible and not defined: returns GLYPH_UNSEEN (blank)
+- If defined but not visible: returns memory_glyph with `dim_color()` applied
+- If visible: full entity priority rendering (creatures > items > terrain)
+
+**`dim_color()`**:
+- Bright colors (9-15) → dim equivalents (1-7)
+- Normal colors (1-7) → dark grey (8)
+- Creates visual distinction for remembered areas
+
+### Dungeon Test Updates (`tools/dungeon_test.jai`)
+
+**Player movement**:
+- `init_player_position()` - starts at first room center
+- WASD keys for movement, arrow keys for viewport scrolling
+- `can_move_to()` - checks passability (floor, corridor, water, doors)
+- Player rendered as '@' in bright white
+
+**Visibility toggle**:
+- V key toggles between FOV mode and full map
+- Automatic FOV recalculation on player movement
+- Viewport auto-centers on player
+
+**Controls updated**:
+- WASD: move player
+- Arrow keys: scroll viewport
+- V: toggle visibility mode
+- R: regenerate dungeon
+- F: save screenshot (moved from S to avoid conflict)
+- ESC: exit
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `src/dungeon/map.jai` | Added VisibilityInfo, VI_* flags, torch_positions to GenMap |
+| `src/dungeon/visibility.jai` | **NEW** - FOV and lighting calculations |
+| `src/dungeon/makelev.jai` | Added place_room_lights(), torch placement |
+| `src/dungeon/render.jai` | Updated get_cell_render() with visibility filtering, dim_color() |
+| `src/main.jai` | Added #load for visibility.jai |
+| `tools/dungeon_test.jai` | Added player position, movement, FOV updates, visibility toggle |
+
+### Test Results
+
+- All 177/181 tests pass (4 pre-existing monster parsing failures)
+- Dungeon test compiles and runs
+- FOV reveals map as player explores
+- Torches illuminate rooms
+- Memory shows previously seen areas in dim colors

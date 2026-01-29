@@ -41,6 +41,7 @@ stbi_write :: #import "stb_image_write";
 #load "../src/dungeon/makelev.jai";
 #load "../src/dungeon/generator.jai";
 #load "../src/dungeon/render.jai";
+#load "../src/dungeon/visibility.jai";
 
 // Glyph to CP437 conversion (must be before terminal/window.jai)
 #load "../src/glyph_cp437.jai";
@@ -238,12 +239,30 @@ main :: () {
     print("Terminal: %x% cells\n", TERM_WIDTH, TERM_HEIGHT);
     print("Dungeon: %x% tiles\n", dungeon.width, dungeon.height);
 
+    // Player position
+    player_x: s32 = 0;
+    player_y: s32 = 0;
+
+    // Initialize player at first room center
+    init_player_position(*dungeon, *player_x, *player_y);
+
+    // Calculate initial lighting and FOV
+    calculate_lighting(*dungeon);
+    calculate_fov(*dungeon, player_x, player_y);
+
     // Viewport offset (for scrolling if map is larger than terminal)
     view_x: s32 = 0;
     view_y: s32 = 0;
 
+    // Center viewport on player
+    center_viewport_on_player(*view_x, *view_y, player_x, player_y, dungeon.width, dungeon.height);
+
+    // Visibility toggle (V key)
+    use_visibility := true;
+
     print("\nControls:\n");
-    print("  Arrow keys - scroll viewport\n");
+    print("  WASD / Arrow keys - move player / scroll viewport\n");
+    print("  V - toggle visibility (FOV) mode\n");
     print("  R - regenerate dungeon\n");
     print("  S - save screenshot to docs/screenshot.png\n");
     print("  ESC - exit\n\n");
@@ -267,9 +286,29 @@ main :: () {
             }
 
             if event.type == .KEYBOARD && event.key_pressed {
+                moved := false;
+                new_x := player_x;
+                new_y := player_y;
+
                 if event.key_code == {
                     case .ESCAPE;
                         return;
+
+                    // Player movement (WASD)
+                    case #char "W";
+                        new_y = player_y - 1;
+                        moved = true;
+                    case #char "S";
+                        new_y = player_y + 1;
+                        moved = true;
+                    case #char "A";
+                        new_x = player_x - 1;
+                        moved = true;
+                    case #char "D";
+                        new_x = player_x + 1;
+                        moved = true;
+
+                    // Viewport scrolling (arrow keys)
                     case .ARROW_UP;
                         if view_y > 0 view_y -= 1;
                     case .ARROW_DOWN;
@@ -278,11 +317,33 @@ main :: () {
                         if view_x > 0 view_x -= 1;
                     case .ARROW_RIGHT;
                         if view_x < dungeon.width - TERM_WIDTH view_x += 1;
+
+                    // Toggle visibility
+                    case #char "V";
+                        use_visibility = !use_visibility;
+                        if use_visibility {
+                            print("Visibility ON\n");
+                        } else {
+                            print("Visibility OFF (full map)\n");
+                        }
+
                     case #char "R";
                         regenerate = true;
-                    case #char "S";
-                        // Save screenshot of full map
+                    case #char "F";
+                        // Save screenshot of full map (moved from S to avoid conflict)
                         save_screenshot(*dungeon);
+                }
+
+                // Handle player movement
+                if moved {
+                    if can_move_to(*dungeon, new_x, new_y) {
+                        player_x = new_x;
+                        player_y = new_y;
+                        // Recalculate FOV after movement
+                        calculate_fov(*dungeon, player_x, player_y);
+                        // Auto-center viewport on player
+                        center_viewport_on_player(*view_x, *view_y, player_x, player_y, dungeon.width, dungeon.height);
+                    }
                 }
             }
         }
@@ -292,20 +353,30 @@ main :: () {
             seed += 1;
             map_free(*dungeon);
             generate_dungeon(*dungeon, seed);
-            view_x = 0;
-            view_y = 0;
+
+            // Reset player position
+            init_player_position(*dungeon, *player_x, *player_y);
+
+            // Recalculate lighting and FOV
+            calculate_lighting(*dungeon);
+            calculate_fov(*dungeon, player_x, player_y);
+
+            // Center viewport on player
+            center_viewport_on_player(*view_x, *view_y, player_x, player_y, dungeon.width, dungeon.height);
+
             regenerate = false;
         }
 
         // Render dungeon to terminal
-        render_dungeon_to_terminal(term, *dungeon, view_x, view_y);
+        render_dungeon_to_terminal(term, *dungeon, view_x, view_y, player_x, player_y, use_visibility);
         terminal_render(term);
 
         sleep_milliseconds(16);  // ~60 FPS
     }
 }
 
-render_dungeon_to_terminal :: (term: *Terminal, m: *GenMap, view_x: s32, view_y: s32) {
+render_dungeon_to_terminal :: (term: *Terminal, m: *GenMap, view_x: s32, view_y: s32,
+                                player_x: s32, player_y: s32, use_visibility: bool) {
     terminal_clear(term);
 
     // Draw visible portion of map
@@ -315,18 +386,94 @@ render_dungeon_to_terminal :: (term: *Terminal, m: *GenMap, view_x: s32, view_y:
             my := view_y + cast(s32)ty;
 
             // Use the render module to get proper priority-based rendering
-            glyph, fg_ansi, bg_ansi := get_cell_render(m, mx, my);
+            glyph, fg_ansi, bg_ansi := get_cell_render(m, mx, my, use_visibility);
             fg := ansi_to_color(fg_ansi);
             bg := ansi_to_color(bg_ansi);
+
+            // Draw player at their position
+            if mx == player_x && my == player_y {
+                glyph = #char "@";
+                fg = TC_BRIGHT_WHITE;
+            }
 
             terminal_set(term, cast(s32)tx, cast(s32)ty, glyph, fg, bg);
         }
     }
 
     // Draw status line
-    status := tprint("D:%  Rooms:% Monsters:% Items:% [R:regen S:screenshot ESC:quit]",
-                     m.depth, m.rooms.count, m.monsters.count, m.items.count);
+    vis_mode := ifx use_visibility then "FOV" else "ALL";
+    status := tprint("D:% @:%,% [WASD:move V:vis(%) R:regen F:screenshot ESC:quit]",
+                     m.depth, player_x, player_y, vis_mode);
     for i: 0..min(status.count-1, TERM_WIDTH-1) {
         terminal_set(term, cast(s32)i, TERM_HEIGHT - 1, status[i], TC_BRIGHT_WHITE, Color.{0.2, 0.2, 0.2});
     }
+}
+
+// ============================================================================
+// Player Movement Helpers
+// ============================================================================
+
+// Initialize player at first room center
+init_player_position :: (m: *GenMap, px: *s32, py: *s32) {
+    if m.rooms.count > 0 {
+        cx, cy := rect_center(m.rooms[0].bounds);
+        px.* = cx;
+        py.* = cy;
+    } else {
+        // Fallback: find any floor tile
+        for y: 0..m.height-1 {
+            for x: 0..m.width-1 {
+                t := map_get(m, x, y);
+                if t == .FLOOR || t == .CORRIDOR {
+                    px.* = x;
+                    py.* = y;
+                    return;
+                }
+            }
+        }
+        // Ultimate fallback: center of map
+        px.* = m.width / 2;
+        py.* = m.height / 2;
+    }
+}
+
+// Check if player can move to a position
+can_move_to :: (m: *GenMap, x: s32, y: s32) -> bool {
+    if !map_in_bounds(m, x, y) return false;
+
+    t := map_get(m, x, y);
+
+    // Can move to passable terrain
+    if terrain_passable(t) return true;
+
+    // Can also move through water (swimming)
+    if t == .WATER return true;
+
+    // Can pass through open doors
+    if t == .DOOR_OPEN return true;
+
+    // Can open closed doors (treat as passable for simple demo)
+    if t == .DOOR_CLOSED return true;
+
+    return false;
+}
+
+// Center viewport on player position
+center_viewport_on_player :: (vx: *s32, vy: *s32, px: s32, py: s32, map_w: s32, map_h: s32) {
+    // Center viewport on player
+    target_vx := px - TERM_WIDTH / 2;
+    target_vy := py - TERM_HEIGHT / 2;
+
+    // Clamp to map bounds
+    if target_vx < 0 target_vx = 0;
+    if target_vy < 0 target_vy = 0;
+    if target_vx > map_w - TERM_WIDTH target_vx = map_w - TERM_WIDTH;
+    if target_vy > map_h - TERM_HEIGHT target_vy = map_h - TERM_HEIGHT;
+
+    // Ensure non-negative
+    if target_vx < 0 target_vx = 0;
+    if target_vy < 0 target_vy = 0;
+
+    vx.* = target_vx;
+    vy.* = target_vy;
 }
