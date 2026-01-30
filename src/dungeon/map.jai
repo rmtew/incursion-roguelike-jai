@@ -185,9 +185,10 @@ GenMap :: struct {
     rooms: [..] Room;
     depth: s32;         // Dungeon depth level
 
-    // Population (filled by populate_dungeon)
+    // Population (filled by populate_dungeon and tile placement)
     monsters: [..] EntityPos;
     items: [..] EntityPos;
+    features: [..] EntityPos;  // Features placed from tile 'with' clauses
 
     // Doors with state tracking
     doors: [..] DoorInfo;

@@ -3102,3 +3102,45 @@ Implemented parsing and runtime application of the `Tiles:` section for grid-bas
 - 213/217 tests pass (same 4 pre-existing failures)
 - dungeon.irh parses 91 regions (unchanged)
 - Grid processing in implementation-review.md updated from PARTIAL to MATCHES
+
+## 2026-01-31: Gap 23 — Feature Baking + Tile Object Placement
+
+### Overview
+
+Natural follow-on from Gap 22 (Grid Tiles). The `with` clause in tile definitions references features, monsters, or items to place at tile positions. Features were parsed (27 from dungeon.irh) but never baked into runtime structs, and GenMap had no features array. This gap adds the full feature baking pipeline and tile object placement from `with` clauses.
+
+### Changes
+
+**Runtime Feature Struct** (`src/resource/runtime.jai`):
+- Added `RFeature` struct with name, glyph, fg_color, ftype fields
+- Added `features: [] RFeature` and `feature_names: [] string` to `ResourceDB`
+- Added `find_feature()` binary search lookup (same pattern as find_monster/find_item)
+
+**Feature Baking** (`src/resource/bake.jai`):
+- Added `convert_feature()` — converts ParsedFeature to RFeature, maps image char_code to glyph and color via `parsed_color_to_ansi()` (with cast to u8)
+- Updated `parse_resource_file()` to accept optional `features: *[..] RFeature` parameter
+- Added feature extraction loop in parse_resource_file()
+- Added `features` and `feature_names` to BakedResources
+- Updated `bake_all_resources()` to pass features, sort them, build name lookup arrays
+- Updated `init_resource_db()` to copy features and feature_names to BAKED_DB
+
+**Map Data** (`src/dungeon/map.jai`):
+- Added `features: [..] EntityPos` to GenMap struct
+
+**Rendering** (`src/dungeon/render.jai`):
+- Added `count_features_at()` and `first_feature_at()` helpers
+- Added feature rendering in `get_cell_render()` between terrain/skylight and items — features override terrain glyph/color but are overridden by items and creatures
+
+**Tile Object Placement** (`src/dungeon/makelev.jai`):
+- Added `place_tile_object()` — searches features → monsters → items by name from tile's `object_ref`, places EntityPos at grid position
+- Modified both `write_shaped_from_region()` and `write_grid_at_position()` to call `place_tile_object()` after tile terrain placement
+
+### Build Fix
+
+- `parsed_color_to_ansi()` returns `s64` but `RFeature.fg_color` is `u8` — added explicit `cast(u8)` in `convert_feature()`
+
+### Verification
+
+- `build.bat test` + `build.bat game` compile cleanly
+- 213/217 tests pass (same 4 pre-existing failures)
+- dungeon.irh still parses 91 regions with 27 features now baked

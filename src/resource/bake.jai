@@ -12,7 +12,8 @@
 // Parse a single .irh file and collect resources
 parse_resource_file :: (path: string, monsters: *[..] RMonster, items: *[..] RItem,
                         terrains: *[..] RuntimeTerrain, regions: *[..] RuntimeRegion,
-                        dungeons: *[..] RuntimeDungeon = null) -> bool {
+                        dungeons: *[..] RuntimeDungeon = null,
+                        features: *[..] RFeature = null) -> bool {
     content, success := read_entire_file(path);
     if !success {
         print("Failed to read resource file: %\n", path);
@@ -64,6 +65,14 @@ parse_resource_file :: (path: string, monsters: *[..] RMonster, items: *[..] RIt
         for dun: parser.dungeons {
             if dun.name.count > 0 {
                 array_add(dungeons, convert_dungeon(dun));
+            }
+        }
+    }
+
+    if features != null {
+        for feat: parser.features {
+            if feat.name.count > 0 {
+                array_add(features, convert_feature(feat));
             }
         }
     }
@@ -213,6 +222,23 @@ parsed_color_to_ansi :: (color: ParsedColor) -> s64 {
     return base;
 }
 
+// Convert ParsedFeature to RFeature
+convert_feature :: (pf: ParsedFeature) -> RFeature {
+    rf: RFeature;
+    rf.name = copy_string(pf.name);
+
+    if pf.has_image {
+        rf.glyph = cast(u16) pf.image.char_code;
+        rf.fg_color = cast(u8) parsed_color_to_ansi(pf.image.color);
+    } else {
+        rf.glyph = #char "?";
+        rf.fg_color = 7;
+    }
+
+    rf.ftype = cast(u16) pf.ftype;
+    return rf;
+}
+
 // Convert ParsedTerrain to RuntimeTerrain
 convert_terrain :: (pt: ParsedTerrain) -> RuntimeTerrain {
     rt: RuntimeTerrain;
@@ -341,6 +367,7 @@ convert_dungeon :: (pd: ParsedDungeon) -> RuntimeDungeon {
 BakedResources :: struct {
     monsters: [..] RMonster;
     items: [..] RItem;
+    features: [..] RFeature;
     terrains: [..] RuntimeTerrain;
     regions: [..] RuntimeRegion;
     dungeons: [..] RuntimeDungeon;
@@ -348,6 +375,7 @@ BakedResources :: struct {
     // Sorted name arrays for binary search
     monster_names: [..] string;
     item_names: [..] string;
+    feature_names: [..] string;
     terrain_names: [..] string;
 }
 
@@ -368,12 +396,13 @@ bake_all_resources :: () -> BakedResources {
     for file: files {
         parse_resource_file(file, *result.monsters, *result.items,
                            *result.terrains, *result.regions,
-                           *result.dungeons);
+                           *result.dungeons, *result.features);
     }
 
     // Sort by name for binary search
     sort_by_name(*result.monsters);
     sort_by_name(*result.items);
+    sort_by_name(*result.features);
     sort_by_name(*result.terrains);
 
     // Build name lookup arrays
@@ -382,6 +411,9 @@ bake_all_resources :: () -> BakedResources {
     }
     for item: result.items {
         array_add(*result.item_names, item.name);
+    }
+    for feat: result.features {
+        array_add(*result.feature_names, feat.name);
     }
     for terrain: result.terrains {
         array_add(*result.terrain_names, terrain.name);
@@ -434,11 +466,13 @@ init_resource_db :: () {
 
     BAKED_DB.monsters = baked.monsters;
     BAKED_DB.items = baked.items;
+    BAKED_DB.features = baked.features;
     BAKED_DB.terrains = baked.terrains;
     BAKED_DB.regions = baked.regions;
     BAKED_DB.dungeons = baked.dungeons;
     BAKED_DB.monster_names = baked.monster_names;
     BAKED_DB.item_names = baked.item_names;
+    BAKED_DB.feature_names = baked.feature_names;
     BAKED_DB.terrain_names = baked.terrain_names;
 }
 

@@ -57,6 +57,27 @@ first_item_at :: (m: *GenMap, x: s32, y: s32) -> *EntityPos {
     return null;
 }
 
+// Count features at position
+count_features_at :: (m: *GenMap, x: s32, y: s32) -> s32 {
+    count: s32 = 0;
+    for feat: m.features {
+        if feat.x == x && feat.y == y {
+            count += 1;
+        }
+    }
+    return count;
+}
+
+// Get first feature at position (or null if none)
+first_feature_at :: (m: *GenMap, x: s32, y: s32) -> *EntityPos {
+    for *feat: m.features {
+        if feat.x == x && feat.y == y {
+            return feat;
+        }
+    }
+    return null;
+}
+
 // ============================================================================
 // Terrain Colors
 // ============================================================================
@@ -152,6 +173,13 @@ get_cell_render :: (m: *GenMap, x: s32, y: s32, use_visibility: bool = false) ->
     // Check for skylight (tile below chasm on level above - cyan tint, always lit)
     if td != null && td.is_skylight {
         fg_color = 11;  // BRIGHT_CYAN
+    }
+
+    // Check for features (higher priority than terrain, lower than items)
+    feat := first_feature_at(m, x, y);
+    if feat != null && feat.glyph != 0 {
+        glyph = feat.glyph;
+        fg_color = feat.fg_color;
     }
 
     // Check for items (lower priority than creatures)

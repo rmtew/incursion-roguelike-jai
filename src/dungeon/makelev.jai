@@ -2174,6 +2174,54 @@ terrain_type_from_rt :: (rt: *RuntimeTerrain) -> Terrain {
     return .FLOOR;
 }
 
+// Place a feature/monster/item from a tile 'with' clause at a grid position.
+// Searches across features, monsters, and items by name.
+place_tile_object :: (m: *GenMap, tile: *RuntimeTile, x: s32, y: s32) {
+    if tile.object_ref.count == 0 return;
+
+    db := get_resource_db();
+    if db == null return;
+
+    // Try feature lookup first (altars, pillars, forges, etc.)
+    feat := find_feature(db, tile.object_ref);
+    if feat != null {
+        e: EntityPos;
+        e.x = x;
+        e.y = y;
+        e.glyph = feat.glyph;
+        e.fg_color = feat.fg_color;
+        array_add(*m.features, e);
+        return;
+    }
+
+    // Try monster lookup (goblins, guardians, etc.)
+    mon := find_monster(db, tile.object_ref);
+    if mon != null {
+        e: EntityPos;
+        e.x = x;
+        e.y = y;
+        e.glyph = mon.glyph;
+        e.fg_color = mon.fg_color;
+        e.cr = cast(s32) mon.cr;
+        array_add(*m.monsters, e);
+        return;
+    }
+
+    // Try item lookup (potions, wands, corpses, etc.)
+    item := find_item(db, tile.object_ref);
+    if item != null {
+        e: EntityPos;
+        e.x = x;
+        e.y = y;
+        e.glyph = item.glyph;
+        e.fg_color = item.fg_color;
+        array_add(*m.items, e);
+        return;
+    }
+
+    // Object not found in any registry - terrain already placed by Gap 22
+}
+
 write_shaped_from_region :: (m: *GenMap, gs: *GenState, panel: Rect, region: *RuntimeRegion) {
     floor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
@@ -2218,6 +2266,7 @@ write_shaped_from_region :: (m: *GenMap, gs: *GenState, panel: Rect, region: *Ru
             tile_rt := terrain_registry_get(*gs.terrain_registry, tile.terrain_ref);
             tile_terrain := terrain_type_from_rt(tile_rt);
             write_at_with_terrain(m, gs, mx, my, tile_terrain, tile_rt, PRIO_VAULT);
+            place_tile_object(m, tile, mx, my);
             col += 1;
             continue;
         }
@@ -2297,6 +2346,7 @@ write_grid_at_position :: (m: *GenMap, gs: *GenState, start_x: s32, start_y: s32
             tile_rt := terrain_registry_get(*gs.terrain_registry, tile.terrain_ref);
             tile_terrain := terrain_type_from_rt(tile_rt);
             write_at_with_terrain(m, gs, mx, my, tile_terrain, tile_rt, PRIO_VAULT);
+            place_tile_object(m, tile, mx, my);
             col += 1;
             continue;
         }

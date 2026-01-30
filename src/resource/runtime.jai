@@ -61,6 +61,17 @@ RItem :: struct {
 }
 
 // ============================================================================
+// Runtime Feature
+// ============================================================================
+
+RFeature :: struct {
+    name: string;
+    glyph: u16;         // Character code or GLYPH_* constant (256+)
+    fg_color: u8;       // ANSI color index (0-15)
+    ftype: u16;         // Feature type (T_DOOR, T_ALTAR, etc.)
+}
+
+// ============================================================================
 // Runtime Terrain (matches existing RuntimeTerrain in terrain_registry.jai)
 // ============================================================================
 
@@ -149,6 +160,7 @@ ResourceDB :: struct {
     // Core resources
     monsters: [] RMonster;
     items: [] RItem;
+    features: [] RFeature;
     terrains: [] RuntimeTerrain;
     regions: [] RuntimeRegion;
     encounters: [] REncounter;
@@ -158,6 +170,7 @@ ResourceDB :: struct {
     // These would be hash tables, but for compile-time we use sorted arrays
     monster_names: [] string;
     item_names: [] string;
+    feature_names: [] string;
     terrain_names: [] string;
 }
 
@@ -195,6 +208,25 @@ find_item :: (db: *ResourceDB, name: string) -> *RItem {
         cmp := cmp_str_for_search(db.item_names[mid], name);
         if cmp == 0 {
             return *db.items[mid];
+        } else if cmp < 0 {
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    return null;
+}
+
+// Binary search for feature by name
+find_feature :: (db: *ResourceDB, name: string) -> *RFeature {
+    lo := 0;
+    hi := db.feature_names.count - 1;
+
+    while lo <= hi {
+        mid := (lo + hi) / 2;
+        cmp := cmp_str_for_search(db.feature_names[mid], name);
+        if cmp == 0 {
+            return *db.features[mid];
         } else if cmp < 0 {
             lo = mid + 1;
         } else {
