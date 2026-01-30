@@ -2687,3 +2687,25 @@ On early levels (Depth <= 5), clears `DF_SECRET` from all doors within Manhattan
 ### Verification
 - Compiles cleanly (after fixing `remove` reserved word and cast order)
 - All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)
+
+## 2026-01-30: Correctness Gap 13 — Flood Fill Door Bug + Edge Clamping Scope
+
+Two fixes to the connectivity and corridor systems.
+
+### Flood Fill Door Bug (High Impact)
+
+The `flood_connect()` function used `is_solid()` to skip tiles, but `terrain_solid()` returns true for `DOOR_CLOSED` and `DOOR_SECRET`. This meant rooms connected only through doors appeared disconnected during the fixup tunneling phase. The fixup then carved unnecessary extra corridors, producing over-connected dungeons that bypassed the architectural purpose of doors as chokepoints.
+
+**Fix**: Added `is_solid_for_flood()` helper that excludes doors from the solid check, matching the original `FloodConnectA` at MakeLev.cpp:3659 (`At(x,y).Solid && !FDoorAt(x,y)`). Also switched from 4-directional to 8-directional propagation (including diagonals) per the original.
+
+The previous code had a dead-code path at lines 458-484 that attempted to treat doors as passable for neighbor propagation, but this never executed because the solid check at line 450 already rejected door tiles.
+
+### Corridor Edge Clamping Scope (Medium Impact)
+
+The edge clamping code (redirect corridor if within 2-3 tiles of map edge) was inside the `if force_turn` block, only running when a turn was already being forced. The original MakeLev.cpp:3534-3541 runs this check **every iteration** unconditionally.
+
+**Fix**: Moved the edge clamping block outside `if force_turn` so it runs every loop iteration. This means corridors near map edges immediately redirect regardless of whether other turn conditions triggered.
+
+### Verification
+- Compiles cleanly on first attempt
+- All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)

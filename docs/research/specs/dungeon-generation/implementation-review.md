@@ -199,7 +199,7 @@ Missing: RF_ROCKTYPE, RF_CAVE, RF_AUTO, RF_OPT_DIM, RF_VAULT, RF_NOMONSTER, RF_N
 | Stair placement (500 tries) | Skip stair | Not applicable (simple placement) | N/A |
 | Connectivity (26 trials) | Accept disconnected | MAX_TRIALS = 26 | MATCHES |
 | Map edge write | Silent skip | PRIO_MAX protection | MATCHES |
-| Corridor at edge | Force turn, hard clamp | Not checked | MISSING |
+| Corridor at edge | Force turn, hard clamp | Edge clamping every iteration | MATCHES |
 | Resource limits | Fatal if exceeded | Not enforced | MISSING |
 
 ## Summary: Critical Gaps
@@ -253,3 +253,4 @@ Missing: RF_ROCKTYPE, RF_CAVE, RF_AUTO, RF_OPT_DIM, RF_VAULT, RF_NOMONSTER, RF_N
 10. ~~Add multi-level chasm propagation~~ **DONE (2026-01-30)**
 11. ~~Add skylight marking for tiles below chasms~~ **DONE (2026-01-30)**
 12. ~~Add door validation and secret door protection near stairs~~ **DONE (2026-01-30)**
+13. ~~Fix flood fill door bug + corridor edge clamping scope~~ **DONE (2026-01-30)**

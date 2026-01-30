@@ -420,9 +420,18 @@ is_solid :: (gs: *GenState, m: *GenMap, x: s32, y: s32) -> bool {
     return terrain_solid(t);
 }
 
+// Check if tile is solid for flood-fill purposes (doors are NOT solid)
+// Source: MakeLev.cpp:3659 — At(x,y).Solid && !FDoorAt(x,y)
+is_solid_for_flood :: (m: *GenMap, x: s32, y: s32) -> bool {
+    t := map_get(m, x, y);
+    if t == .DOOR_CLOSED || t == .DOOR_SECRET return false;
+    return terrain_solid(t);
+}
+
 // Flood fill to mark all connected tiles starting from (x, y)
 // Returns count of tiles marked connected
 // In original: int32 Map::FloodConnectA(int16 x, int16 y, int32 fCount)
+// Uses 8-directional propagation (including diagonals) per original
 flood_connect :: (gs: *GenState, m: *GenMap, start_x: s32, start_y: s32) -> s32 {
     count: s32 = 0;
 
@@ -431,7 +440,7 @@ flood_connect :: (gs: *GenState, m: *GenMap, start_x: s32, start_y: s32) -> s32 
     stack.allocator = temp;
 
     // Start from the given position
-    if is_solid(gs, m, start_x, start_y) return 0;
+    if is_solid_for_flood(m, start_x, start_y) return 0;
 
     start_cell := get_cell(gs, m, start_x, start_y);
     if start_cell == null || start_cell.connected return 0;
@@ -447,38 +456,23 @@ flood_connect :: (gs: *GenState, m: *GenMap, start_x: s32, start_y: s32) -> s32 
         cell := get_cell(gs, m, x, y);
         if cell == null continue;
         if cell.connected continue;
-        if is_solid(gs, m, x, y) continue;
+        if is_solid_for_flood(m, x, y) continue;
 
         // Mark as connected
         cell.connected = true;
         count += 1;
 
-        // Add 4-connected neighbors (treating doors as passable)
-        t := map_get(m, x, y);
-        if !terrain_solid(t) || t == .DOOR_CLOSED || t == .DOOR_SECRET {
-            // Check all 4 directions
-            if x > 0 {
-                nc := get_cell(gs, m, x-1, y);
-                if nc != null && !nc.connected && !is_solid(gs, m, x-1, y) {
-                    array_add(*stack, Point.{x-1, y});
-                }
-            }
-            if x < m.width - 1 {
-                nc := get_cell(gs, m, x+1, y);
-                if nc != null && !nc.connected && !is_solid(gs, m, x+1, y) {
-                    array_add(*stack, Point.{x+1, y});
-                }
-            }
-            if y > 0 {
-                nc := get_cell(gs, m, x, y-1);
-                if nc != null && !nc.connected && !is_solid(gs, m, x, y-1) {
-                    array_add(*stack, Point.{x, y-1});
-                }
-            }
-            if y < m.height - 1 {
-                nc := get_cell(gs, m, x, y+1);
-                if nc != null && !nc.connected && !is_solid(gs, m, x, y+1) {
-                    array_add(*stack, Point.{x, y+1});
+        // Add 8-connected neighbors (per original FloodConnectA)
+        // Source: MakeLev.cpp:3670 — fills all 8 directions
+        for dy: -1..1 {
+            for dx: -1..1 {
+                if dx == 0 && dy == 0 continue;
+                nx := x + cast(s32) dx;
+                ny := y + cast(s32) dy;
+                if nx < 0 || nx >= m.width || ny < 0 || ny >= m.height continue;
+                nc := get_cell(gs, m, nx, ny);
+                if nc != null && !nc.connected && !is_solid_for_flood(m, nx, ny) {
+                    array_add(*stack, Point.{nx, ny});
                 }
             }
         }
@@ -2561,18 +2555,18 @@ carve_tunnel :: (m: *GenMap, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32, 
                     curr_dir = cast(TunnelDir) random(4);
                 }
             }
+        }
 
-            // Hard edge clamping: override direction if within 2-3 tiles of edge
-            // Per spec: MakeLev.cpp:3534-3541
-            if x <= 2 {
-                curr_dir = .EAST;
-            } else if x >= m.width - 3 {
-                curr_dir = .WEST;
-            } else if y <= 2 {
-                curr_dir = .SOUTH;
-            } else if y >= m.height - 3 {
-                curr_dir = .NORTH;
-            }
+        // Hard edge clamping: override direction if within 2-3 tiles of edge
+        // Runs EVERY iteration (not just on force_turn) per MakeLev.cpp:3534-3541
+        if x <= 2 {
+            curr_dir = .EAST;
+        } else if x >= m.width - 3 {
+            curr_dir = .WEST;
+        } else if y <= 2 {
+            curr_dir = .SOUTH;
+        } else if y >= m.height - 3 {
+            curr_dir = .NORTH;
         }
 
         // Move
