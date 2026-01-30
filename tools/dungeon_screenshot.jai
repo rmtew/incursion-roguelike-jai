@@ -67,7 +67,8 @@ TC_WHITE        :: Color.{0.75, 0.75, 0.75, 1.0};
 // Glyph to CP437 conversion
 #load "../src/glyph_cp437.jai";
 
-// Rendering priority system
+// Rendering and visibility
+#load "../src/dungeon/visibility.jai";
 #load "../src/dungeon/render.jai";
 
 // Convert ANSI color index (0-15) to RGB Color

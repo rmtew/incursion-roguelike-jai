@@ -40,6 +40,7 @@
 #load "../src/dungeon/weights.jai";
 #load "../src/dungeon/makelev.jai";
 #load "../src/dungeon/generator.jai";
+#load "../src/dungeon/visibility.jai";
 #load "../src/dungeon/render.jai";
 
 // Glyph to CP437 conversion
