@@ -2541,3 +2541,33 @@ Jai disallows `xx` as a variable name due to auto-cast syntax ambiguity (`xx` is
 ### Verification
 - Compiles cleanly (one fix for `xx` variable name)
 - All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)
+
+## 2026-01-30: Correctness Gap 8 — Diamond Rooms & Cavern Theming
+
+Two room type corrections: complete rewrite of RM_DIAMONDS and wall streamer pass for RM_RCAVERN.
+
+### write_diamonds Rewrite
+
+**Old algorithm**: Filled the panel with floor, then placed diamond-shaped wall outlines in a grid pattern. This produced a room with pillar-like diamond shapes inside — completely wrong.
+
+**New algorithm** (matching MakeLev.cpp:2640-2677 + WriteDiamond:664-685):
+1. Panel inset by 7 on each side (original sizing)
+2. Random start point within bounds
+3. Generate 1-7 diamonds in chain formation
+4. Each diamond uses 41-entry coordinate lookup table — a filled diamond shape with radius 4
+5. Each new diamond is placed 6 cells away in a random diagonal direction (NE/NW/SE/SW)
+6. At midpoint between each pair of diamonds, a closed door is placed
+7. After all diamonds, `write_walls()` adds wall perimeter
+8. Each diamond's center recorded for corridor connection
+
+Extracted `write_diamond()` helper that writes a single 41-cell filled diamond and records its center.
+
+### write_rcavern Wall Streamer Pass
+
+**Missing feature**: The original WriteRCavern (MakeLev.cpp:590-599) has a post-placement wall streamer pass. After placing L-shaped floor areas and standard walls, if the region has custom wall terrain (different from default), it scans all rock tiles in the rect and converts any rock adjacent to floor into the region's custom wall type at `PRIO_ROCK_STREAMER` (5).
+
+This creates a visual "halo" of themed wall around cavern floors, extending the region's aesthetic into surrounding rock. Only triggers when the region actually has custom walls.
+
+### Verification
+- Compiles cleanly on first attempt
+- All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)

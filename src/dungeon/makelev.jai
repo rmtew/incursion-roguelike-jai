@@ -1312,74 +1312,120 @@ write_checker :: (m: *GenMap, gs: *GenState, r: Rect) {
     }
 }
 
-// Write a room with diamond-shaped cells
-// In original: case RM_DIAMONDS
-write_diamonds :: (m: *GenMap, gs: *GenState, r: Rect) {
+// Write a single filled diamond shape (41 cells, radius 4)
+// In original: void Map::WriteDiamond(int16 x, int16 y, rID regID)
+// at MakeLev.cpp:664-685
+write_diamond :: (m: *GenMap, gs: *GenState, cx: s32, cy: s32) {
     floor := gs.con.TERRAIN_FLOOR;
-    wall := gs.con.TERRAIN_WALL;
     floor_terrain := get_region_floor(gs.current_region, gs.default_floor);
-    wall_terrain := get_region_wall(gs.current_region, gs.default_wall);
 
-    // Fill with floor first
-    for y: r.y1..r.y2 {
-        for x: r.x1..r.x2 {
-            write_at_with_terrain(m, gs, x, y, floor, floor_terrain, PRIO_ROOM_FLOOR);
-        }
+    // 41-entry coordinate table for filled diamond with radius 4
+    // Original: DiamondCoords[41][2] in MakeLev.cpp:665-675
+    DIAMOND_COORDS :: s32.[
+        0, -4,
+        -1, -3,  0, -3,  1, -3,
+        -2, -2, -1, -2,  0, -2,  1, -2,  2, -2,
+        -3, -1, -2, -1, -1, -1,  0, -1,  1, -1,  2, -1,  3, -1,
+        -4,  0, -3,  0, -2,  0, -1,  0,  0,  0,  1,  0,  2,  0,  3,  0,  4,  0,
+        -3,  1, -2,  1, -1,  1,  0,  1,  1,  1,  2,  1,  3,  1,
+        -2,  2, -1,  2,  0,  2,  1,  2,  2,  2,
+        -1,  3,  0,  3,  1,  3,
+         0,  4,
+    ];
+
+    i := 0;
+    while i < DIAMOND_COORDS.count {
+        dx := DIAMOND_COORDS[i];
+        dy := DIAMOND_COORDS[i + 1];
+        write_at_with_terrain(m, gs, cx + dx, cy + dy, floor, floor_terrain, PRIO_ROOM_FLOOR);
+        i += 2;
     }
 
-    // Add diamond pattern walls
-    // Diamonds are spaced 4 apart
-    DIAMOND_SIZE :: 3;
-    DIAMOND_SPACING :: 4;
-
-    center_y := r.y1 + DIAMOND_SIZE;
-    while center_y < r.y2 - DIAMOND_SIZE {
-        center_x := r.x1 + DIAMOND_SIZE;
-        while center_x < r.x2 - DIAMOND_SIZE {
-            // Draw diamond outline around center
-            for dist: 1..DIAMOND_SIZE-1 {
-                // Top
-                write_at_with_terrain(m, gs, center_x, center_y - cast(s32)dist, wall, wall_terrain, PRIO_ROOM_FURNITURE);
-                // Bottom
-                write_at_with_terrain(m, gs, center_x, center_y + cast(s32)dist, wall, wall_terrain, PRIO_ROOM_FURNITURE);
-                // Left
-                write_at_with_terrain(m, gs, center_x - cast(s32)dist, center_y, wall, wall_terrain, PRIO_ROOM_FURNITURE);
-                // Right
-                write_at_with_terrain(m, gs, center_x + cast(s32)dist, center_y, wall, wall_terrain, PRIO_ROOM_FURNITURE);
-            }
-            // Corners
-            write_at_with_terrain(m, gs, center_x - 1, center_y - 1, wall, wall_terrain, PRIO_ROOM_FURNITURE);
-            write_at_with_terrain(m, gs, center_x + 1, center_y - 1, wall, wall_terrain, PRIO_ROOM_FURNITURE);
-            write_at_with_terrain(m, gs, center_x - 1, center_y + 1, wall, wall_terrain, PRIO_ROOM_FURNITURE);
-            write_at_with_terrain(m, gs, center_x + 1, center_y + 1, wall, wall_terrain, PRIO_ROOM_FURNITURE);
-
-            center_x += DIAMOND_SPACING;
-        }
-        center_y += DIAMOND_SPACING;
-    }
-
-    // Add walls around the perimeter
-    for x: r.x1-1..r.x2+1 {
-        if map_get(m, x, r.y1-1) == .ROCK  write_at_with_terrain(m, gs, x, r.y1-1, wall, wall_terrain, PRIO_ROOM_WALL);
-        if map_get(m, x, r.y2+1) == .ROCK  write_at_with_terrain(m, gs, x, r.y2+1, wall, wall_terrain, PRIO_ROOM_WALL);
-    }
-    for y: r.y1-1..r.y2+1 {
-        if map_get(m, r.x1-1, y) == .ROCK  write_at_with_terrain(m, gs, r.x1-1, y, wall, wall_terrain, PRIO_ROOM_WALL);
-        if map_get(m, r.x2+1, y) == .ROCK  write_at_with_terrain(m, gs, r.x2+1, y, wall, wall_terrain, PRIO_ROOM_WALL);
-    }
-
-    // Track as room
-    room: Room;
-    room.bounds = r;
-    room.connected = false;
-    array_add(*m.rooms, room);
-
-    // Record center
+    // Record center for corridor connection
     if gs.n_centers < 16 {
-        cx, cy := rect_center(r);
         gs.centers[gs.n_centers] = cast(u16)(cx + cy * 256);
         gs.n_centers += 1;
     }
+}
+
+// Write a chain of diamond-shaped rooms with doors between them
+// In original: case RM_DIAMONDS at MakeLev.cpp:2640-2677
+// Algorithm: 1-7 filled diamonds in chain formation, 6 cells apart in diagonal
+// directions, with doors at midpoints between each pair.
+write_diamonds :: (m: *GenMap, gs: *GenState, panel: Rect) {
+    floor := gs.con.TERRAIN_FLOOR;
+    floor_terrain := get_region_floor(gs.current_region, gs.default_floor);
+
+    // Bounds: panel inset by 7 on each side (per original)
+    r := Rect.{panel.x1 + 7, panel.y1 + 7, panel.x2 - 7, panel.y2 - 7};
+    if r.x2 <= r.x1 || r.y2 <= r.y1 {
+        // Panel too small, fall back to regular room
+        write_room(m, gs, panel);
+        return;
+    }
+
+    // Start at random point within bounds
+    x : s32 = r.x1 + random(r.x2 - r.x1);
+    y : s32 = r.y1 + random(r.y2 - r.y1);
+
+    num_diamonds : s32 = 1 + random(7);  // 1-7 diamonds
+    count : s32 = 0;
+
+    // Door junction tracking (for corridor connection marking)
+    door_x: [8] s32;
+    door_y: [8] s32;
+    door_count : s32 = 0;
+
+    while count < num_diamonds {
+        write_diamond(m, gs, x, y);
+        count += 1;
+
+        if count >= num_diamonds break;
+
+        // Pick random diagonal direction that stays in bounds
+        // Original: NORTHEAST + random(4) => one of NE, NW, SE, SW
+        DIAG_DIRS :: Dir.[.NORTHEAST, .NORTHWEST, .SOUTHEAST, .SOUTHWEST];
+        dir : Dir = ---;
+        tries : s32 = 0;
+        valid := false;
+        while tries < 20 {
+            dir = DIAG_DIRS[random(4)];
+            nx := x + cast(s32)DirX(dir) * 6;
+            ny := y + cast(s32)DirY(dir) * 6;
+            if rect_contains(r, nx, ny) {
+                valid = true;
+                break;
+            }
+            tries += 1;
+        }
+        if !valid break;  // Can't find valid direction, stop chain
+
+        // Move 6 cells in chosen diagonal
+        x += cast(s32)DirX(dir) * 6;
+        y += cast(s32)DirY(dir) * 6;
+
+        // Place floor + door at midpoint between diamonds
+        mx := x - cast(s32)DirX(dir) * 3;
+        my := y - cast(s32)DirY(dir) * 3;
+
+        write_at_with_terrain(m, gs, mx, my, floor, floor_terrain, PRIO_ROOM_FLOOR, force = true);
+        map_set(m, mx, my, .DOOR_CLOSED);
+
+        if door_count < 8 {
+            door_x[door_count] = mx;
+            door_y[door_count] = my;
+            door_count += 1;
+        }
+    }
+
+    // Add walls around all floor tiles (equivalent to WriteWalls in original)
+    write_walls(m, gs, panel);
+
+    // Track as room
+    room: Room;
+    room.bounds = panel;
+    room.connected = false;
+    array_add(*m.rooms, room);
 }
 
 // Write a castle room (recursively subdivided with internal walls and doors)
@@ -1552,6 +1598,32 @@ write_rcavern :: (m: *GenMap, gs: *GenState, r: Rect) {
                             write_at_with_terrain(m, gs, nx, ny, wall, wall_terrain, PRIO_ROOM_WALL);
                         }
                     }
+                }
+            }
+        }
+    }
+
+    // Wall streamer pass: if region has custom walls, theme surrounding rock
+    // Original: MakeLev.cpp:590-599 — converts default rock adjacent to floor
+    // into region wall type at PRIO_ROCK_STREAMER for visual theming
+    if wall_terrain != null && wall_terrain != gs.default_wall {
+        for y: r.y1..r.y2 {
+            for x: r.x1..r.x2 {
+                if map_get(m, x, y) != .ROCK continue;
+                // Check all 9 positions (including self) for adjacent floor
+                found_floor := false;
+                for dy: -1..1 {
+                    for dx: -1..1 {
+                        nx := x + cast(s32)dx;
+                        ny := y + cast(s32)dy;
+                        if map_in_bounds(m, nx, ny) && map_get(m, nx, ny) == floor {
+                            found_floor = true;
+                            break dy;
+                        }
+                    }
+                }
+                if found_floor {
+                    write_at_with_terrain(m, gs, x, y, wall, wall_terrain, PRIO_ROCK_STREAMER);
                 }
             }
         }

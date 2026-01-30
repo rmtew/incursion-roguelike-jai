@@ -42,9 +42,9 @@ This document compares the existing Jai implementation in `src/dungeon/makelev.j
 | RM_CHECKER | Checkerboard pillars | write_checker(), +2 size | MATCHES |
 | RM_BUILDING | Falls to CASTLE | Falls through to write_castle() | MATCHES |
 | RM_LIFECAVE | WriteLifeCave (cellular automata) | write_lifecave() | MATCHES |
-| RM_RCAVERN | Repeated-L rough caverns | write_rcavern() | PARTIAL |
+| RM_RCAVERN | Repeated-L rough caverns | write_rcavern() + wall streamer pass | MATCHES |
 | RM_MAZE | WriteMaze (recursive backtrack) | write_maze(), large sizing | MATCHES |
-| RM_DIAMONDS | Grid of diamond squares | write_diamonds() | PARTIAL |
+| RM_DIAMONDS | Chain of filled diamonds with doors | write_diamonds() chain algorithm | MATCHES |
 | RM_SHAPED | Grid-based predefined rooms | NOT IMPLEMENTED | MISSING |
 | RM_LIFELINK | Life w/ linked regions | NOT IMPLEMENTED | MISSING |
 | RM_RANDTOWN | Random town | Falls to default | MISSING |
