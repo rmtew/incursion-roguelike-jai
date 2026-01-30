@@ -1,0 +1,3 @@
+[submodule "agent-docs"]
+	path = agent-docs
+	url = https://github.com/rmtew/agent-docs.git

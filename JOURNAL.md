@@ -3243,3 +3243,29 @@ Running with `--regen` revealed a crash in the allocator during `array_add` in `
 - All 9 tool targets compile cleanly (game, test, headless, dungeon_test, dungeon_screenshot, dungeon_verify, inspect, replay, stress_test)
 - `stress_test.exe --count 100` — 100/100 PASSED
 - `stress_test.exe --count 100 --validate` — correctly identifies room connectivity issues
+
+---
+
+## 2026-01-31: Add agent-docs submodule and refactor CLAUDE.md
+
+Added the `agent-docs` git submodule (`https://github.com/rmtew/agent-docs.git`) containing shared session conventions, and refactored CLAUDE.md to reference the shared conventions instead of duplicating them.
+
+### Changes
+
+**Submodule added** — `agent-docs/` directory with shared workflows. The `agent-docs/workflows/session_conventions.md` file covers journal/backlog maintenance, task list structure, autonomy rules, error handling patterns, code comments, and external references.
+
+**CLAUDE.md refactored** — Removed sections that duplicated the shared conventions:
+- Directives items 3-5 (JOURNAL/BACKLOG/subprojects)
+- Conventions > Code Comments
+- Session Workflow > Before Creating Task List, Task Lists, Journal and Backlog Maintenance, Autonomy Rules, External References, Error Handling
+
+Replaced with a "Session Conventions" section referencing the shared file, with a project-specific addition noting the `git clean -fd` warning.
+
+**Kept** project-specific sections: Environment, Reference Structure (with new `agent-docs/` entry), Build & Test, Verification, and Project-Specific: Incursion Port.
+
+### Verification
+
+- `build.bat test` compiles cleanly
+- 213/217 tests pass (unchanged — 4 expected mon1-4.irh partial parse failures)
+- `agent-docs/` directory present with expected content
+- CLAUDE.md retains all project-specific guidance
