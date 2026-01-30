@@ -2922,3 +2922,66 @@ Added `--seed N` and `--depth N` arguments to `dungeon_screenshot.exe` for easie
 - All 8 build targets compile cleanly
 - 213/217 tests pass (same 4 pre-existing mon1-4.irh failures)
 - Grid-based shaped rooms confirmed appearing at seed 5, depth 5 (Floating Rock;1, 12x12)
+
+## 2026-01-30: Gap 19 — Dungeon Constants Loading from dungeon.irh
+
+### Summary
+
+Implemented loading of dungeon definitions (Constants/Specials sections) from `dungeon.irh` and wiring them into the generator. Three dungeon definitions are parsed: "The Goblin Caves", "The Nine Hells", and "Monster Evaluation Arena". When a dungeon name is provided to `generate_dungeon()`, its constants override the default DungeonConstants struct.
+
+### Key Changes
+
+**RuntimeDungeon type system** (`src/resource/runtime.jai`):
+- Added 25 `CON_*` index constants matching original Defines.h (CON_ROOM_MAXX=18, CON_TURN_CHANCE=21, CON_DUN_DEPTH=44, etc.)
+- Added `DungeonConstant` struct (key, value, is_ref, ref_name) and `DungeonSpecial` struct (room_ref, at_level)
+- Added `RuntimeDungeon` struct with name, constants array, specials array
+- Added `dungeons` field to `ResourceDB`
+
+**Dungeon baking** (`src/resource/bake.jai`):
+- Added `convert_dungeon()` to convert ParsedDungeon to RuntimeDungeon
+- Updated `parse_resource_file()` signature to accept optional dungeons array
+- Updated `BakedResources` and `bake_all_resources()` to include dungeons
+- Added `BAKED_DB.dungeons` assignment in `init_resource_db()`
+- Added `get_baked_dungeons()` and `find_dungeon()` lookup functions
+
+**Constants override** (`src/dungeon/makelev.jai`):
+- Changed `DungeonConstants` struct fields from compile-time constants (`: s32 :`) to runtime-assignable fields (`: s32 =`) — required for dynamic override
+- Added 6 new fields: INITIAL_CR, MIN_VAULT_DEPTH, ROOM_LIT_CHANCE, TREASURE_CHANCE, CHEST_CHANCE, TRAP_CHANCE
+- Added `apply_dungeon_constants()` function — maps CON_* keys to struct fields via switch
+- Updated `generate_makelev()` to accept `dungeon_name` parameter, look up definition, and apply overrides before `gen_state_init()`
+
+**MIN_VAULT_DEPTH wiring** (`src/dungeon/weights.jai`):
+- Updated `init_selection_state()` to accept `min_vault_depth` parameter (default 5, matching original Annot.cpp)
+- Replaced hardcoded `state.min_vault_depth = 4` with parameter from DungeonConstants
+
+**Generator entry points** (`src/dungeon/generator.jai`):
+- Added `dungeon_name: string = ""` parameter to `generate_dungeon()` and `generate_dungeon_original()`
+
+### Stale Doc Updates (`implementation-review.md`)
+
+Updated 10+ stale entries:
+- Step 4 (Draw Panels): PARTIAL → MATCHES
+- Step 6 (Place Stairs): DIFFERS → MATCHES (uses MIN/MAX_STAIRS with region avoidance)
+- WriteStreamer: PARTIAL → MATCHES
+- Region terrain refs: MISSING → MATCHES (all room types use get_region_floor/wall)
+- TRegion structure: PARTIAL → MATCHES
+- RF_* flags: "12 defined" → "23 defined (bitmask form)"
+- Weight list generation: DIFFERS → MATCHES
+- Region terrain application: MISSING → MATCHES
+- Stair placement (500 tries): N/A → MATCHES
+- Phase 2 (Visual Variety): marked COMPLETE
+
+### Files Modified
+
+- **`src/resource/runtime.jai`** — CON_* constants, DungeonConstant, DungeonSpecial, RuntimeDungeon structs, dungeons in ResourceDB
+- **`src/resource/bake.jai`** — convert_dungeon(), dungeons baking, find_dungeon() lookup
+- **`src/dungeon/makelev.jai`** — DungeonConstants fields mutable, new fields, apply_dungeon_constants(), dungeon_name parameter
+- **`src/dungeon/weights.jai`** — min_vault_depth parameter in init_selection_state()
+- **`src/dungeon/generator.jai`** — dungeon_name parameter through call chain
+- **`docs/research/specs/dungeon-generation/implementation-review.md`** — 10+ stale entries updated
+
+### Verification
+
+- All 8 build targets compile cleanly
+- 213/217 tests pass (same 4 pre-existing mon1-4.irh failures)
+- Dungeon definitions load at runtime (3 dungeons parsed from dungeon.irh)

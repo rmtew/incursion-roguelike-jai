@@ -89,6 +89,59 @@ REncounter :: struct {
 }
 
 // ============================================================================
+// Dungeon Definitions
+// ============================================================================
+
+// Con[] index constants (from Defines.h)
+// These are indices into the dungeon constants array, used as keys in DungeonConstant.key
+CON_LEVEL_SIZEX       :: 1;
+CON_LEVEL_SIZEY       :: 2;
+CON_MAX_STREAMER_WIDTH :: 5;
+CON_MIN_STREAMERS     :: 6;
+CON_MAX_STREAMERS     :: 7;
+CON_TERRAIN_MAPEDGE   :: 8;
+CON_TERRAIN_ROCK      :: 9;
+CON_REDUCE_CHASM_CHANCE :: 14;
+CON_MIN_STAIRS        :: 15;
+CON_MAX_STAIRS        :: 16;
+CON_ROOM_MINX         :: 17;
+CON_ROOM_MAXX         :: 18;
+CON_ROOM_MINY         :: 19;
+CON_ROOM_MAXY         :: 20;
+CON_TURN_CHANCE       :: 21;
+CON_STUBBORN_CORRIDOR :: 22;
+CON_SEGMENT_MINLEN    :: 23;
+CON_SEGMENT_MAXLEN    :: 24;
+CON_STREAMER_CHANCE   :: 25;
+CON_DUN_DEPTH         :: 44;
+CON_INITIAL_CR        :: 45;
+CON_MIN_CHASM_DEPTH   :: 62;
+CON_MIN_RIVER_DEPTH   :: 63;
+CON_TREASURE_CHANCE   :: 64;
+CON_CHEST_CHANCE      :: 65;
+CON_TRAP_CHANCE       :: 73;
+CON_MIN_VAULT_DEPTH   :: 74;
+CON_ROOM_LIT_CHANCE   :: 76;
+
+DungeonConstant :: struct {
+    key:      s32;       // Con[] index (CON_* constants)
+    value:    s32;       // Numeric value or resource index
+    is_ref:   bool;      // True if value is a resource reference
+    ref_name: string;    // Resource reference name (when is_ref=true)
+}
+
+DungeonSpecial :: struct {
+    room_ref: string;    // Region name
+    at_level: s32;       // Level number
+}
+
+RuntimeDungeon :: struct {
+    name:      string;
+    constants: [] DungeonConstant;
+    specials:  [] DungeonSpecial;
+}
+
+// ============================================================================
 // Resource Database
 // ============================================================================
 
@@ -99,6 +152,7 @@ ResourceDB :: struct {
     terrains: [] RuntimeTerrain;
     regions: [] RuntimeRegion;
     encounters: [] REncounter;
+    dungeons: [] RuntimeDungeon;
 
     // Lookup tables (name -> index)
     // These would be hash tables, but for compile-time we use sorted arrays

@@ -284,38 +284,88 @@ RM_LAST      :: 32;
 
 // Dungeon constants (simplified - real version loads from dungeon definition)
 DungeonConstants :: struct {
-    LEVEL_SIZEX     : s32 : 80;
-    LEVEL_SIZEY     : s32 : 50;
-    PANEL_SIZEX     : s32 : 20;
-    PANEL_SIZEY     : s32 : 25;
-    ROOM_MINX       : s32 : 4;
-    ROOM_MAXX       : s32 : 12;
-    ROOM_MINY       : s32 : 4;
-    ROOM_MAXY       : s32 : 10;
-    MIN_STAIRS      : s32 : 1;
-    MAX_STAIRS      : s32 : 3;
-    TERRAIN_ROCK    : Terrain : .ROCK;
-    TERRAIN_FLOOR   : Terrain : .FLOOR;
-    TERRAIN_WALL    : Terrain : .WALL;
+    LEVEL_SIZEX     : s32 = 80;
+    LEVEL_SIZEY     : s32 = 50;
+    PANEL_SIZEX     : s32 = 20;
+    PANEL_SIZEY     : s32 = 25;
+    ROOM_MINX       : s32 = 4;
+    ROOM_MAXX       : s32 = 12;
+    ROOM_MINY       : s32 = 4;
+    ROOM_MAXY       : s32 = 10;
+    MIN_STAIRS      : s32 = 1;
+    MAX_STAIRS      : s32 = 3;
+    TERRAIN_ROCK    : Terrain = .ROCK;
+    TERRAIN_FLOOR   : Terrain = .FLOOR;
+    TERRAIN_WALL    : Terrain = .WALL;
     // Streamer constants (original defaults from Annot.cpp:GetConst)
-    MIN_STREAMERS       : s32 : 2;   // Minimum guaranteed streamers per level
-    MAX_STREAMERS       : s32 : 4;   // Maximum streamers per level
-    STREAMER_CHANCE     : s32 : 70;  // % chance for each additional streamer beyond minimum
-    MAX_STREAMER_WIDTH  : s32 : 5;   // Maximum non-river streamer width
-    MIN_RIVER_DEPTH     : s32 : 3;   // Minimum depth for river streamers
-    MIN_CHASM_DEPTH     : s32 : 5;   // Minimum depth for chasm streamers
-    DUN_DEPTH           : s32 : 20;  // Total dungeon depth (no chasms on last level)
-    REDUCE_CHASM_CHANCE : s32 : 50;  // % chance that chasms narrow when propagating down
+    MIN_STREAMERS       : s32 = 2;   // Minimum guaranteed streamers per level
+    MAX_STREAMERS       : s32 = 4;   // Maximum streamers per level
+    STREAMER_CHANCE     : s32 = 70;  // % chance for each additional streamer beyond minimum
+    MAX_STREAMER_WIDTH  : s32 = 5;   // Maximum non-river streamer width
+    MIN_RIVER_DEPTH     : s32 = 3;   // Minimum depth for river streamers
+    MIN_CHASM_DEPTH     : s32 = 5;   // Minimum depth for chasm streamers
+    DUN_DEPTH           : s32 = 20;  // Total dungeon depth (no chasms on last level)
+    REDUCE_CHASM_CHANCE : s32 = 50;  // % chance that chasms narrow when propagating down
     // Corridor constants (original defaults from Annot.cpp:GetConst)
-    TURN_CHANCE         : s32 : 10;  // % chance to turn each step after min segment
-    SEGMENT_MINLEN      : s32 : 4;   // Minimum segment length before turning
-    SEGMENT_MAXLEN      : s32 : 10;  // Maximum segment length before forced turn
-    STUBBORN_CORRIDOR   : s32 : 30;  // % chance to NOT correct direction toward target
-    MAX_CORRIDOR_LEN    : s32 : 500; // Safety limit
+    TURN_CHANCE         : s32 = 10;  // % chance to turn each step after min segment
+    SEGMENT_MINLEN      : s32 = 4;   // Minimum segment length before turning
+    SEGMENT_MAXLEN      : s32 = 10;  // Maximum segment length before forced turn
+    STUBBORN_CORRIDOR   : s32 = 30;  // % chance to NOT correct direction toward target
+    MAX_CORRIDOR_LEN    : s32 = 500; // Safety limit
+    // Dungeon-level constants
+    INITIAL_CR          : s32 = 1;   // Starting CR for monster generation
+    MIN_VAULT_DEPTH     : s32 = 5;   // Minimum depth for vault rooms
+    ROOM_LIT_CHANCE     : s32 = 50;  // % chance a room is lit
+    TREASURE_CHANCE     : s32 = 30;  // % chance for treasure in a room
+    CHEST_CHANCE        : s32 = 7;   // % chance for a chest
+    TRAP_CHANCE         : s32 = 200; // Trap density (higher = more traps)
 }
 
 // Default constants for standard dungeon
 DEFAULT_CON :: DungeonConstants.{};
+
+// Apply dungeon definition constants to override defaults.
+// Maps CON_* keys from RuntimeDungeon to DungeonConstants fields.
+// Resource references (is_ref=true) are logged but deferred until terrain/region
+// systems can resolve them.
+apply_dungeon_constants :: (con: *DungeonConstants, dungeon: *RuntimeDungeon) {
+    for dc: dungeon.constants {
+        if dc.is_ref {
+            // Resource references (terrain names, region names) need resolution
+            // through the terrain registry - handled separately
+            continue;
+        }
+
+        if dc.key == {
+            case CON_LEVEL_SIZEX;           con.LEVEL_SIZEX = dc.value;
+            case CON_LEVEL_SIZEY;           con.LEVEL_SIZEY = dc.value;
+            case CON_MAX_STREAMER_WIDTH;    con.MAX_STREAMER_WIDTH = dc.value;
+            case CON_MIN_STREAMERS;         con.MIN_STREAMERS = dc.value;
+            case CON_MAX_STREAMERS;         con.MAX_STREAMERS = dc.value;
+            case CON_REDUCE_CHASM_CHANCE;   con.REDUCE_CHASM_CHANCE = dc.value;
+            case CON_MIN_STAIRS;            con.MIN_STAIRS = dc.value;
+            case CON_MAX_STAIRS;            con.MAX_STAIRS = dc.value;
+            case CON_ROOM_MINX;             con.ROOM_MINX = dc.value;
+            case CON_ROOM_MAXX;             con.ROOM_MAXX = dc.value;
+            case CON_ROOM_MINY;             con.ROOM_MINY = dc.value;
+            case CON_ROOM_MAXY;             con.ROOM_MAXY = dc.value;
+            case CON_TURN_CHANCE;           con.TURN_CHANCE = dc.value;
+            case CON_STUBBORN_CORRIDOR;     con.STUBBORN_CORRIDOR = dc.value;
+            case CON_SEGMENT_MINLEN;        con.SEGMENT_MINLEN = dc.value;
+            case CON_SEGMENT_MAXLEN;        con.SEGMENT_MAXLEN = dc.value;
+            case CON_STREAMER_CHANCE;       con.STREAMER_CHANCE = dc.value;
+            case CON_DUN_DEPTH;             con.DUN_DEPTH = dc.value;
+            case CON_INITIAL_CR;            con.INITIAL_CR = dc.value;
+            case CON_MIN_CHASM_DEPTH;       con.MIN_CHASM_DEPTH = dc.value;
+            case CON_MIN_RIVER_DEPTH;       con.MIN_RIVER_DEPTH = dc.value;
+            case CON_TREASURE_CHANCE;       con.TREASURE_CHANCE = dc.value;
+            case CON_CHEST_CHANCE;          con.CHEST_CHANCE = dc.value;
+            case CON_TRAP_CHANCE;           con.TRAP_CHANCE = dc.value;
+            case CON_MIN_VAULT_DEPTH;       con.MIN_VAULT_DEPTH = dc.value;
+            case CON_ROOM_LIT_CHANCE;       con.ROOM_LIT_CHANCE = dc.value;
+        }
+    }
+}
 
 // Per-cell generation info (matches LocationInfo temp fields in original)
 // These are temporary flags used during generation, then cleared
@@ -401,7 +451,7 @@ gen_state_init :: (gs: *GenState, con: DungeonConstants = DEFAULT_CON, depth: s3
 
     // Initialize weighted selection (uses baked regions if available)
     init_dungeon_weights(*gs.dungeon_weights);
-    init_selection_state(*gs.selection, *gs.dungeon_weights, depth);
+    init_selection_state(*gs.selection, *gs.dungeon_weights, depth, gs.con.MIN_VAULT_DEPTH);
     gs.current_region = null;
 
     // Resolve terrain references for all regions
@@ -4562,7 +4612,7 @@ place_down_stairs :: (m: *GenMap, gs: *GenState, up_stairs: [] StairPos, depth: 
 
 // Main generation function - matches Map::Generate structure
 // Extended to support multi-level generation with stair continuity
-generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[], depth: s32 = 1, max_depth: s32 = 10, above_map: *GenMap = null) -> down_stairs: [..] StairPos {
+generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[], depth: s32 = 1, max_depth: s32 = 10, above_map: *GenMap = null, dungeon_name: string = "") -> down_stairs: [..] StairPos {
     // Initialize RNG
     random_init(seed);
 
@@ -4570,9 +4620,18 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
     map_init(m);
     m.depth = depth;
 
+    // Build dungeon constants: start with defaults, then apply dungeon definition overrides
+    con := DEFAULT_CON;
+    if dungeon_name.count > 0 {
+        dungeon_def := find_dungeon(dungeon_name);
+        if dungeon_def != null {
+            apply_dungeon_constants(*con, dungeon_def);
+        }
+    }
+
     // Initialize generation state
     gs: GenState;
-    gen_state_init(*gs, depth = depth);
+    gen_state_init(*gs, con, depth = depth);
 
     // Step 1: Fill with rock, edges with wall
     for y: 0..m.height-1 {

@@ -142,7 +142,7 @@ SelectionState :: struct {
 // Initialize selection state from dungeon weights
 // ============================================================================
 
-init_selection_state :: (state: *SelectionState, weights: *DungeonWeights, depth: s32) {
+init_selection_state :: (state: *SelectionState, weights: *DungeonWeights, depth: s32, min_vault_depth: s32 = 5) {
     // Copy room type weights
     state.rm_count = weights.rm_count;
     for i: 0..weights.rm_count-1 {
@@ -164,7 +164,7 @@ init_selection_state :: (state: *SelectionState, weights: *DungeonWeights, depth
 
     // Set depth
     state.depth_cr = depth;
-    state.min_vault_depth = 4;  // Vaults appear at depth 4+
+    state.min_vault_depth = min_vault_depth;
 }
 
 // Reset all exhausted weights back to original values

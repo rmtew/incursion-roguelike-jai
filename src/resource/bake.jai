@@ -11,7 +11,8 @@
 
 // Parse a single .irh file and collect resources
 parse_resource_file :: (path: string, monsters: *[..] RMonster, items: *[..] RItem,
-                        terrains: *[..] RuntimeTerrain, regions: *[..] RuntimeRegion) -> bool {
+                        terrains: *[..] RuntimeTerrain, regions: *[..] RuntimeRegion,
+                        dungeons: *[..] RuntimeDungeon = null) -> bool {
     content, success := read_entire_file(path);
     if !success {
         print("Failed to read resource file: %\n", path);
@@ -56,6 +57,14 @@ parse_resource_file :: (path: string, monsters: *[..] RMonster, items: *[..] RIt
     for region: parser.regions {
         if region.name.count > 0 {
             array_add(regions, convert_region(region));
+        }
+    }
+
+    if dungeons != null {
+        for dun: parser.dungeons {
+            if dun.name.count > 0 {
+                array_add(dungeons, convert_dungeon(dun));
+            }
         }
     }
 
@@ -281,6 +290,35 @@ convert_region :: (pr: ParsedRegion) -> RuntimeRegion {
     return rr;
 }
 
+convert_dungeon :: (pd: ParsedDungeon) -> RuntimeDungeon {
+    rd: RuntimeDungeon;
+    rd.name = copy_string(pd.name);
+
+    // Convert constants
+    constants: [..] DungeonConstant;
+    for pc: pd.constants {
+        dc: DungeonConstant;
+        dc.key = cast(s32) pc.key;
+        dc.value = cast(s32) pc.value;
+        dc.is_ref = pc.is_ref;
+        dc.ref_name = ifx pc.is_ref then copy_string(pc.ref_name) else "";
+        array_add(*constants, dc);
+    }
+    rd.constants = constants;
+
+    // Convert specials
+    specials: [..] DungeonSpecial;
+    for ps: pd.specials {
+        ds: DungeonSpecial;
+        ds.room_ref = copy_string(ps.room_ref);
+        ds.at_level = cast(s32) ps.at_level;
+        array_add(*specials, ds);
+    }
+    rd.specials = specials;
+
+    return rd;
+}
+
 // ============================================================================
 // Bake All Resources
 // ============================================================================
@@ -290,6 +328,7 @@ BakedResources :: struct {
     items: [..] RItem;
     terrains: [..] RuntimeTerrain;
     regions: [..] RuntimeRegion;
+    dungeons: [..] RuntimeDungeon;
 
     // Sorted name arrays for binary search
     monster_names: [..] string;
@@ -313,7 +352,8 @@ bake_all_resources :: () -> BakedResources {
 
     for file: files {
         parse_resource_file(file, *result.monsters, *result.items,
-                           *result.terrains, *result.regions);
+                           *result.terrains, *result.regions,
+                           *result.dungeons);
     }
 
     // Sort by name for binary search
@@ -381,6 +421,7 @@ init_resource_db :: () {
     BAKED_DB.items = baked.items;
     BAKED_DB.terrains = baked.terrains;
     BAKED_DB.regions = baked.regions;
+    BAKED_DB.dungeons = baked.dungeons;
     BAKED_DB.monster_names = baked.monster_names;
     BAKED_DB.item_names = baked.item_names;
     BAKED_DB.terrain_names = baked.terrain_names;
@@ -394,4 +435,17 @@ get_resource_db :: () -> *ResourceDB {
 // Get baked regions array (for dungeon generation)
 get_baked_regions :: () -> [] RuntimeRegion {
     return BAKED_DB.regions;
+}
+
+// Get baked dungeons array
+get_baked_dungeons :: () -> [] RuntimeDungeon {
+    return BAKED_DB.dungeons;
+}
+
+// Find dungeon definition by name
+find_dungeon :: (name: string) -> *RuntimeDungeon {
+    for *dun: BAKED_DB.dungeons {
+        if dun.name == name return dun;
+    }
+    return null;
 }

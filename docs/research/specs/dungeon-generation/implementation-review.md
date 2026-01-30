@@ -10,14 +10,14 @@ This document compares the existing Jai implementation in `src/dungeon/makelev.j
 
 | Step | Spec (MakeLev.cpp) | Implementation (makelev.jai) | Status |
 |------|-------------------|------------------------------|--------|
-| 1. Initialize | Fill with TERRAIN_ROCK, edge with TERRAIN_MAPEDGE, load constants | Fill with ROCK, edge with WALL | PARTIAL |
+| 1. Initialize | Fill with TERRAIN_ROCK, edge with TERRAIN_MAPEDGE, load constants | Fill with ROCK, edge with WALL; dungeon constants loaded from .irh | PARTIAL |
 | 2. Streamers | MIN_STREAMERS to MAX_STREAMERS, weighted selection, chasm propagation | MIN_STREAMERS to MAX_STREAMERS loop, depth restrictions, type reuse, chasm propagation | MATCHES |
-| 3. Special Rooms | AN_DUNSPEC annotations, predefined maps at specific depths | Hardcoded VAULTS array, simpler selection | DIFFERS |
-| 4. Draw Panels | Weighted room type + region selection, 200 tries max | Weighted selection implemented, regions optional | PARTIAL |
+| 3. Special Rooms | AN_DUNSPEC annotations, predefined maps at specific depths | DungeonSpecials loaded from .irh; VAULTS fallback for RM_SHAPED | PARTIAL |
+| 4. Draw Panels | Weighted room type + region selection, 200 tries max | Weighted selection with region filtering, 200 tries max | MATCHES |
 | 5. Connect Panels | Edge tiles, closest pairs, TT_DIRECT\|TT_WANDER tunnels | connect_panels() with edge tiles + closest pairs | MATCHES |
 | 5b. Fix-Up | 26 trials, 3 regions/trial, per-region best pairs | fixup_tunneling() with multi-region + diagonal dist | MATCHES |
 | 2b. Chasm Propagation | Copy chasms from above level, 50% narrow chance | Step 2b with REDUCE_CHASM_CHANCE | MATCHES |
-| 6. Place Stairs | Up-stairs at Above coordinates, MIN_STAIRS to MAX_STAIRS down | Simple first/last room placement | DIFFERS |
+| 6. Place Stairs | Up-stairs at Above coordinates, MIN_STAIRS to MAX_STAIRS down | place_up_stairs() + place_down_stairs() with MIN/MAX_STAIRS, region avoidance | MATCHES |
 | 7. Deallocation | Free FloodArray, EmptyArray | Not needed (temp allocator) | N/A |
 | 9. Skylight Marking | Tiles below above-level chasms: cyan tint, always lit | Step 9 with is_skylight + lit flags | MATCHES |
 
@@ -92,10 +92,10 @@ This document compares the existing Jai implementation in `src/dungeon/makelev.j
 | Map edge protection | Returns if edge unless Force or PRIO_MAX | Edge filled with WALL at PRIO_MAX | MATCHES |
 | Open tile tracking | OpenX[]/OpenY[] for corridor endpoints | open_x[]/open_y[] arrays | MATCHES |
 | WriteLifeCave | LIFE_PERCENT=45, 20 iterations, 5+/3- rule | LIFE_PERCENT=45, 20 iterations | MATCHES |
-| WriteStreamer | Rivers from edge, chasms min width 4 | write_streamer() | PARTIAL |
+| WriteStreamer | Rivers from edge, chasms min width 4 | write_streamer() with depth restrictions, width, deep terrain | MATCHES |
 | Deep terrain conversion | Shallow→deep when surrounded (water, lava, brimstone) | convert_deep_terrain() (water, lava) | MATCHES |
 | Skylight marking | Tiles below chasms: cyan tint, always lit | is_skylight + renderer override | MATCHES |
-| Region terrain refs | Floor/Wall/Door from region definition | Not using region terrain | MISSING |
+| Region terrain refs | Floor/Wall/Door from region definition | get_region_floor/wall() + write_at_with_terrain() in all room types | MATCHES |
 
 ### Priority System
 
@@ -171,19 +171,19 @@ PRIO_MAX = 120
 
 | Aspect | Spec | Implementation | Status |
 |--------|------|----------------|--------|
-| TRegion structure | Walls/Floor/Door refs, RoomTypes mask | RuntimeRegion struct | PARTIAL |
-| RF_* flags | 27 flags defined | 12 flags defined | PARTIAL |
-| Room region selection | Filter by RoomTypes, Depth, uniqueness | select_region() | MATCHES |
+| TRegion structure | Walls/Floor/Door refs, RoomTypes mask | RuntimeRegion with floor_ref/wall_ref/door_ref, room_types bitmask | MATCHES |
+| RF_* flags | 27 flags defined | 23 flags defined (bitmask form) | PARTIAL |
+| Room region selection | Filter by RoomTypes, Depth, uniqueness | select_region() with depth, vault depth, uniqueness | MATCHES |
 | Corridor region selection | CorridorWeights, RF_STAPLE=16 | select_corridor() with build_corridor_weights() | MATCHES |
-| Weight list generation | ROOM_WEIGHTS, CORRIDOR_WEIGHTS | Hardcoded defaults | DIFFERS |
+| Weight list generation | ROOM_WEIGHTS, CORRIDOR_WEIGHTS | DEFAULT_RM_WEIGHTS + DungeonWeights | MATCHES |
 | Grid processing | WriteMap with tile definitions, 50% flip | write_shaped_from_region(): terrain chars + flip; Tiles section deferred | PARTIAL |
-| Region terrain application | Floor/Wall/Door from region definition | Not applying region terrain | MISSING |
+| Region terrain application | Floor/Wall/Door from region definition | get_region_floor/wall() used in all room types + corridors | MATCHES |
 
-### Missing RF_* Flags
+### RF_* Flags Status
 
-Implemented: RF_RIVER, RF_CHASM, RF_CORRIDOR, RF_ROOM, RF_VAULT, RF_STAPLE, RF_NOGEN, RF_RAINBOW, RF_NEVER_LIT, RF_CENTER_ENC, RF_ODD_WIDTH, RF_ODD_HEIGHT
+Defined (23): RF_CORRIDOR, RF_VAULT, RF_ROOM, RF_NO_MON, RF_NO_TRAP, RF_NO_JUNK, RF_NO_TREA, RF_XTRA_MON, RF_XTRA_TRAP, RF_XTRA_JUNK, RF_XTRA_TREA, RF_NOGEN, RF_STREAMER, RF_ROCKTYPE, RF_CHASM, RF_RIVER, RF_RAINBOW, RF_ALWAYS_LIT, RF_NEVER_LIT, RF_STAPLE, RF_ODD_WIDTH, RF_ODD_HEIGHT, RF_CENTER_ENC
 
-Missing: RF_ROCKTYPE, RF_CAVE, RF_AUTO, RF_OPT_DIM, RF_VAULT, RF_NOMONSTER, RF_NO_CEILING, RF_KNOWN, RF_SHOWNAME, RF_DECAY, RF_OUTDOOR, RF_NOBUILD, RF_SHADOWLAND, RF_NOFLOOR
+Not defined (4): RF_CAVE (3), RF_AUTO (13), RF_OPT_DIM (14), RF_OUTDOOR (21)
 
 ## Edge Cases Comparison
 
@@ -193,7 +193,7 @@ Missing: RF_ROCKTYPE, RF_CAVE, RF_AUTO, RF_OPT_DIM, RF_VAULT, RF_NOMONSTER, RF_N
 | Region exhaustion (second) | Fatal error | Returns RM_NORMAL | DIFFERS |
 | Room type exhaustion | Disable type, retry | rm_weights = -1 | MATCHES |
 | 200 room tries | Log error, continue | Breaks loop | DIFFERS |
-| Stair placement (500 tries) | Skip stair | Not applicable (simple placement) | N/A |
+| Stair placement (500 tries) | Skip stair | 500 tries per stair, graceful skip | MATCHES |
 | Connectivity (26 trials) | Accept disconnected | MAX_TRIALS = 26 | MATCHES |
 | Map edge write | Silent skip | PRIO_MAX protection | MATCHES |
 | Corridor at edge | Force turn, hard clamp | Edge clamping every iteration | MATCHES |
@@ -233,9 +233,11 @@ Missing: RF_ROCKTYPE, RF_CAVE, RF_AUTO, RF_OPT_DIM, RF_VAULT, RF_NOMONSTER, RF_N
 **Phase 1 COMPLETE** - Dungeons are now playable with stairs, traps, monsters, and items.
 
 ### Phase 2: Visual Variety
-1. Implement region terrain application
-2. Add RM_SHAPED for predefined rooms
-3. Implement corridor regions
+1. ~~Implement region terrain application~~ **DONE** (all room types use get_region_floor/wall)
+2. ~~Add RM_SHAPED for predefined rooms~~ **DONE** (region grid + VAULTS fallback)
+3. ~~Implement corridor regions~~ **DONE** (Gap 17)
+
+**Phase 2 COMPLETE** - Rooms and corridors have themed terrain from regions.
 
 ### Phase 3: Full Spec Compliance
 1. ~~Fix priority values to match spec~~ **DONE (2026-01-28)**
