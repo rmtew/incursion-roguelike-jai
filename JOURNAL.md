@@ -2306,3 +2306,50 @@ Fully rewrote `docs/research/correctness-research/13-skills-feats.md` with compl
 - **Level advancement**: Full flow with alignment validation, HP/mana rolling options, feat granting schedule (every 3rd level + bonus at 1st)
 - **XP system**: Base XP by CR table, 20-element CR-difference scale, slow advancement table, multiclass penalty rules, kill sharing
 - **Studies system**: 8 study types mapping feats to class ability progression
+
+## 2026-01-30: Game Loop Implementation
+
+### Overview
+Added a minimal game loop layer between the dungeon subsystem and frontends. This enables AI-driven headless testing, human GUI play, and deterministic command logs for replay/regression testing.
+
+### Architecture
+New `src/game/` module with four files:
+- **`state.jai`** — `GameState`, `Action` enum (NONE, MOVE_N/S/E/W/NE/NW/SE/SW, WAIT, OPEN_DOOR, CLOSE_DOOR), `ActionResult`, conversion helpers
+- **`hash.jai`** — FNV-1a 64-bit state hashing for determinism verification. Hashes seed, turn, depth, player position, all tiles, door states, monster/item positions.
+- **`loop.jai`** — `init_game()`, `free_game()`, `do_action()`, movement with auto-open door (matching Incursion behavior), turn advancement with FOV recalculation
+- **`log.jai`** — Command log write/read/parse. Text format with SEED/VERSION/DEPTH header, TURN action lines, CHECK checkpoint lines with hash.
+
+### Key Design Decisions
+- **GameState owns its own MT19937** — Isolated from the global dungeon generation RNG to preserve determinism
+- **Heap allocation required** — GameState contains GenMap (~300KB fixed arrays), causes stack overflow if stack-allocated. All test code uses `New(GameState)`.
+- **Player placement searches outward** — Room center may have a pillar (castle rooms), so `game_init_player_position` searches outward from center for nearest passable tile
+- **Auto-open doors on walk** — Walking into a closed door opens it in one action (one logged MOVE_N, not two actions), matching Incursion. Locked doors block with message.
+- **`game_can_move_to` vs `terrain_passable`** — New function allows floor, corridor, open doors, water, stairs, rubble. Closed doors handled separately in `do_move` (auto-open).
+
+### Frontend Changes
+- **`tools/dungeon_test.jai`** — Rewritten to use `GameState` + `do_action()`. Status line shows turn count. L key toggles command log recording.
+- **`tools/headless.jai`** — New headless test harness. Runs action sequence, prints state/hash per turn, writes log file, verifies determinism.
+- **`tools/replay.jai`** — New replay frontend. Reads command log, replays actions, supports `--verify` (checkpoint hash validation) and `--verbose` flags.
+
+### Tests
+Added `test_game_loop()` to `src/tests.jai` (8 test blocks):
+- Init with seed, verify player in bounds and on passable terrain
+- Movement succeeds from room center
+- Same seed → same hash (determinism)
+- Same seed + same actions → same final hash
+- Wait advances turn
+- `action_to_string`/`string_to_action` roundtrip for all 12 actions
+- Hash changes when state changes
+- Different seeds → different hashes
+- Log write/parse roundtrip with checkpoint
+
+### Verification Results
+- **Unit tests**: 217 total, 213 passed, 4 failed (pre-existing mon1-4 parsing). All new game loop tests pass.
+- **Headless**: Runs 13 actions, determinism check passes (hash matches across runs)
+- **Replay**: Reads headless.log, replays all 13 actions, checkpoint verification passes
+- **dungeon_test.jai**: Compiles and builds successfully with GameState integration
+
+### Bug Fixes During Implementation
+- **`starts_with` name collision** — Jai's Basic module exports `starts_with`, conflicting with local helper. Renamed to `log_starts_with`.
+- **Bitmask negation** — `~DF_OPEN` produces a large s64 constant that doesn't fit in u8. Fixed with `xx,no_check ~DF_OPEN`.
+- **Pillar at room center** — Seed 42 places a castle room whose center has a pillar. Fixed `game_init_player_position` to search outward from center.

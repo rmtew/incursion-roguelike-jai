@@ -21,6 +21,8 @@
   - [x] Baked resources integrated with dungeon viewer (2026-01-28)
   - [ ] Full end-to-end gameplay test
 
+- [x] Game Loop - GameState, Actions, Log, Hash, headless/replay tools (2026-01-30)
+
 ### Not Started
 
 ## Dungeon Generator Improvements Needed
@@ -113,7 +115,7 @@
 ### Future Work
 - Event handler code translation (major effort)
 - Resource linking (references between resources)
-- Game loop integration
+- ~~Game loop integration~~ (done 2026-01-30)
 - Actual game functionality
 - **Design annotation pass** - Late in development, review original Incursion source code and annotate our code with design-related comments explaining *why* things work the way they do. Future developers would find these historical/architectural insights valuable.
 

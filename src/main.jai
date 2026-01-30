@@ -40,6 +40,12 @@
 #load "dungeon/render.jai";
 #load "dungeon/visibility.jai";
 
+// Load game loop
+#load "game/state.jai";
+#load "game/hash.jai";
+#load "game/loop.jai";
+#load "game/log.jai";
+
 // Load tests
 #load "tests.jai";
 

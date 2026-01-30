@@ -70,6 +70,7 @@ run_all_tests :: () {
     test_parser();
     test_real_irh_files();
     test_resource_baking();
+    test_game_loop();
 
     test_summary();
 }
@@ -937,4 +938,189 @@ test_resource_baking :: () {
     if extended_glyph_found {
         print("    Extended glyph codes (256+) preserved: YES\n");
     }
+}
+
+// Game loop tests
+// NOTE: GameState is large (~300KB due to GenMap fixed arrays) so we heap-allocate.
+test_game_loop :: () {
+    test_section("Game Loop Tests");
+
+    // Init game with seed, verify player in bounds
+    {
+        gs := New(GameState);
+        defer { free_game(gs); free(gs); }
+        init_game(gs, 42);
+        test_assert(gs.initialized, "game initialized");
+        test_assert(gs.player_x >= 0 && gs.player_x < gs.dungeon.width, "player x in bounds");
+        test_assert(gs.player_y >= 0 && gs.player_y < gs.dungeon.height, "player y in bounds");
+        test_assert_eq(gs.turn, 0, "initial turn is 0");
+        test_assert_eq(cast(s32)gs.seed, 42, "seed stored");
+        test_assert_eq(gs.depth, 1, "default depth 1");
+
+        // Verify player is on passable terrain
+        test_assert(game_can_move_to(*gs.dungeon, gs.player_x, gs.player_y), "player on passable terrain");
+    }
+
+    // Movement succeeds from room center
+    {
+        gs := New(GameState);
+        defer { free_game(gs); free(gs); }
+        init_game(gs, 42);
+
+        start_x := gs.player_x;
+        start_y := gs.player_y;
+        moved := false;
+
+        move_actions :: Action.[.MOVE_N, .MOVE_S, .MOVE_E, .MOVE_W];
+        for a: move_actions {
+            dx, dy := action_to_delta(a);
+            nx := start_x + dx;
+            ny := start_y + dy;
+            if game_can_move_to(*gs.dungeon, nx, ny) {
+                result := do_action(gs, a);
+                test_assert(result.success, "movement succeeds");
+                test_assert(result.turn_advanced, "turn advanced after move");
+                test_assert_eq(gs.turn, 1, "turn is 1 after first move");
+                moved = true;
+                break;
+            }
+        }
+        test_assert(moved, "at least one direction movable from room center");
+    }
+
+    // Same seed produces same hash (determinism)
+    {
+        gs1 := New(GameState);
+        defer { free_game(gs1); free(gs1); }
+        init_game(gs1, 99);
+        hash1 := hash_state(gs1);
+
+        gs2 := New(GameState);
+        defer { free_game(gs2); free(gs2); }
+        init_game(gs2, 99);
+        hash2 := hash_state(gs2);
+
+        test_assert(hash1 == hash2, "same seed same hash");
+        test_assert(hash1 != 0, "hash is non-zero");
+    }
+
+    // Same seed + same actions = same final hash
+    {
+        gs1 := New(GameState);
+        defer { free_game(gs1); free(gs1); }
+        init_game(gs1, 77);
+        do_action(gs1, .WAIT);
+        do_action(gs1, .WAIT);
+        hash1 := hash_state(gs1);
+
+        gs2 := New(GameState);
+        defer { free_game(gs2); free(gs2); }
+        init_game(gs2, 77);
+        do_action(gs2, .WAIT);
+        do_action(gs2, .WAIT);
+        hash2 := hash_state(gs2);
+
+        test_assert(hash1 == hash2, "same seed same actions same hash");
+    }
+
+    // Wait advances turn
+    {
+        gs := New(GameState);
+        defer { free_game(gs); free(gs); }
+        init_game(gs, 42);
+        test_assert_eq(gs.turn, 0, "turn starts at 0");
+
+        result := do_action(gs, .WAIT);
+        test_assert(result.success, "wait succeeds");
+        test_assert(result.turn_advanced, "wait advances turn");
+        test_assert_eq(gs.turn, 1, "turn is 1 after wait");
+
+        result2 := do_action(gs, .WAIT);
+        test_assert_eq(gs.turn, 2, "turn is 2 after second wait");
+    }
+
+    // action_to_string / string_to_action roundtrip
+    {
+        all_actions :: Action.[.NONE, .MOVE_N, .MOVE_S, .MOVE_E, .MOVE_W,
+                               .MOVE_NE, .MOVE_NW, .MOVE_SE, .MOVE_SW,
+                               .WAIT, .OPEN_DOOR, .CLOSE_DOOR];
+        all_ok := true;
+        for a: all_actions {
+            s := action_to_string(a);
+            back, ok := string_to_action(s);
+            if !ok || back != a {
+                all_ok = false;
+                break;
+            }
+        }
+        test_assert(all_ok, "action string roundtrip");
+    }
+
+    // Hash changes when state changes
+    {
+        gs := New(GameState);
+        defer { free_game(gs); free(gs); }
+        init_game(gs, 42);
+        hash_before := hash_state(gs);
+
+        do_action(gs, .WAIT);
+        hash_after := hash_state(gs);
+
+        test_assert(hash_before != hash_after, "hash changes after wait");
+    }
+
+    // Different seeds produce different hashes
+    {
+        gs1 := New(GameState);
+        defer { free_game(gs1); free(gs1); }
+        init_game(gs1, 42);
+        hash1 := hash_state(gs1);
+
+        gs2 := New(GameState);
+        defer { free_game(gs2); free(gs2); }
+        init_game(gs2, 43);
+        hash2 := hash_state(gs2);
+
+        test_assert(hash1 != hash2, "different seeds different hashes");
+    }
+
+    // Log write/parse roundtrip
+    {
+        builder: String_Builder;
+        write_log_header(*builder, 12345, 1);
+        write_log_action(*builder, 1, .MOVE_N);
+        write_log_action(*builder, 2, .MOVE_E);
+        write_log_action(*builder, 3, .WAIT);
+        write_log_action(*builder, 4, .OPEN_DOOR, .EAST);
+        write_log_checkpoint(*builder, 6, 3, 4, 0x00000a83f2c01234);
+
+        log_text := builder_to_string(*builder);
+        log, ok := parse_command_log(log_text);
+
+        test_assert(ok, "log parse ok");
+        test_assert_eq(cast(s32)log.seed, 12345, "log seed");
+        test_assert_eq(log.version, LOG_VERSION, "log version");
+        test_assert_eq(log.depth, 1, "log depth");
+        test_assert_eq(cast(s32)log.entries.count, 5, "log entry count");
+
+        if log.entries.count >= 4 {
+            test_assert_eq(log.entries[0].turn, 1, "entry 0 turn");
+            test_assert(log.entries[0].action == .MOVE_N, "entry 0 action");
+            test_assert(log.entries[1].action == .MOVE_E, "entry 1 action");
+            test_assert(log.entries[2].action == .WAIT, "entry 2 action");
+            test_assert(log.entries[3].action == .OPEN_DOOR, "entry 3 action");
+        }
+
+        if log.entries.count >= 5 {
+            test_assert(log.entries[4].type == .CHECKPOINT, "entry 4 is checkpoint");
+            test_assert_eq(log.entries[4].check_x, 6, "checkpoint x");
+            test_assert_eq(log.entries[4].check_y, 3, "checkpoint y");
+            test_assert_eq(log.entries[4].check_turn, 4, "checkpoint turn");
+        }
+
+        free_command_log(*log);
+        free_buffers(*builder);
+    }
+
+    print("    Game loop tests complete\n");
 }
