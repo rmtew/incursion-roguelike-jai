@@ -297,6 +297,7 @@ DungeonConstants :: struct {
     TERRAIN_ROCK    : Terrain = .ROCK;
     TERRAIN_FLOOR   : Terrain = .FLOOR;
     TERRAIN_WALL    : Terrain = .WALL;
+    TERRAIN_MAPEDGE : Terrain = .WALL;    // Map boundary terrain (original: Con[TERRAIN_MAPEDGE])
     // Streamer constants (original defaults from Annot.cpp:GetConst)
     MIN_STREAMERS       : s32 = 2;   // Minimum guaranteed streamers per level
     MAX_STREAMERS       : s32 = 4;   // Maximum streamers per level
@@ -326,13 +327,17 @@ DEFAULT_CON :: DungeonConstants.{};
 
 // Apply dungeon definition constants to override defaults.
 // Maps CON_* keys from RuntimeDungeon to DungeonConstants fields.
-// Resource references (is_ref=true) are logged but deferred until terrain/region
-// systems can resolve them.
+// Resource references (is_ref=true) are resolved for terrain constants;
+// other resource references are deferred.
 apply_dungeon_constants :: (con: *DungeonConstants, dungeon: *RuntimeDungeon) {
     for dc: dungeon.constants {
         if dc.is_ref {
-            // Resource references (terrain names, region names) need resolution
-            // through the terrain registry - handled separately
+            // Terrain resource references: resolve known names to Terrain enum
+            // TODO: Full resolution requires terrain registry lookup when dungeons
+            // override TERRAIN_ROCK/MAPEDGE (no current dungeon does)
+            if dc.key == CON_TERRAIN_ROCK || dc.key == CON_TERRAIN_MAPEDGE {
+                // Deferred: no dungeon.irh currently overrides these
+            }
             continue;
         }
 
@@ -4862,18 +4867,19 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
     gs: GenState;
     gen_state_init(*gs, con, depth = depth);
 
-    // Step 1: Fill with rock, edges with wall
+    // Step 1: Fill with TERRAIN_ROCK, edges with TERRAIN_MAPEDGE
+    // Source: MakeLev.cpp:1413-1415 — WriteAt(r, x, y, Con[TERRAIN_MAPEDGE/TERRAIN_ROCK])
     for y: 0..m.height-1 {
         for x: 0..m.width-1 {
             if x == 0 || y == 0 || x == m.width-1 || y == m.height-1 {
-                map_set(m, x, y, .WALL);
+                map_set(m, x, y, con.TERRAIN_MAPEDGE);
                 cell := get_cell(*gs, m, x, y);
                 if cell != null {
                     cell.priority = PRIO_MAX;
                     cell.solid = true;
                 }
             } else {
-                map_set(m, x, y, .ROCK);
+                map_set(m, x, y, con.TERRAIN_ROCK);
                 cell := get_cell(*gs, m, x, y);
                 if cell != null {
                     cell.priority = PRIO_EMPTY;

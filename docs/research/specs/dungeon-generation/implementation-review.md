@@ -10,7 +10,7 @@ This document compares the existing Jai implementation in `src/dungeon/makelev.j
 
 | Step | Spec (MakeLev.cpp) | Implementation (makelev.jai) | Status |
 |------|-------------------|------------------------------|--------|
-| 1. Initialize | Fill with TERRAIN_ROCK, edge with TERRAIN_MAPEDGE, load constants | Fill with ROCK, edge with WALL; dungeon constants loaded from .irh | PARTIAL |
+| 1. Initialize | Fill with TERRAIN_ROCK, edge with TERRAIN_MAPEDGE, load constants | Fill with con.TERRAIN_ROCK/TERRAIN_MAPEDGE; dungeon constants loaded from .irh | MATCHES |
 | 2. Streamers | MIN_STREAMERS to MAX_STREAMERS, weighted selection, chasm propagation | MIN_STREAMERS to MAX_STREAMERS loop, depth restrictions, type reuse, chasm propagation | MATCHES |
 | 3. Special Rooms | AN_DUNSPEC annotations, predefined maps at specific depths | place_dungeon_specials(): grid + non-grid placement per depth | MATCHES |
 | 4. Draw Panels | Weighted room type + region selection, 200 tries max | Weighted selection with region filtering, 200 tries max | MATCHES |
@@ -172,7 +172,7 @@ PRIO_MAX = 120
 | Aspect | Spec | Implementation | Status |
 |--------|------|----------------|--------|
 | TRegion structure | Walls/Floor/Door refs, RoomTypes mask | RuntimeRegion with floor_ref/wall_ref/door_ref, room_types bitmask | MATCHES |
-| RF_* flags | 27 flags defined | 23 flags defined (bitmask form) | PARTIAL |
+| RF_* flags | 27 flags defined | 23 flags defined; 10 used in generation all present | MATCHES |
 | Room region selection | Filter by RoomTypes, Depth, uniqueness | select_region() with depth, vault depth, uniqueness | MATCHES |
 | Corridor region selection | CorridorWeights, RF_STAPLE=16 | select_corridor() with build_corridor_weights() | MATCHES |
 | Weight list generation | ROOM_WEIGHTS, CORRIDOR_WEIGHTS | DEFAULT_RM_WEIGHTS + DungeonWeights | MATCHES |
@@ -183,7 +183,9 @@ PRIO_MAX = 120
 
 Defined (23): RF_CORRIDOR, RF_VAULT, RF_ROOM, RF_NO_MON, RF_NO_TRAP, RF_NO_JUNK, RF_NO_TREA, RF_XTRA_MON, RF_XTRA_TRAP, RF_XTRA_JUNK, RF_XTRA_TREA, RF_NOGEN, RF_STREAMER, RF_ROCKTYPE, RF_CHASM, RF_RIVER, RF_RAINBOW, RF_ALWAYS_LIT, RF_NEVER_LIT, RF_STAPLE, RF_ODD_WIDTH, RF_ODD_HEIGHT, RF_CENTER_ENC
 
-Not defined (4): RF_CAVE (3), RF_AUTO (13), RF_OPT_DIM (14), RF_OUTDOOR (21)
+Not defined (4): RF_WARN (3), RF_TRAPMAZE (13), RF_XTRA_CORP (14), RF_RAINBOW_W (21)
+- None of these 4 flags are checked in MakeLev.cpp — zero dungeon generation impact
+- All 10 flags actually checked during generation (RF_CORRIDOR, RF_VAULT, RF_CHASM, RF_RIVER, RF_ALWAYS_LIT, RF_NEVER_LIT, RF_ODD_WIDTH, RF_ODD_HEIGHT, RF_STAPLE, RF_CENTER_ENC) are defined and used
 
 ## Edge Cases Comparison
 
@@ -221,7 +223,7 @@ Not defined (4): RF_CAVE (3), RF_AUTO (13), RF_OPT_DIM (14), RF_OUTDOOR (21)
 
 1. ~~**Corridor edge clamping** - Corridors might hit map edge~~ **FIXED**
 2. ~~**Treasure deposits** - Hidden treasures in walls~~ **FIXED**
-3. **RF_* flags** - Many region flags not implemented
+3. ~~**RF_* flags** - Many region flags not implemented~~ **FIXED** (all 10 generation-relevant flags present; 4 unused flags omitted)
 
 ## Recommendations
 
@@ -242,7 +244,7 @@ Not defined (4): RF_CAVE (3), RF_AUTO (13), RF_OPT_DIM (14), RF_OUTDOOR (21)
 ### Phase 3: Full Spec Compliance
 1. ~~Fix priority values to match spec~~ **DONE (2026-01-28)**
 2. ~~Implement missing room types~~ **DONE (2026-01-30)** (RM_RANDTOWN, RM_DESTROYED, RM_GRID, RM_LIFELINK)
-3. Add all RF_* flags
+3. ~~Add all RF_* flags~~ **DONE (2026-01-31)** (all 10 generation-relevant flags; 4 unused omitted)
 4. ~~Implement treasure deposits~~ **DONE (2026-01-28)**
 5. ~~Add corridor edge clamping~~ **DONE (2026-01-28)**
 6. ~~Fix corridor constants (TURN_CHANCE, SEGMENT_MINLEN, SEGMENT_MAXLEN)~~ **DONE (2026-01-30)**

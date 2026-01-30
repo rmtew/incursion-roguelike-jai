@@ -3029,3 +3029,35 @@ Matching original MakeLev.cpp:1494-1602:
 - `build.bat test` compiles cleanly
 - `build.bat game` compiles cleanly
 - 213/217 tests pass (same 4 pre-existing mon1-4.irh parser failures)
+
+## 2026-01-31: Gap 21 — Step 1 Initialize + RF_* Flags Cleanup
+
+### Step 1 Initialize (PARTIAL → MATCHES)
+
+Updated `generate_makelev()` Step 1 to use configurable terrain constants instead of hardcoded enum values:
+- Added `TERRAIN_MAPEDGE: Terrain = .WALL` to `DungeonConstants` struct
+- Step 1 init loop now uses `con.TERRAIN_ROCK` and `con.TERRAIN_MAPEDGE` instead of hardcoded `.ROCK`/`.WALL`
+- Matches original MakeLev.cpp:1413-1415 which uses `Con[TERRAIN_ROCK]` and `Con[TERRAIN_MAPEDGE]`
+- Added TODO in `apply_dungeon_constants` for resource reference resolution (no dungeon currently overrides these)
+
+### RF_* Flags Documentation Correction
+
+The implementation review listed 4 "missing" flags with incorrect names: RF_CAVE(3), RF_AUTO(13), RF_OPT_DIM(14), RF_OUTDOOR(21). Research against the original Defines.h reveals:
+- Index 3 = RF_WARN (not RF_CAVE)
+- Index 13 = RF_TRAPMAZE (not RF_AUTO)
+- Index 14 = RF_XTRA_CORP (not RF_OPT_DIM)
+- Index 21 = RF_RAINBOW_W (not RF_OUTDOOR)
+
+**None of these 4 flags are checked in MakeLev.cpp** — zero dungeon generation impact. All 10 flags that ARE checked during generation (RF_CORRIDOR, RF_VAULT, RF_CHASM, RF_RIVER, RF_ALWAYS_LIT, RF_NEVER_LIT, RF_ODD_WIDTH, RF_ODD_HEIGHT, RF_STAPLE, RF_CENTER_ENC) are already defined and used.
+
+Updated implementation-review.md: Step 1 PARTIAL→MATCHES, RF_* flags PARTIAL→MATCHES, Phase 3 item 3 marked done.
+
+### Files Changed
+
+- **`src/dungeon/makelev.jai`** — Added TERRAIN_MAPEDGE to DungeonConstants, updated Step 1 init, TODO for resource ref resolution
+- **`docs/research/specs/dungeon-generation/implementation-review.md`** — Step 1 MATCHES, RF_* flags corrected and MATCHES
+
+### Verification
+
+- Both targets compile cleanly
+- 213/217 tests pass (same 4 pre-existing failures)
