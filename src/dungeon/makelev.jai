@@ -2149,18 +2149,72 @@ draw_panel :: (m: *GenMap, gs: *GenState, px: s32, py: s32) {
         }
     }
 
-    // Calculate room size
-    sx := con.ROOM_MINX + random(con.ROOM_MAXX - con.ROOM_MINX);
-    sy := con.ROOM_MINY + random(con.ROOM_MAXY - con.ROOM_MINY);
+    // Per-type room size calculation (original MakeLev.cpp:2460-2749)
+    // Each room type has its own sizing formula in the original.
+    sx: s32;
+    sy: s32;
 
-    // For large rooms, make them bigger
-    if r_type == RM_LARGE {
-        sx = min(con.PANEL_SIZEX - 4, sx + 4);
-        sy = min(con.PANEL_SIZEY - 4, sy + 4);
+    // Helper: "large" sizing = max(panel/2, panel - (random(range) + offset))
+    // This fills a large portion of the panel with some random variation.
+    large_size_x :: (con: DungeonConstants, range: s32, offset: s32) -> s32 {
+        return cast(s32)max(con.PANEL_SIZEX / 2, con.PANEL_SIZEX - (random(range) + offset));
+    }
+    large_size_y :: (con: DungeonConstants, range: s32, offset: s32) -> s32 {
+        return cast(s32)max(con.PANEL_SIZEY / 2, con.PANEL_SIZEY - (random(range) + offset));
+    }
+
+    // Default: standard room size
+    sx = con.ROOM_MINX + random(con.ROOM_MAXX - con.ROOM_MINX);
+    sy = con.ROOM_MINY + random(con.ROOM_MAXY - con.ROOM_MINY);
+
+    // Override per type
+    if r_type == {
+        case RM_LARGE;
+            // Original MakeLev.cpp:2490-2492: max(panel/2, panel-(random(8)+2))
+            sx = large_size_x(con, 8, 2);
+            sy = large_size_y(con, 8, 2);
+        case RM_LCIRCLE;
+            // Original MakeLev.cpp:2479-2480: max(panel/2, panel-(random(5)+5))
+            sx = large_size_x(con, 5, 5);
+            sy = large_size_y(con, 5, 5);
+        case RM_CROSS;
+            // Original MakeLev.cpp:2728-2729: max(panel/2, panel-(random(8)+5))
+            sx = large_size_x(con, 8, 5);
+            sy = large_size_y(con, 8, 5);
+        case RM_MAZE;
+            // Original MakeLev.cpp:2502-2503: max(panel/2, panel-(random(8)+2))
+            sx = large_size_x(con, 8, 2);
+            sy = large_size_y(con, 8, 2);
+        case RM_CASTLE; #through;
+        case RM_BUILDING;
+            // Original MakeLev.cpp:2682-2683: max(panel/2, panel-(random(6)+2))
+            sx = large_size_x(con, 6, 2);
+            sy = large_size_y(con, 6, 2);
+        case RM_CHECKER;
+            // Original MakeLev.cpp:2692-2693: ROOM_MIN + random(ROOM_MAX-ROOM_MIN) + 2
+            sx = con.ROOM_MINX + random(con.ROOM_MAXX - con.ROOM_MINX) + 2;
+            sy = con.ROOM_MINY + random(con.ROOM_MAXY - con.ROOM_MINY) + 2;
+        case RM_PILLARS; #through;
+        case RM_GRID;
+            // Original MakeLev.cpp:2705-2706: ROOM_MIN + random(ROOM_MAX-ROOM_MIN) + 3
+            sx = con.ROOM_MINX + random(con.ROOM_MAXX - con.ROOM_MINX) + 3;
+            sy = con.ROOM_MINY + random(con.ROOM_MAXY - con.ROOM_MINY) + 3;
+        case RM_DOUBLE;
+            // Original MakeLev.cpp:2748-2749: ROOM_MIN + random(ROOM_MAX-ROOM_MIN) + 3
+            sx = con.ROOM_MINX + random(con.ROOM_MAXX - con.ROOM_MINX) + 3;
+            sy = con.ROOM_MINY + random(con.ROOM_MAXY - con.ROOM_MINY) + 3;
+        case;
+            // RM_NORMAL, RM_CIRCLE, RM_OCTAGON, etc. use default sizing
     }
 
     // Place room in panel
     r := place_within_panel(panel, sx, sy);
+
+    // For RM_PILLARS/RM_GRID: enforce even dimensions (original MakeLev.cpp:2710-2713)
+    if r_type == RM_PILLARS || r_type == RM_GRID {
+        if (r.x2 - r.x1) % 2 != 0  r.x2 -= 1;
+        if (r.y2 - r.y1) % 2 != 0  r.y2 -= 1;
+    }
 
     // Draw based on room type
     if r_type == {
@@ -2184,9 +2238,7 @@ draw_panel :: (m: *GenMap, gs: *GenState, px: s32, py: s32) {
             write_cross(m, gs, r);
 
         case RM_LIFECAVE;
-            // Lifecave uses most of the panel
-            cave_r := Rect.{panel.x1 + 1, panel.y1 + 1, panel.x2 - 1, panel.y2 - 1};
-            write_lifecave(m, gs, cave_r);
+            write_lifecave(m, gs, panel);
 
         case RM_OVERLAP;
             write_overlap(m, gs, panel);
@@ -2201,65 +2253,41 @@ draw_panel :: (m: *GenMap, gs: *GenState, px: s32, py: s32) {
             write_adjacent(m, gs, panel, use_circles = false, mixed = true);
 
         case RM_PILLARS;
-            // Pillars need larger room to look good
-            pillar_r := Rect.{panel.x1 + 2, panel.y1 + 2, panel.x2 - 2, panel.y2 - 2};
-            write_pillars(m, gs, pillar_r);
+            write_pillars(m, gs, r);
 
         case RM_DOUBLE;
-            // Double needs larger room
-            double_sx := max(sx + 4, 10);
-            double_sy := max(sy + 4, 8);
-            double_r := place_within_panel(panel, double_sx, double_sy);
-            write_double(m, gs, double_r);
+            write_double(m, gs, r);
 
         case RM_MAZE;
-            // Maze fills most of the panel
-            maze_r := Rect.{panel.x1 + 1, panel.y1 + 1, panel.x2 - 1, panel.y2 - 1};
-            write_maze(m, gs, maze_r);
+            write_maze(m, gs, r);
 
         case RM_CHECKER;
-            // Checker needs decent size
-            checker_r := Rect.{panel.x1 + 2, panel.y1 + 2, panel.x2 - 2, panel.y2 - 2};
-            write_checker(m, gs, checker_r);
+            write_checker(m, gs, r);
 
         case RM_DIAMONDS;
-            // Diamonds need large area
-            diamonds_r := Rect.{panel.x1 + 1, panel.y1 + 1, panel.x2 - 1, panel.y2 - 1};
-            write_diamonds(m, gs, diamonds_r);
+            write_diamonds(m, gs, panel);
 
         case RM_CASTLE; #through;
         case RM_BUILDING;
-            // Castle/building fills most of panel
-            castle_r := Rect.{panel.x1 + 2, panel.y1 + 2, panel.x2 - 2, panel.y2 - 2};
-            write_castle(m, gs, castle_r);
+            write_castle(m, gs, r);
 
         case RM_RCAVERN;
-            // Rough cavern fills panel
-            cavern_r := Rect.{panel.x1 + 1, panel.y1 + 1, panel.x2 - 1, panel.y2 - 1};
-            write_rcavern(m, gs, cavern_r);
+            write_rcavern(m, gs, panel);
 
         case RM_DESTROYED;
-            // Collapsed area with rubble
-            destroyed_r := Rect.{panel.x1 + 2, panel.y1 + 2, panel.x2 - 2, panel.y2 - 2};
-            write_destroyed(m, gs, destroyed_r);
+            write_destroyed(m, gs, r);
 
         case RM_GRID;
-            // Room with furnishing grid
-            grid_r := Rect.{panel.x1 + 2, panel.y1 + 2, panel.x2 - 2, panel.y2 - 2};
-            write_grid(m, gs, grid_r);
+            write_grid(m, gs, r);
 
         case RM_LIFELINK;
-            // Linked life caves
             write_lifelink(m, gs, panel);
 
         case RM_SHAPED;
-            // Predefined room from vault/region map
             write_shaped(m, gs, panel, m.depth);
 
         case RM_RANDTOWN;
-            // Random town - grid of small buildings separated by streets
-            town_r := Rect.{panel.x1 + 2, panel.y1 + 2, panel.x2 - 2, panel.y2 - 2};
-            write_randtown(m, gs, town_r);
+            write_randtown(m, gs, r);
 
         case;
             // Default to normal room

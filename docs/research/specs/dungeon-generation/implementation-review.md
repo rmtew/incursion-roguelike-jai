@@ -27,23 +27,23 @@ This document compares the existing Jai implementation in `src/dungeon/makelev.j
 |-----------|---------------|----------------|--------|
 | RM_NOROOM | Mark touched, no room | Returns early after marking touched | MATCHES |
 | RM_NORMAL | WriteRoom (rect + walls) | write_room() | MATCHES |
-| RM_LARGE | Larger WriteRoom (1d4 - panel edge) | sx/sy + 4, capped | PARTIAL |
+| RM_LARGE | Larger WriteRoom (1d4 - panel edge) | max(panel/2, panel-(random(8)+2)) | MATCHES |
 | RM_CROSS | WriteCross (overlapping bars) | write_cross() | MATCHES |
 | RM_OVERLAP | 2-4 overlapping rectangles | write_overlap() | MATCHES |
 | RM_ADJACENT | 4 quadrants sharing center | write_adjacent() | MATCHES |
 | RM_AD_ROUND | Adjacent with circles | write_adjacent(use_circles=true) | MATCHES |
 | RM_AD_MIXED | Adjacent mixed shapes | write_adjacent(mixed=true) | MATCHES |
 | RM_CIRCLE | WriteCircle | write_circle() | MATCHES |
-| RM_LCIRCLE | Large circle variant | Falls through to write_circle() | PARTIAL |
+| RM_LCIRCLE | Large circle variant | max(panel/2, panel-(random(5)+5)) | MATCHES |
 | RM_OCTAGON | WriteOctagon (corners cut) | write_octagon() | MATCHES |
 | RM_DOUBLE | Room within room | write_double() | MATCHES |
-| RM_PILLARS | Room with pillar grid | write_pillars() | PARTIAL |
-| RM_CASTLE | Subdivided building | write_castle() | PARTIAL |
-| RM_CHECKER | Checkerboard pillars | write_checker() | PARTIAL |
+| RM_PILLARS | Room with pillar grid | write_pillars(), +3 size, even dims | MATCHES |
+| RM_CASTLE | Subdivided building | write_castle(), large sizing | MATCHES |
+| RM_CHECKER | Checkerboard pillars | write_checker(), +2 size | MATCHES |
 | RM_BUILDING | Falls to CASTLE | Falls through to write_castle() | MATCHES |
 | RM_LIFECAVE | WriteLifeCave (cellular automata) | write_lifecave() | MATCHES |
 | RM_RCAVERN | Repeated-L rough caverns | write_rcavern() | PARTIAL |
-| RM_MAZE | WriteMaze (recursive backtrack) | write_maze() | PARTIAL |
+| RM_MAZE | WriteMaze (recursive backtrack) | write_maze(), large sizing | MATCHES |
 | RM_DIAMONDS | Grid of diamond squares | write_diamonds() | PARTIAL |
 | RM_SHAPED | Grid-based predefined rooms | NOT IMPLEMENTED | MISSING |
 | RM_LIFELINK | Life w/ linked regions | NOT IMPLEMENTED | MISSING |
@@ -201,7 +201,7 @@ Missing: RF_ROCKTYPE, RF_CAVE, RF_AUTO, RF_OPT_DIM, RF_VAULT, RF_NOMONSTER, RF_N
 
 1. ~~**Population system** - No monsters/items/features generated~~ **FIXED** (full per-panel implementation)
 2. ~~**RM_SHAPED rooms** - Can't render predefined room layouts~~ **FIXED**
-3. **Region terrain** - All rooms look the same (no themed areas)
+3. ~~**Region terrain** - All rooms look the same (no themed areas)~~ **FIXED** (verified working at runtime, Gap 1)
 4. ~~**Trap placement** - Missing hazards~~ **FIXED**
 5. ~~**Stair placement** - Single stair instead of MIN_STAIRS to MAX_STAIRS~~ **FIXED**
 

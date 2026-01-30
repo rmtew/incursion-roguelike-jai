@@ -2452,3 +2452,49 @@ From `Annot.cpp:GetConst` defaults:
 - Compiles cleanly
 - All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)
 - Generated dungeons now have 2-4 streamers per level instead of 0-1
+
+## 2026-01-30: Per-Type Room Sizing (Correctness Gap 6)
+
+### Background
+The original `MakeLev.cpp:DrawPanel` calculates room dimensions differently for each `RM_*` type. The port used a single generic formula (`ROOM_MINX + random(ROOM_MAXX - ROOM_MINX)`) with only `RM_LARGE` getting special treatment. Several room types were undersized or had wrong dimensions.
+
+### Original Per-Type Formulas (from MakeLev.cpp)
+Large-filling rooms use `max(panel/2, panel - (random(range) + offset))`:
+- **RM_LARGE**: `range=8, offset=2` → fills most of panel
+- **RM_LCIRCLE**: `range=5, offset=5` → large circle, less variation
+- **RM_CROSS**: `range=8, offset=5` → large cross shape
+- **RM_MAZE**: `range=8, offset=2` → fills most of panel
+- **RM_CASTLE/RM_BUILDING**: `range=6, offset=2` → large building
+
+Boosted standard rooms:
+- **RM_CHECKER**: standard + 2 → slightly larger for checkerboard pattern
+- **RM_PILLARS/RM_GRID**: standard + 3 → larger for pillar spacing, even dims enforced
+- **RM_DOUBLE**: standard + 3 → room-within-room needs space
+
+### Changes
+
+**`draw_panel()` size calculation** — replaced single generic formula with per-type sizing:
+- Added `large_size_x`/`large_size_y` helpers using the `max(panel/2, panel-(random(range)+offset))` pattern
+- Each room type now gets its own formula matching the original
+- RM_PILLARS/RM_GRID enforce even dimensions after placement (`r.x2 -= 1` if odd width/height)
+
+**Dispatch cleanup** — removed hardcoded panel-inset rects that were workarounds for undersized rooms:
+- RM_PILLARS: was `panel+2` inset → now uses properly sized `r`
+- RM_CHECKER: was `panel+2` inset → now uses properly sized `r`
+- RM_MAZE: was `panel+1` inset → now uses properly sized `r`
+- RM_CASTLE: was `panel+2` inset → now uses properly sized `r`
+- RM_DESTROYED: was `panel+2` inset → now uses properly sized `r`
+- RM_GRID: was `panel+2` inset → now uses properly sized `r`
+- RM_RANDTOWN: was `panel+2` inset → now uses properly sized `r`
+- RM_DOUBLE: was `max(sx+4,10)` re-placement → now uses properly sized `r`
+- Types that legitimately use full panel (RM_LIFECAVE, RM_RCAVERN, RM_DIAMONDS, RM_OVERLAP, RM_ADJACENT variants, RM_LIFELINK, RM_SHAPED) still pass `panel` directly
+
+### Key Fixes
+- **RM_LCIRCLE**: was identical to RM_CIRCLE (NO size adjustment). Now gets proper large size.
+- **RM_CROSS**: was using generic 4-12 size. Now fills most of panel.
+- **RM_CHECKER**: was using panel-inset instead of proper `standard+2` size.
+- **RM_PILLARS/RM_GRID**: now enforce even dimensions for proper pillar/grid alignment.
+
+### Verification
+- Compiles cleanly
+- All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)
