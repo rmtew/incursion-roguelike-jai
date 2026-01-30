@@ -2874,3 +2874,30 @@ In `connect_panels()` and `fixup_tunneling()`, corridor region is selected via `
 
 - All 8 build targets compile cleanly
 - 213/217 tests pass (same 4 pre-existing mon1-4.irh failures)
+
+## 2026-01-30: Correctness Gap 18 — RM_SHAPED Region Grid Support
+
+### Overview
+
+Made `RM_SHAPED` rooms use region grid data from `dungeon.irh` instead of only the hardcoded VAULTS array. The infrastructure was already in place (`RuntimeRegion.has_grid`, `.grid`, `.grid_width`, `.grid_height`) but `write_shaped()` never checked it.
+
+Six regions in `dungeon.irh` specify `RoomTypes: RM_SHAPED` and are eligible for random generation (those without `RF_NOGEN`). These now produce grid-based shaped rooms.
+
+### Changes
+
+**`draw_panel()` sizing override** — Added an `RM_SHAPED` case in the per-type sizing block. When the current region has grid data, uses `grid_width`/`grid_height` directly instead of the default random sizing (which would consume 2 random calls and produce wrong dimensions).
+
+**`write_shaped()` refactored into three functions:**
+- **`write_shaped()`** — dispatcher: checks `gs.current_region.has_grid` to route to region or vault path
+- **`write_shaped_from_region()`** — new function that reads grid string from the region, places within panel via `place_within_panel()`, applies 50% flip on each axis, and maps characters to terrain. Supports `.` (floor), `#` (vault wall), `%` (standard wall at `PRIO_ROOM_WALL`, overwritable by corridors), `+` (door), `~` (water), `^` (lava), `_` (chasm), `>/<` (stairs). Unknown characters default to floor (digits for monsters, letters for features/items deferred).
+- **`write_shaped_from_vault()`** — exact extraction of existing VAULTS logic, no behavioral change
+
+### Files Modified
+
+- **`src/dungeon/makelev.jai`** — RM_SHAPED sizing case in `draw_panel()`, write_shaped refactored into dispatch + region + vault
+- **`docs/research/specs/dungeon-generation/implementation-review.md`** — RM_SHAPED marked as MATCHES, grid processing marked as PARTIAL
+
+### Verification
+
+- All 8 build targets compile cleanly
+- 213/217 tests pass (same 4 pre-existing mon1-4.irh failures)

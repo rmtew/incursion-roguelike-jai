@@ -2094,6 +2094,94 @@ write_lifelink :: (m: *GenMap, gs: *GenState, panel: Rect) {
 // In original: case RM_SHAPED in DrawPanel, uses WriteMap with region's Grid
 // We use the existing VAULTS array for predefined room layouts
 write_shaped :: (m: *GenMap, gs: *GenState, panel: Rect, depth: s32) {
+    if gs.current_region != null && gs.current_region.has_grid {
+        write_shaped_from_region(m, gs, panel, gs.current_region);
+    } else {
+        write_shaped_from_vault(m, gs, panel, depth);
+    }
+}
+
+write_shaped_from_region :: (m: *GenMap, gs: *GenState, panel: Rect, region: *RuntimeRegion) {
+    floor := gs.con.TERRAIN_FLOOR;
+    wall := gs.con.TERRAIN_WALL;
+    floor_terrain := get_region_floor(region, gs.default_floor);
+    wall_terrain := get_region_wall(region, gs.default_wall);
+
+    w := region.grid_width;
+    h := region.grid_height;
+
+    // Place within panel (same as other room types)
+    r := place_within_panel(panel, w, h);
+    start_x := r.x1;
+    start_y := r.y1;
+
+    // 50% chance to flip on each axis
+    flip_h := random(2) == 0;
+    flip_v := random(2) == 0;
+
+    // Parse and place grid characters
+    row: s32 = 0;
+    col: s32 = 0;
+
+    for ch: region.grid {
+        if ch == #char "\n" {
+            row += 1;
+            col = 0;
+            continue;
+        }
+        // Skip whitespace that isn't newline (spaces, tabs, CR)
+        if ch == #char " " || ch == #char "\t" || ch == #char "\r"  continue;
+
+        // Calculate actual position with flipping
+        actual_col: s32 = cast(s32) ifx flip_h then (w - 1 - col) else col;
+        actual_row: s32 = cast(s32) ifx flip_v then (h - 1 - row) else row;
+
+        mx := start_x + actual_col;
+        my := start_y + actual_row;
+
+        // Map character to terrain
+        if ch == {
+            case #char ".";
+                write_at_with_terrain(m, gs, mx, my, floor, floor_terrain, PRIO_VAULT);
+            case #char "#";
+                write_at_with_terrain(m, gs, mx, my, wall, wall_terrain, PRIO_VAULT);
+            case #char "%";
+                write_at_with_terrain(m, gs, mx, my, wall, wall_terrain, PRIO_ROOM_WALL);
+            case #char "+";
+                write_at_with_terrain(m, gs, mx, my, .DOOR_CLOSED, null, PRIO_VAULT);
+            case #char "~";
+                write_at(m, gs, mx, my, .WATER, PRIO_VAULT);
+            case #char "^";
+                write_at(m, gs, mx, my, .LAVA, PRIO_VAULT);
+            case #char "_";
+                write_at(m, gs, mx, my, .CHASM, PRIO_VAULT);
+            case #char ">";
+                write_at_with_terrain(m, gs, mx, my, .STAIRS_DOWN, null, PRIO_VAULT);
+            case #char "<";
+                write_at_with_terrain(m, gs, mx, my, .STAIRS_UP, null, PRIO_VAULT);
+            case;
+                // Default: treat as floor (digits=monsters, letters=features/items deferred)
+                write_at_with_terrain(m, gs, mx, my, floor, floor_terrain, PRIO_VAULT);
+        }
+
+        col += 1;
+    }
+
+    // Track as room
+    room: Room;
+    room.bounds = Rect.{start_x, start_y, start_x + w - 1, start_y + h - 1};
+    room.connected = false;
+    array_add(*m.rooms, room);
+
+    if gs.n_centers < 16 {
+        cx := start_x + w / 2;
+        cy := start_y + h / 2;
+        gs.centers[gs.n_centers] = cast(u16)(cx + cy * 256);
+        gs.n_centers += 1;
+    }
+}
+
+write_shaped_from_vault :: (m: *GenMap, gs: *GenState, panel: Rect, depth: s32) {
     floor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
     floor_terrain := get_region_floor(gs.current_region, gs.default_floor);
@@ -2323,6 +2411,12 @@ draw_panel :: (m: *GenMap, gs: *GenState, px: s32, py: s32) {
             sy = con.ROOM_MINY + random(con.ROOM_MAXY - con.ROOM_MINY) + 3;
             sx = cast(s32) max(sx, 9);
             sy = cast(s32) max(sy, 9);
+        case RM_SHAPED;
+            // Use region grid dimensions when available; otherwise keep default random sizing for VAULTS fallback
+            if gs.current_region != null && gs.current_region.has_grid {
+                sx = gs.current_region.grid_width;
+                sy = gs.current_region.grid_height;
+            }
         case;
             // RM_NORMAL, RM_CIRCLE, etc. use default sizing
     }

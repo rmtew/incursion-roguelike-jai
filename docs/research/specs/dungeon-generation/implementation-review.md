@@ -47,7 +47,7 @@ This document compares the existing Jai implementation in `src/dungeon/makelev.j
 | RM_RCAVERN | Repeated-L rough caverns | write_rcavern() + wall streamer pass | MATCHES |
 | RM_MAZE | WriteMaze (recursive backtrack) | write_maze(), large sizing | MATCHES |
 | RM_DIAMONDS | Chain of filled diamonds with doors | write_diamonds() chain algorithm | MATCHES |
-| RM_SHAPED | Grid-based predefined rooms | NOT IMPLEMENTED | MISSING |
+| RM_SHAPED | Grid-based predefined rooms | write_shaped() dispatches to region grid or VAULTS | MATCHES |
 | RM_LIFELINK | Life w/ linked regions | NOT IMPLEMENTED | MISSING |
 | RM_RANDTOWN | Random town | Falls to default | MISSING |
 | RM_DESTROYED | Collapsed area | Falls to default | MISSING |
@@ -55,10 +55,7 @@ This document compares the existing Jai implementation in `src/dungeon/makelev.j
 
 ### Missing Room Types Analysis
 
-**RM_SHAPED (Critical):**
-- Spec: Uses TRegion.Grid with tile definitions, 50% flip chance
-- Used for special pre-designed rooms from resource files
-- Impact: Many themed areas won't generate correctly
+**RM_SHAPED:** Implemented — dispatches to region grid data or VAULTS fallback. Terrain characters supported; Tiles section (digit/letter spawns) deferred.
 
 **RM_LIFELINK:**
 - Spec: Game of Life with linked regions
@@ -179,7 +176,7 @@ PRIO_MAX = 120
 | Room region selection | Filter by RoomTypes, Depth, uniqueness | select_region() | MATCHES |
 | Corridor region selection | CorridorWeights, RF_STAPLE=16 | select_corridor() with build_corridor_weights() | MATCHES |
 | Weight list generation | ROOM_WEIGHTS, CORRIDOR_WEIGHTS | Hardcoded defaults | DIFFERS |
-| Grid processing | WriteMap with tile definitions, 50% flip | NOT IMPLEMENTED | MISSING |
+| Grid processing | WriteMap with tile definitions, 50% flip | write_shaped_from_region(): terrain chars + flip; Tiles section deferred | PARTIAL |
 | Region terrain application | Floor/Wall/Door from region definition | Not applying region terrain | MISSING |
 
 ### Missing RF_* Flags
