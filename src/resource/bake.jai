@@ -250,15 +250,16 @@ convert_region :: (pr: ParsedRegion) -> RuntimeRegion {
 
     rr.depth = cast(s32) ifx pr.has_depth then pr.depth else 0;
 
-    // Pack flags: start with region type (RF_CORRIDOR, RF_ROOM, etc.)
+    // Pack flags: RF_* constants are indices (1-28), convert to bitmask (1 << index)
+    // Original Incursion stores flags as a bitfield where bit N = flag index N
     rr.flags = 0;
-    if pr.rtype > 0 {
-        rr.flags |= cast(u32) pr.rtype;
+    if pr.rtype > 0 && pr.rtype < 32 {
+        rr.flags |= (cast(u32)1) << cast(u32) pr.rtype;
     }
     // Additional flags from "Flags:" line
     for flag: pr.flags {
-        if flag > 0 {
-            rr.flags |= cast(u32) flag;
+        if flag > 0 && flag < 32 {
+            rr.flags |= (cast(u32)1) << cast(u32) flag;
         }
     }
 

@@ -203,17 +203,41 @@ main :: () {
     print("Headless Dungeon Screenshot Generator\n");
     print("=====================================\n\n");
 
+    // Parse arguments
+    args := get_command_line_arguments();
+    seed: u64 = 12345;
+    depth: s32 = 1;
+
+    i := 1;
+    while i < args.count {
+        arg := args[i];
+        if arg == "--seed" || arg == "-s" {
+            if i + 1 < args.count {
+                seed = parse_seed_arg(args[i + 1]);
+                i += 1;
+            }
+        } else if arg == "--depth" || arg == "-d" {
+            if i + 1 < args.count {
+                depth = cast(s32) parse_seed_arg(args[i + 1]);
+                i += 1;
+            }
+        } else if arg == "--help" || arg == "-h" {
+            print("Usage: dungeon_screenshot.exe [--seed N] [--depth N]\n");
+            return;
+        }
+        i += 1;
+    }
+
     // Initialize resource database
     print("Loading resources...\n");
     init_resource_db();
     db := get_resource_db();
     print("  Loaded % monsters, % items, % terrains\n", db.monsters.count, db.items.count, db.terrains.count);
 
-
-    // Generate dungeon with same seed as dungeon_test
+    // Generate dungeon
     dungeon: GenMap;
-    seed: u64 = 12345;
-    generate_dungeon(*dungeon, seed);
+    print("Seed: %, Depth: %\n", seed, depth);
+    generate_dungeon(*dungeon, seed, depth=depth);
 
     print("Dungeon: %x% tiles, % rooms\n", dungeon.width, dungeon.height, dungeon.rooms.count);
 
@@ -222,4 +246,14 @@ main :: () {
 
     map_free(*dungeon);
     print("Done.\n");
+}
+
+parse_seed_arg :: (s: string) -> u64 {
+    result: u64 = 0;
+    for c: s {
+        if c >= #char "0" && c <= #char "9" {
+            result = result * 10 + cast(u64)(c - #char "0");
+        }
+    }
+    return result;
 }

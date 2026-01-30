@@ -2892,12 +2892,33 @@ Six regions in `dungeon.irh` specify `RoomTypes: RM_SHAPED` and are eligible for
 - **`write_shaped_from_region()`** — new function that reads grid string from the region, places within panel via `place_within_panel()`, applies 50% flip on each axis, and maps characters to terrain. Supports `.` (floor), `#` (vault wall), `%` (standard wall at `PRIO_ROOM_WALL`, overwritable by corridors), `+` (door), `~` (water), `^` (lava), `_` (chasm), `>/<` (stairs). Unknown characters default to floor (digits for monsters, letters for features/items deferred).
 - **`write_shaped_from_vault()`** — exact extraction of existing VAULTS logic, no behavioral change
 
+### Bug Fix: RF_* Flag Values Mismatch
+
+During testing, grid-based shaped rooms never appeared. Debugging revealed two issues:
+
+1. **Parser `Tiles:` skip loop** (`parser.jai:3383`) didn't include `KW_GRID` in its stop condition, so `Tiles:` sections consumed the subsequent `Grid:` keyword. Fixed by adding `KW_GRID` to the break condition.
+
+2. **RF_* flag value mismatch** — The constants table (`constants.jai`) correctly used the original Incursion sequential indices (RF_CORRIDOR=1, RF_VAULT=2, RF_ROOM=4, etc.) but `weights.jai` had incorrect bitmask values that assumed different positions (RF_CORRIDOR=0x04, RF_ROOM=0x08). This caused `RF_ROOM` regions (index 4) to match `RF_CORRIDOR`'s bitmask (0x04), routing all room-type regions (including grid regions) into the corridor pool.
+
+**Root cause**: Original Incursion's `Defines.h` uses sequential indices (1-28) and converts them via `HasFlag()` which does `flags & (1 << index)`. The bake code was storing raw index values (`rr.flags |= rtype`) instead of converting to bitmask (`rr.flags |= 1 << rtype`). Fixed both the bake conversion and `weights.jai` flag constants to use `(1 << index)` form.
+
+After the fix: 78 room regions, 8 corridor regions, 4 vault regions load correctly (previously 5/74/11 due to mis-categorization). Grid-based shaped rooms now appear at depth >= 3 (Floating Rock;1) and depth >= 4 (vault regions).
+
+### Additional: dungeon_screenshot CLI args
+
+Added `--seed N` and `--depth N` arguments to `dungeon_screenshot.exe` for easier testing without recompilation.
+
 ### Files Modified
 
-- **`src/dungeon/makelev.jai`** — RM_SHAPED sizing case in `draw_panel()`, write_shaped refactored into dispatch + region + vault
+- **`src/dungeon/makelev.jai`** — RM_SHAPED sizing case, write_shaped refactored into dispatch + region + vault
+- **`src/dungeon/weights.jai`** — Fixed RF_* flag constants to use `(1 << index)` form matching original Defines.h
+- **`src/resource/bake.jai`** — Fixed flag baking to convert indices to bitmask: `1 << rtype` and `1 << flag`
+- **`src/resource/parser.jai`** — Added `KW_GRID` to Tiles: skip loop stop condition
+- **`tools/dungeon_screenshot.jai`** — Added `--seed` and `--depth` CLI arguments
 - **`docs/research/specs/dungeon-generation/implementation-review.md`** — RM_SHAPED marked as MATCHES, grid processing marked as PARTIAL
 
 ### Verification
 
 - All 8 build targets compile cleanly
 - 213/217 tests pass (same 4 pre-existing mon1-4.irh failures)
+- Grid-based shaped rooms confirmed appearing at seed 5, depth 5 (Floating Rock;1, 12x12)

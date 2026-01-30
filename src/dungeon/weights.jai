@@ -40,18 +40,30 @@ RuntimeRegion :: struct {
 }
 
 // Region flags (from Defines.h)
-RF_RIVER    :: 0x00000001;
-RF_CHASM    :: 0x00000002;
-RF_CORRIDOR :: 0x00000004;
-RF_ROOM     :: 0x00000008;
-RF_VAULT    :: 0x00000010;
-RF_STAPLE   :: 0x00000020;   // Can be used multiple times
-RF_NOGEN    :: 0x00000040;   // Never randomly generated
-RF_RAINBOW  :: 0x00000080;   // Rainbow walls
-RF_NEVER_LIT :: 0x00000100;
-RF_CENTER_ENC :: 0x00000200;
-RF_ODD_WIDTH :: 0x00000400;
-RF_ODD_HEIGHT :: 0x00000800;
+// RF_* constants are sequential indices (1-28). Stored as bitmasks: 1 << index.
+RF_CORRIDOR   :: (1 << 1);    // RF_CORRIDOR   = 1
+RF_VAULT      :: (1 << 2);    // RF_VAULT      = 2
+RF_ROOM       :: (1 << 4);    // RF_ROOM       = 4
+RF_NO_MON     :: (1 << 5);    // RF_NO_MON     = 5
+RF_NO_TRAP    :: (1 << 6);    // RF_NO_TRAP    = 6
+RF_NO_JUNK    :: (1 << 7);    // RF_NO_JUNK    = 7
+RF_NO_TREA    :: (1 << 8);    // RF_NO_TREA    = 8
+RF_XTRA_MON   :: (1 << 9);    // RF_XTRA_MON   = 9
+RF_XTRA_TRAP  :: (1 << 10);   // RF_XTRA_TRAP  = 10
+RF_XTRA_JUNK  :: (1 << 11);   // RF_XTRA_JUNK  = 11
+RF_XTRA_TREA  :: (1 << 12);   // RF_XTRA_TREA  = 12
+RF_NOGEN      :: (1 << 15);   // RF_NOGEN      = 15
+RF_STREAMER   :: (1 << 16);   // RF_STREAMER   = 16
+RF_ROCKTYPE   :: (1 << 17);   // RF_ROCKTYPE   = 17
+RF_CHASM      :: (1 << 18);   // RF_CHASM      = 18
+RF_RIVER      :: (1 << 19);   // RF_RIVER      = 19
+RF_RAINBOW    :: (1 << 20);   // RF_RAINBOW    = 20
+RF_ALWAYS_LIT :: (1 << 22);   // RF_ALWAYS_LIT = 22
+RF_NEVER_LIT  :: (1 << 23);   // RF_NEVER_LIT  = 23
+RF_STAPLE     :: (1 << 24);   // RF_STAPLE     = 24
+RF_ODD_WIDTH  :: (1 << 25);   // RF_ODD_WIDTH  = 25
+RF_ODD_HEIGHT :: (1 << 26);   // RF_ODD_HEIGHT = 26
+RF_CENTER_ENC :: (1 << 27);   // RF_CENTER_ENC = 27
 
 // ============================================================================
 // Dungeon weights container

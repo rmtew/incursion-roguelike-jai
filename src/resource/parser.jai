@@ -3381,7 +3381,8 @@ parse_region :: (p: *Parser) -> bool {
                 next := peek(p);
                 // Stop if we hit another property keyword
                 if next.type == .KW_LISTS || next.type == .KW_FLAGS ||
-                   next.type == .KW_ON || next.type == .KW_EVENT {
+                   next.type == .KW_ON || next.type == .KW_EVENT ||
+                   next.type == .KW_GRID {
                     break;
                 }
                 advance(p);
