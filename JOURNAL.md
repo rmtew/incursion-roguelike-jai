@@ -3144,3 +3144,49 @@ Natural follow-on from Gap 22 (Grid Tiles). The `with` clause in tile definition
 - `build.bat test` + `build.bat game` compile cleanly
 - 213/217 tests pass (same 4 pre-existing failures)
 - dungeon.irh still parses 91 regions with 27 features now baked
+
+## 2026-01-31: Gap 24 — Encounter Baking + Selection
+
+### Overview
+
+The implementation review's only remaining substantial gap was encounter generation (PARTIAL: "Simplified density-based" vs the original 7-stage algorithm). This gap establishes the encounter data pipeline: parsing encounters from enclist.irh into runtime structs, selecting encounters by CR with weighted random selection, and using encounter flags to influence monster placement.
+
+The full 7-stage encounter algorithm includes Parts parsing (complex grammar for specifying monster types, templates, and count ranges), XCR budget distribution, and template application. Those are deferred — this gap handles Stages 1-3 (encounter selection by CR and weight) and applies encounter-level flags (NF_SINGLE, NF_MULTIPLE, NF_HORDE, NF_UNIFORM).
+
+### Changes
+
+**Encounter Conversion** (`src/resource/bake.jai`):
+- Added `convert_encounter()` — converts ParsedEncounter to REncounter, packing NF_* flag indices into u32 bitmask
+- Added `encounters: *[..] REncounter` parameter to `parse_resource_file()`
+- Added encounter extraction loop in parse_resource_file()
+- Added `encounters: [..] REncounter` to BakedResources
+- Added `lib/enclist.irh` to the file list in `bake_all_resources()`
+- Updated `init_resource_db()` to copy encounters to BAKED_DB
+
+**Encounter Selection** (`src/resource/runtime.jai`):
+- Added NF_* flag constants (NF_NOGEN=1, NF_SINGLE=2, NF_MULTIPLE=3, NF_HORDE=4, NF_FREAKY=5, NF_AQUATIC=6, NF_UNIFORM=9, NF_VAULT=13, NF_CONTEXT_AQUATIC=16)
+- Added `enc_has_flag()` helper to check bitmask flags
+- Added `encounter_matches()` — filters by CR range, NF_NOGEN, NF_VAULT, NF_AQUATIC
+- Added `select_encounter()` — weighted random selection from matching encounters
+
+**Population Integration** (`src/dungeon/makelev.jai`):
+- Modified `populate_panel()` to select an encounter by CR before placing monsters
+- NF_SINGLE encounters force monster_count=1
+- NF_MULTIPLE encounters set minimum of 4+random(5) monsters
+- NF_HORDE encounters set minimum of 8+random(5) monsters
+- NF_UNIFORM encounters pre-select a single monster type and reuse it for all placements
+
+### Scope
+
+- **Encounter selection**: Implemented (Stages 1-3 of the 7-stage algorithm)
+- **Encounter flags**: NF_SINGLE, NF_MULTIPLE, NF_HORDE, NF_UNIFORM, NF_NOGEN, NF_VAULT, NF_AQUATIC all functional
+- **Parts parsing**: Deferred — encounters currently affect count and uniformity but not specific monster type selection (that requires parsing the complex `Parts:` grammar)
+- **XCR budget**: Deferred — requires Parts data for distribution
+- **Template application**: Deferred — requires Parts data and template baking
+
+### Verification
+
+- `build.bat test` + `build.bat game` compile cleanly
+- 213/217 tests pass (same 4 pre-existing failures)
+- enclist.irh parses 87 encounters, now baked into ResourceDB
+- dungeon.irh still parses 91 regions

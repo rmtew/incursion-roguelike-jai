@@ -153,7 +153,7 @@ PRIO_MAX = 120
 | Aspect | Spec | Implementation | Status |
 |--------|------|----------------|--------|
 | PopulatePanel | Trigger encounter for each panel | populate_panel() per room | MATCHES |
-| Encounter generation | 7-stage algorithm with XCR budget | Simplified density-based | PARTIAL |
+| Encounter generation | 7-stage algorithm with XCR budget | CR-based selection with encounter filtering (NF_SINGLE/MULTIPLE/HORDE/UNIFORM); Parts/XCR deferred | PARTIAL |
 | Monster density | OpenC/30 (depth>2), /50 (depth=2), /75 (depth=1) | monster_density_divisor() | MATCHES |
 | Monster count caps | maxAmtByCR: 5/7/10/12/15/50 | max_monsters_by_cr() | MATCHES |
 | FurnishArea | Place furniture based on region | furnish_room() with patterns | MATCHES |

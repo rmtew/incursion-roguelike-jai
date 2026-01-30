@@ -4339,6 +4339,31 @@ populate_panel :: (m: *GenMap, room_index: s32, room: Room, depth_cr: s32, party
     // Get resource database for monster lookups
     db := get_resource_db();
 
+    // Select an encounter by CR (Stages 1-3 of encounter algorithm)
+    // This determines the TYPE of encounter for the room
+    enc_seed := cast(u64) random(cast(s32) 0x7FFFFFFF);
+    encounter := select_encounter(db, depth_cr, false, has_water, enc_seed);
+
+    // Apply encounter flags to modify monster count
+    if encounter != null {
+        if enc_has_flag(encounter, NF_SINGLE) {
+            monster_count = 1;
+            is_ood = is_ood || (depth_cr > 1 && random(100) < 22);
+        } else if enc_has_flag(encounter, NF_MULTIPLE) {
+            monster_count = min(max(monster_count, 4 + random(5)), max_monsters);
+        } else if enc_has_flag(encounter, NF_HORDE) {
+            monster_count = min(max(monster_count, 8 + random(5)), max_monsters);
+        }
+    }
+
+    // For NF_UNIFORM encounters, pre-select a single monster type for all
+    uniform_monster: *RMonster = null;
+    if encounter != null && enc_has_flag(encounter, NF_UNIFORM) {
+        effective_cr := ifx is_ood then depth_cr + 1 + random(4) else depth_cr;
+        uniform_seed := cast(u64) random(cast(s32) 0x7FFFFFFF);
+        uniform_monster = find_monster_by_cr_fuzzy(db, effective_cr, 3, uniform_seed);
+    }
+
     // Place monsters in this room
     for i: 0..monster_count-1 {
         // Determine if this should be an aquatic monster
@@ -4368,9 +4393,15 @@ populate_panel :: (m: *GenMap, room_index: s32, room: Room, depth_cr: s32, party
         sleep_threshold := random(100) + 1;
         mon.is_sleeping = sleep_threshold > 50;  // ~50% sleeping
 
-        // Look up actual monster from resource database by CR
-        rng_seed := random(cast(s32)0x7FFFFFFF);
-        rmonster := find_monster_by_cr_fuzzy(db, mon.cr, 3, cast(u64)rng_seed);
+        // Look up monster: use uniform type if NF_UNIFORM, else by CR
+        rmonster: *RMonster = null;
+        if uniform_monster != null {
+            rmonster = uniform_monster;
+        } else {
+            rng_seed := random(cast(s32)0x7FFFFFFF);
+            rmonster = find_monster_by_cr_fuzzy(db, mon.cr, 3, cast(u64)rng_seed);
+        }
+
         if rmonster != null {
             mon.glyph = rmonster.glyph;
             mon.fg_color = rmonster.fg_color;

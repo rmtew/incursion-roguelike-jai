@@ -13,7 +13,8 @@
 parse_resource_file :: (path: string, monsters: *[..] RMonster, items: *[..] RItem,
                         terrains: *[..] RuntimeTerrain, regions: *[..] RuntimeRegion,
                         dungeons: *[..] RuntimeDungeon = null,
-                        features: *[..] RFeature = null) -> bool {
+                        features: *[..] RFeature = null,
+                        encounters: *[..] REncounter = null) -> bool {
     content, success := read_entire_file(path);
     if !success {
         print("Failed to read resource file: %\n", path);
@@ -73,6 +74,14 @@ parse_resource_file :: (path: string, monsters: *[..] RMonster, items: *[..] RIt
         for feat: parser.features {
             if feat.name.count > 0 {
                 array_add(features, convert_feature(feat));
+            }
+        }
+    }
+
+    if encounters != null {
+        for enc: parser.encounters {
+            if enc.name.count > 0 {
+                array_add(encounters, convert_encounter(enc));
             }
         }
     }
@@ -239,6 +248,26 @@ convert_feature :: (pf: ParsedFeature) -> RFeature {
     return rf;
 }
 
+// Convert ParsedEncounter to REncounter
+convert_encounter :: (pe: ParsedEncounter) -> REncounter {
+    re: REncounter;
+    re.name = copy_string(pe.name);
+    re.weight = cast(u16) ifx pe.has_weight then pe.weight else 100;
+    re.cr_min = cast(s16) ifx pe.has_cr then pe.cr_min else 1;
+    re.cr_max = cast(s16) ifx pe.has_cr then pe.cr_max else 99;
+    re.terrain = cast(u16) ifx pe.has_terrain then pe.terrain else 0;
+    re.align = cast(u8) ifx pe.has_align then pe.align else 0;
+
+    // Pack flags into bitmask (flag index N → bit N)
+    re.flags = 0;
+    for flag: pe.flags {
+        if flag >= 0 && flag < 32 {
+            re.flags |= (cast(u32)1) << cast(u32) flag;
+        }
+    }
+    return re;
+}
+
 // Convert ParsedTerrain to RuntimeTerrain
 convert_terrain :: (pt: ParsedTerrain) -> RuntimeTerrain {
     rt: RuntimeTerrain;
@@ -368,6 +397,7 @@ BakedResources :: struct {
     monsters: [..] RMonster;
     items: [..] RItem;
     features: [..] RFeature;
+    encounters: [..] REncounter;
     terrains: [..] RuntimeTerrain;
     regions: [..] RuntimeRegion;
     dungeons: [..] RuntimeDungeon;
@@ -391,12 +421,14 @@ bake_all_resources :: () -> BakedResources {
         "lib/mundane.irh",
         "lib/dungeon.irh",
         "lib/weapons.irh",
+        "lib/enclist.irh",
     ];
 
     for file: files {
         parse_resource_file(file, *result.monsters, *result.items,
                            *result.terrains, *result.regions,
-                           *result.dungeons, *result.features);
+                           *result.dungeons, *result.features,
+                           *result.encounters);
     }
 
     // Sort by name for binary search
@@ -467,6 +499,7 @@ init_resource_db :: () {
     BAKED_DB.monsters = baked.monsters;
     BAKED_DB.items = baked.items;
     BAKED_DB.features = baked.features;
+    BAKED_DB.encounters = baked.encounters;
     BAKED_DB.terrains = baked.terrains;
     BAKED_DB.regions = baked.regions;
     BAKED_DB.dungeons = baked.dungeons;

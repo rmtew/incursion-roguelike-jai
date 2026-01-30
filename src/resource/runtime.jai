@@ -267,6 +267,75 @@ color_to_ansi :: (color_const: s64) -> u8 {
 }
 
 // ============================================================================
+// Encounter Flag Constants (from Defines.h)
+// ============================================================================
+
+// NF_* flags are index values; stored in REncounter.flags as bitmask (1 << index)
+NF_NOGEN           :: 1;
+NF_SINGLE          :: 2;
+NF_MULTIPLE        :: 3;
+NF_HORDE           :: 4;
+NF_FREAKY          :: 5;
+NF_AQUATIC         :: 6;
+NF_STAGGERED       :: 7;
+NF_UNIFORM         :: 9;
+NF_VAULT           :: 13;
+NF_CONTEXT_AQUATIC :: 16;
+
+enc_has_flag :: (enc: *REncounter, flag: u32) -> bool {
+    return (enc.flags & ((cast(u32)1) << flag)) != 0;
+}
+
+// ============================================================================
+// Encounter Selection Functions
+// ============================================================================
+
+// Select a random encounter matching the given CR.
+// Filters out NF_NOGEN encounters and optionally NF_VAULT/NF_AQUATIC.
+// Returns null if no matching encounter found.
+select_encounter :: (db: *ResourceDB, cr: s32, is_vault: bool, is_aquatic: bool, rng_seed: u64) -> *REncounter {
+    // Build weight table of matching encounters
+    total_weight: s32 = 0;
+    for *enc: db.encounters {
+        if !encounter_matches(enc, cr, is_vault, is_aquatic) continue;
+        total_weight += cast(s32) enc.weight;
+    }
+
+    if total_weight == 0 return null;
+
+    // Weighted random selection
+    roll := cast(s32)(rng_seed % cast(u64) total_weight);
+    cumulative: s32 = 0;
+    for *enc: db.encounters {
+        if !encounter_matches(enc, cr, is_vault, is_aquatic) continue;
+        cumulative += cast(s32) enc.weight;
+        if roll < cumulative {
+            return enc;
+        }
+    }
+
+    return null;
+}
+
+// Check if an encounter matches generation criteria
+encounter_matches :: (enc: *REncounter, cr: s32, is_vault: bool, is_aquatic: bool) -> bool {
+    // Skip encounters flagged as not for generation
+    if enc_has_flag(enc, NF_NOGEN) return false;
+
+    // CR range check
+    if cr < cast(s32) enc.cr_min return false;
+    if enc.cr_max < 99 && cr > cast(s32) enc.cr_max return false;
+
+    // Vault encounters only appear in vaults
+    if enc_has_flag(enc, NF_VAULT) && !is_vault return false;
+
+    // Aquatic encounters only in aquatic contexts
+    if enc_has_flag(enc, NF_AQUATIC) && !is_aquatic return false;
+
+    return true;
+}
+
+// ============================================================================
 // CR-Based Lookup Functions
 // ============================================================================
 
