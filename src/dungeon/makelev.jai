@@ -2231,6 +2231,74 @@ write_shaped_from_region :: (m: *GenMap, gs: *GenState, panel: Rect, region: *Ru
     }
 }
 
+// Write a grid region at exact map coordinates (no panel margins/random offset)
+// Used for dungeon specials that need precise placement.
+// In original: WriteMap(r, regID) called from MakeLev.cpp:1571
+write_grid_at_position :: (m: *GenMap, gs: *GenState, start_x: s32, start_y: s32, region: *RuntimeRegion) {
+    floor := gs.con.TERRAIN_FLOOR;
+    wall := gs.con.TERRAIN_WALL;
+    floor_terrain := get_region_floor(region, gs.default_floor);
+    wall_terrain := get_region_wall(region, gs.default_wall);
+
+    w := region.grid_width;
+    h := region.grid_height;
+
+    // Parse and place grid characters
+    row: s32 = 0;
+    col: s32 = 0;
+
+    for ch: region.grid {
+        if ch == #char "\n" {
+            row += 1;
+            col = 0;
+            continue;
+        }
+        if ch == #char " " || ch == #char "\t" || ch == #char "\r"  continue;
+
+        mx := start_x + col;
+        my := start_y + row;
+
+        // Map character to terrain (same mapping as write_shaped_from_region)
+        if ch == {
+            case #char ".";
+                write_at_with_terrain(m, gs, mx, my, floor, floor_terrain, PRIO_VAULT);
+            case #char "#";
+                write_at_with_terrain(m, gs, mx, my, wall, wall_terrain, PRIO_VAULT);
+            case #char "%";
+                write_at_with_terrain(m, gs, mx, my, wall, wall_terrain, PRIO_ROOM_WALL);
+            case #char "+";
+                write_at_with_terrain(m, gs, mx, my, .DOOR_CLOSED, null, PRIO_VAULT);
+            case #char "~";
+                write_at(m, gs, mx, my, .WATER, PRIO_VAULT);
+            case #char "^";
+                write_at(m, gs, mx, my, .LAVA, PRIO_VAULT);
+            case #char "_";
+                write_at(m, gs, mx, my, .CHASM, PRIO_VAULT);
+            case #char ">";
+                write_at_with_terrain(m, gs, mx, my, .STAIRS_DOWN, null, PRIO_VAULT);
+            case #char "<";
+                write_at_with_terrain(m, gs, mx, my, .STAIRS_UP, null, PRIO_VAULT);
+            case;
+                write_at_with_terrain(m, gs, mx, my, floor, floor_terrain, PRIO_VAULT);
+        }
+
+        col += 1;
+    }
+
+    // Track as room
+    room: Room;
+    room.bounds = Rect.{start_x, start_y, start_x + w - 1, start_y + h - 1};
+    room.connected = false;
+    array_add(*m.rooms, room);
+
+    if gs.n_centers < 16 {
+        cx := start_x + w / 2;
+        cy := start_y + h / 2;
+        gs.centers[gs.n_centers] = cast(u16)(cx + cy * 256);
+        gs.n_centers += 1;
+    }
+}
+
 write_shaped_from_vault :: (m: *GenMap, gs: *GenState, panel: Rect, depth: s32) {
     floor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
@@ -2358,7 +2426,9 @@ place_within_panel :: (panel: Rect, room_w: s32, room_h: s32) -> Rect {
 
 // Draw a panel with a room
 // In original: void Map::DrawPanel(uint8 px, uint8 py, rID regID)
-draw_panel :: (m: *GenMap, gs: *GenState, px: s32, py: s32) {
+// forced_region: if non-null, bypass weighted selection and use this region
+draw_panel :: (m: *GenMap, gs: *GenState, px: s32, py: s32,
+               forced_region: *RuntimeRegion = null) {
     con := gs.con;
 
     // Calculate panel bounds
@@ -2382,22 +2452,49 @@ draw_panel :: (m: *GenMap, gs: *GenState, px: s32, py: s32) {
     r_type: s32;
     rm_index: s32;
 
-    // Try up to 200 times to find a valid room type + region combination
-    for try: 0..199 {
-        r_type, rm_index = select_room_type(*gs.selection, *gs.dungeon_weights);
+    if forced_region != null {
+        // Forced region path: bypass weighted selection
+        gs.current_region = forced_region;
+        resolve_single_region_terrain(forced_region, *gs.terrain_registry);
 
-        // Try to select a region that supports this room type
-        // If no valid region found, the room type weight is exhausted and we retry
-        if gs.dungeon_weights.room_regions.count > 0 {
-            region, ok := select_region(*gs.selection, *gs.dungeon_weights, r_type, *rm_index);
-            if ok {
-                gs.current_region = region;
-                break;
+        // Pick a random room type from the region's supported types
+        if forced_region.room_types != 0 {
+            // Collect supported types from bitmask
+            supported: [RM_LAST] s32;
+            n_supported: s32 = 0;
+            for rt: 1..RM_LAST-1 {
+                if forced_region.room_types & cast(u32)(1 << rt) {
+                    supported[n_supported] = cast(s32) rt;
+                    n_supported += 1;
+                }
+            }
+            if n_supported > 0 {
+                r_type = supported[random(n_supported)];
+            } else {
+                r_type = RM_NORMAL;
             }
         } else {
-            // No regions defined, use room type as-is
-            gs.current_region = null;
-            break;
+            r_type = RM_NORMAL;  // No type mask = default
+        }
+    } else {
+        // Normal weighted selection path
+        // Try up to 200 times to find a valid room type + region combination
+        for try: 0..199 {
+            r_type, rm_index = select_room_type(*gs.selection, *gs.dungeon_weights);
+
+            // Try to select a region that supports this room type
+            // If no valid region found, the room type weight is exhausted and we retry
+            if gs.dungeon_weights.room_regions.count > 0 {
+                region, ok := select_region(*gs.selection, *gs.dungeon_weights, r_type, *rm_index);
+                if ok {
+                    gs.current_region = region;
+                    break;
+                }
+            } else {
+                // No regions defined, use room type as-is
+                gs.current_region = null;
+                break;
+            }
         }
     }
 
@@ -4610,6 +4707,138 @@ place_down_stairs :: (m: *GenMap, gs: *GenState, up_stairs: [] StairPos, depth: 
     return down_stairs;
 }
 
+// ============================================================================
+// Dungeon Specials Placement
+// Source: MakeLev.cpp:1494-1602 (PlaceSpecials / Step 3)
+// ============================================================================
+
+// Place a grid-based dungeon special at a random valid position
+// Source: MakeLev.cpp:1527-1583
+// Grid specials can span multiple panels and are placed at exact coordinates.
+place_grid_special :: (m: *GenMap, gs: *GenState, region: *RuntimeRegion,
+                       above_down_stairs: [] StairPos) -> bool {
+    con := gs.con;
+    sx := region.grid_width;
+    sy := region.grid_height;
+
+    // Validate grid fits in map (original: sx+2 > sizeX check)
+    if (sx + 2) > con.LEVEL_SIZEX || (sy + 2) > con.LEVEL_SIZEY  return false;
+
+    // Calculate how many panels this grid spans
+    cx := 1 + (sx + 2) / con.PANEL_SIZEX;
+    cy := 1 + (sy + 2) / con.PANEL_SIZEY;
+
+    // Up to 100 retries to find valid placement
+    for try_i: 0..99 {
+        // Random displacement within the panel span
+        range_x := con.PANEL_SIZEX * cx - (sx + 2);
+        range_y := con.PANEL_SIZEY * cy - (sy + 2);
+        dx: s32 = 1 + (ifx range_x > 0 then random(range_x) else 0);
+        dy: s32 = 1 + (ifx range_y > 0 then random(range_y) else 0);
+
+        // Random starting panel
+        max_px := gs.panels_x - cx;
+        max_py := gs.panels_y - cy;
+        if max_px < 0 || max_py < 0  return false;
+        px := ifx max_px > 0 then random(max_px + 1) else 0;
+        py := ifx max_py > 0 then random(max_py + 1) else 0;
+
+        // Compute map rectangle
+        map_x := px * con.PANEL_SIZEX + dx;
+        map_y := py * con.PANEL_SIZEY + dy;
+
+        // Validate 1: No overlap with above_down_stairs positions
+        stair_overlap := false;
+        for stair: above_down_stairs {
+            if stair.x >= map_x && stair.x < map_x + sx &&
+               stair.y >= map_y && stair.y < map_y + sy {
+                stair_overlap = true;
+                break;
+            }
+        }
+        if stair_overlap  continue;
+
+        // Validate 2: No overlap with existing vault-priority tiles
+        vault_overlap := false;
+        for vy: map_y..map_y + sy - 1 {
+            for vx: map_x..map_x + sx - 1 {
+                cell := get_cell(gs, m, vx, vy);
+                if cell != null && cell.priority >= PRIO_VAULT {
+                    vault_overlap = true;
+                    break vy;
+                }
+            }
+        }
+        if vault_overlap  continue;
+
+        // Valid placement found — write the grid
+        gs.current_region = region;
+        write_grid_at_position(m, gs, map_x, map_y, region);
+
+        // Mark all spanned panels as drawn
+        for ppy: py..py + cy - 1 {
+            for ppx: px..px + cx - 1 {
+                gs.panels_drawn[ppy] |= cast(u32)(1 << ppx);
+            }
+        }
+
+        // Resolve terrain for this region
+        resolve_single_region_terrain(region, *gs.terrain_registry);
+
+        return true;
+    }
+
+    return false;  // Failed to place after 100 tries
+}
+
+// Place a non-grid dungeon special in a random undrawn panel
+// Source: MakeLev.cpp:1585-1594
+place_nongrid_special :: (m: *GenMap, gs: *GenState, region: *RuntimeRegion) -> bool {
+    // Up to 200 tries to find an undrawn panel
+    for try_i: 0..199 {
+        px := random(gs.panels_x);
+        py := random(gs.panels_y);
+        if gs.panels_drawn[py] & cast(u32)(1 << px)  continue;
+
+        // Found an undrawn panel — draw it with the forced region
+        draw_panel(m, gs, px, py, forced_region = region);
+        return true;
+    }
+    return false;
+}
+
+// Orchestrate placement of all dungeon specials for this depth
+// Source: MakeLev.cpp:1494-1602
+place_dungeon_specials :: (m: *GenMap, gs: *GenState, dungeon_name: string,
+                           depth: s32, above_down_stairs: [] StairPos) {
+    dungeon_def := find_dungeon(dungeon_name);
+    if dungeon_def == null  return;
+
+    for special: dungeon_def.specials {
+        if special.at_level != depth  continue;
+
+        region := find_region_by_name(special.room_ref);
+        if region == null {
+            if !makelev_quiet print("  Warning: special region '%' not found\n", special.room_ref);
+            continue;
+        }
+
+        if region.has_grid {
+            ok := place_grid_special(m, gs, region, above_down_stairs);
+            if !makelev_quiet {
+                if ok  print("  Placed grid special '%' on depth %\n", special.room_ref, depth);
+                else   print("  Failed to place grid special '%' on depth %\n", special.room_ref, depth);
+            }
+        } else {
+            ok := place_nongrid_special(m, gs, region);
+            if !makelev_quiet {
+                if ok  print("  Placed special '%' on depth %\n", special.room_ref, depth);
+                else   print("  Failed to place special '%' on depth %\n", special.room_ref, depth);
+            }
+        }
+    }
+}
+
 // Main generation function - matches Map::Generate structure
 // Extended to support multi-level generation with stair continuity
 generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[], depth: s32 = 1, max_depth: s32 = 10, above_map: *GenMap = null, dungeon_name: string = "") -> down_stairs: [..] StairPos {
@@ -4740,7 +4969,13 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
         }
     }
 
-    // Step 3: Place vaults (special pre-designed rooms)
+    // Step 3: Place dungeon specials (predefined rooms from dungeon definition)
+    // Source: MakeLev.cpp:1494-1602
+    if dungeon_name.count > 0 {
+        place_dungeon_specials(m, *gs, dungeon_name, depth, above_down_stairs);
+    }
+
+    // Step 3b: Place vaults (special pre-designed rooms)
     // 20% chance per level, higher at deeper levels
     vault_chance := 20 + m.depth * 5;
     if random(100) < vault_chance {

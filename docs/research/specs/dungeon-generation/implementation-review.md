@@ -12,7 +12,7 @@ This document compares the existing Jai implementation in `src/dungeon/makelev.j
 |------|-------------------|------------------------------|--------|
 | 1. Initialize | Fill with TERRAIN_ROCK, edge with TERRAIN_MAPEDGE, load constants | Fill with ROCK, edge with WALL; dungeon constants loaded from .irh | PARTIAL |
 | 2. Streamers | MIN_STREAMERS to MAX_STREAMERS, weighted selection, chasm propagation | MIN_STREAMERS to MAX_STREAMERS loop, depth restrictions, type reuse, chasm propagation | MATCHES |
-| 3. Special Rooms | AN_DUNSPEC annotations, predefined maps at specific depths | DungeonSpecials loaded from .irh; VAULTS fallback for RM_SHAPED | PARTIAL |
+| 3. Special Rooms | AN_DUNSPEC annotations, predefined maps at specific depths | place_dungeon_specials(): grid + non-grid placement per depth | MATCHES |
 | 4. Draw Panels | Weighted room type + region selection, 200 tries max | Weighted selection with region filtering, 200 tries max | MATCHES |
 | 5. Connect Panels | Edge tiles, closest pairs, TT_DIRECT\|TT_WANDER tunnels | connect_panels() with edge tiles + closest pairs | MATCHES |
 | 5b. Fix-Up | 26 trials, 3 regions/trial, per-region best pairs | fixup_tunneling() with multi-region + diagonal dist | MATCHES |
@@ -48,10 +48,10 @@ This document compares the existing Jai implementation in `src/dungeon/makelev.j
 | RM_MAZE | WriteMaze (recursive backtrack) | write_maze(), large sizing | MATCHES |
 | RM_DIAMONDS | Chain of filled diamonds with doors | write_diamonds() chain algorithm | MATCHES |
 | RM_SHAPED | Grid-based predefined rooms | write_shaped() dispatches to region grid or VAULTS | MATCHES |
-| RM_LIFELINK | Life w/ linked regions | NOT IMPLEMENTED | MISSING |
-| RM_RANDTOWN | Random town | Falls to default | MISSING |
-| RM_DESTROYED | Collapsed area | Falls to default | MISSING |
-| RM_GRID | Furnishing grid | Falls to default | MISSING |
+| RM_LIFELINK | Life w/ linked regions | write_lifelink() with linked region merging | MATCHES |
+| RM_RANDTOWN | Random town | write_randtown() with random buildings | MATCHES |
+| RM_DESTROYED | Collapsed area | write_destroyed() with rock/rubble | MATCHES |
+| RM_GRID | Furnishing grid | write_grid_room() with even grid | MATCHES |
 
 ### Missing Room Types Analysis
 
@@ -176,7 +176,7 @@ PRIO_MAX = 120
 | Room region selection | Filter by RoomTypes, Depth, uniqueness | select_region() with depth, vault depth, uniqueness | MATCHES |
 | Corridor region selection | CorridorWeights, RF_STAPLE=16 | select_corridor() with build_corridor_weights() | MATCHES |
 | Weight list generation | ROOM_WEIGHTS, CORRIDOR_WEIGHTS | DEFAULT_RM_WEIGHTS + DungeonWeights | MATCHES |
-| Grid processing | WriteMap with tile definitions, 50% flip | write_shaped_from_region(): terrain chars + flip; Tiles section deferred | PARTIAL |
+| Grid processing | WriteMap with tile definitions, 50% flip | write_shaped_from_region() + write_grid_at_position(): terrain chars + flip; Tiles section deferred | PARTIAL |
 | Region terrain application | Floor/Wall/Door from region definition | get_region_floor/wall() used in all room types + corridors | MATCHES |
 
 ### RF_* Flags Status

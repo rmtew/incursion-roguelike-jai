@@ -2985,3 +2985,47 @@ Updated 10+ stale entries:
 - All 8 build targets compile cleanly
 - 213/217 tests pass (same 4 pre-existing mon1-4.irh failures)
 - Dungeon definitions load at runtime (3 dungeons parsed from dungeon.irh)
+
+## 2026-01-31: Gap 20 — DungeonSpecials Placement
+
+### Overview
+
+Implemented Step 3 ("Place Large Submaps / Special Rooms") in `generate_makelev()`. Dungeon specials are region-based rooms placed at specific depths, defined in `dungeon.irh`. The data was already loaded into `RuntimeDungeon.specials` but never used during generation.
+
+### Two Placement Modes
+
+Matching original MakeLev.cpp:1494-1602:
+
+- **Grid regions** (`has_grid`): `place_grid_special()` places at exact map coordinates, can span multiple panels. Validates against stair positions and existing vault-priority tiles. Up to 100 retries for valid placement.
+- **Non-grid regions**: `place_nongrid_special()` finds a random undrawn panel and calls `draw_panel()` with a forced region parameter.
+
+### Implementation Details
+
+**`find_region_by_name()`** — Case-insensitive region lookup in `bake.jai`. Needed because specials in `dungeon.irh` use lowercase names ("entry chamber") while regions use title case ("Entry Chamber").
+
+**`write_grid_at_position()`** — Like `write_shaped_from_region()` but writes at explicit map coordinates rather than using `place_within_panel()` margins/random offset. Same grid character mapping (`.#%+~^_><`), plus Room struct tracking.
+
+**`place_grid_special()`** — Algorithm from MakeLev.cpp:1527-1583:
+- Validates grid fits in map dimensions
+- Calculates panel span: `cx = 1 + (sx + 2) / PANEL_SIZEX`
+- Random displacement within panel span, random starting panel
+- Two overlap validations: stair positions and vault-priority tiles
+- Marks all spanned panels in `panels_drawn`
+
+**`draw_panel()` forced_region** — Added optional `forced_region: *RuntimeRegion = null` parameter. When set, bypasses the 200-try weighted selection loop: sets region directly, resolves terrain, picks a random room type from the region's `room_types` bitmask.
+
+**Orchestrator** — `place_dungeon_specials()` looks up the `RuntimeDungeon`, iterates specials matching the current depth, resolves regions, and dispatches to the appropriate placement function.
+
+**Wiring** — Inserted between Step 2b (chasm propagation) and existing vault placement (relabeled Step 3b). Gated by `dungeon_name.count > 0`.
+
+### Files Changed
+
+- **`src/resource/bake.jai`** — Added `find_region_by_name()` (~8 lines)
+- **`src/dungeon/makelev.jai`** — Added `write_grid_at_position()`, `place_grid_special()`, `place_nongrid_special()`, `place_dungeon_specials()`, modified `draw_panel()` signature, wired into `generate_makelev()`
+- **`docs/research/specs/dungeon-generation/implementation-review.md`** — Updated Step 3 PARTIAL→MATCHES, updated stale RM_LIFELINK/RANDTOWN/DESTROYED/GRID entries
+
+### Verification
+
+- `build.bat test` compiles cleanly
+- `build.bat game` compiles cleanly
+- 213/217 tests pass (same 4 pre-existing mon1-4.irh parser failures)

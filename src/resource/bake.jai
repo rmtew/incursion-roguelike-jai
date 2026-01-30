@@ -449,3 +449,12 @@ find_dungeon :: (name: string) -> *RuntimeDungeon {
     }
     return null;
 }
+
+// Find region by name (case-insensitive)
+// Specials in dungeon.irh use lowercase names but regions use title case
+find_region_by_name :: (name: string) -> *RuntimeRegion {
+    for *reg: BAKED_DB.regions {
+        if strings_equal_nocase(reg.name, name) return reg;
+    }
+    return null;
+}
