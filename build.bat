@@ -1,5 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
+cd /d "%~dp0"
 
 set JAI=C:\Data\R\jai\bin\jai.exe
 set FAILED=0
