@@ -2630,3 +2630,29 @@ Added `REDUCE_CHASM_CHANCE: s32: 50` to `DungeonConstants` (from Annot.cpp:GetCo
 - Compiles cleanly on first attempt
 - All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)
 - Single-level generation unchanged (above_map defaults to null)
+
+## 2026-01-30: Correctness Gap 11 — Skylight Marking
+
+Added skylight marking for tiles below above-level chasms, matching MakeLev.cpp:2235-2260. Tiles beneath chasms on the level above are tinted cyan and always lit, simulating sunlight streaming down from above.
+
+### Implementation (Step 9 in generation pipeline)
+
+After population (Step 8) and before final output:
+
+1. If `above_map` is null or depth <= 1, skip (no level above to check)
+2. Scan every tile on the above level. For each `.CHASM` tile:
+   - Check the same position on the current level
+   - If the current tile is non-solid (floor, corridor, water, etc.):
+     - Set `TileDisplay.is_skylight = true`
+     - Set `VisibilityInfo.lit = true` (always illuminated)
+3. Renderer checks `is_skylight` and overrides fg_color to 11 (BRIGHT_CYAN)
+
+### Changes
+
+- **`src/dungeon/map.jai`**: Added `is_skylight: bool` to `TileDisplay` struct; added `map_get_visibility()` helper
+- **`src/dungeon/makelev.jai`**: Added Step 9 skylight marking loop in `generate_makelev()`
+- **`src/dungeon/render.jai`**: Added skylight cyan override in `get_cell_render()` after custom display check
+
+### Verification
+- Compiles cleanly on first attempt
+- All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)

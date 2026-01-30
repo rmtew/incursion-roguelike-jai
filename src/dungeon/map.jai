@@ -173,6 +173,7 @@ TileDisplay :: struct {
     glyph: u16;         // Character code or GLYPH_* constant (256+)
     fg_color: s64;      // Foreground color constant
     use_custom: bool;   // If true, use glyph/fg_color instead of terrain default
+    is_skylight: bool;  // Tile is below a chasm on level above (cyan display, always lit)
 }
 
 // Map structure
@@ -276,6 +277,13 @@ map_get_display :: (m: *GenMap, x: s32, y: s32) -> *TileDisplay {
         return null;
     }
     return *m.tile_display[y * m.width + x];
+}
+
+map_get_visibility :: (m: *GenMap, x: s32, y: s32) -> *VisibilityInfo {
+    if x < 0 || x >= m.width || y < 0 || y >= m.height {
+        return null;
+    }
+    return *m.visibility[y * m.width + x];
 }
 
 // Check if position is in bounds

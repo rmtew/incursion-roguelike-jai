@@ -149,6 +149,11 @@ get_cell_render :: (m: *GenMap, x: s32, y: s32, use_visibility: bool = false) ->
         fg_color = cast(u8) td.fg_color;
     }
 
+    // Check for skylight (tile below chasm on level above - cyan tint, always lit)
+    if td != null && td.is_skylight {
+        fg_color = 11;  // BRIGHT_CYAN
+    }
+
     // Check for items (lower priority than creatures)
     item_count := count_items_at(m, x, y);
     if item_count > 0 {

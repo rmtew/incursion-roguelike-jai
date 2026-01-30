@@ -16,8 +16,10 @@ This document compares the existing Jai implementation in `src/dungeon/makelev.j
 | 4. Draw Panels | Weighted room type + region selection, 200 tries max | Weighted selection implemented, regions optional | PARTIAL |
 | 5. Connect Panels | Edge tiles, closest pairs, TT_DIRECT\|TT_WANDER tunnels | connect_panels() with edge tiles + closest pairs | MATCHES |
 | 5b. Fix-Up | 26 trials flood-fill connectivity check | fixup_tunneling() with 26 trials | MATCHES |
+| 2b. Chasm Propagation | Copy chasms from above level, 50% narrow chance | Step 2b with REDUCE_CHASM_CHANCE | MATCHES |
 | 6. Place Stairs | Up-stairs at Above coordinates, MIN_STAIRS to MAX_STAIRS down | Simple first/last room placement | DIFFERS |
 | 7. Deallocation | Free FloodArray, EmptyArray | Not needed (temp allocator) | N/A |
+| 9. Skylight Marking | Tiles below above-level chasms: cyan tint, always lit | Step 9 with is_skylight + lit flags | MATCHES |
 
 ## Room Types Comparison
 
@@ -95,6 +97,7 @@ This document compares the existing Jai implementation in `src/dungeon/makelev.j
 | WriteLifeCave | LIFE_PERCENT=45, 20 iterations, 5+/3- rule | LIFE_PERCENT=45, 20 iterations | MATCHES |
 | WriteStreamer | Rivers from edge, chasms min width 4 | write_streamer() | PARTIAL |
 | Deep terrain conversion | Shallow→deep when surrounded (water, lava, brimstone) | convert_deep_terrain() (water, lava) | MATCHES |
+| Skylight marking | Tiles below chasms: cyan tint, always lit | is_skylight + renderer override | MATCHES |
 | Region terrain refs | Floor/Wall/Door from region definition | Not using region terrain | MISSING |
 
 ### Priority System
@@ -244,3 +247,6 @@ Missing: RF_ROCKTYPE, RF_CAVE, RF_AUTO, RF_OPT_DIM, RF_VAULT, RF_NOMONSTER, RF_N
 6. ~~Fix corridor constants (TURN_CHANCE, SEGMENT_MINLEN, SEGMENT_MAXLEN)~~ **DONE (2026-01-30)**
 7. ~~Rewrite connect_panels (edge tiles + closest pairs)~~ **DONE (2026-01-30)**
 8. ~~Fix correct_dir diametric check~~ **DONE (2026-01-30)**
+9. ~~Add deep terrain conversion~~ **DONE (2026-01-30)**
+10. ~~Add multi-level chasm propagation~~ **DONE (2026-01-30)**
+11. ~~Add skylight marking for tiles below chasms~~ **DONE (2026-01-30)**

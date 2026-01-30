@@ -4384,6 +4384,35 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
     // Source: MakeLev.cpp:3269-3301, Encounter.cpp:514-1125
     populate_dungeon(m, depth);
 
+    // Step 9: Skylight marking
+    // Source: MakeLev.cpp:2235-2260
+    // Mark tiles below chasms on the above level as skylights (cyan, always lit)
+    if above_map != null && depth > 1 {
+        for y: 0..m.height-1 {
+            for x: 0..m.width-1 {
+                above_t := map_get(above_map, x, y);
+                // Check if above tile is a fall-through terrain (chasm)
+                if above_t != .CHASM continue;
+
+                // Only mark non-solid tiles as skylights
+                current_t := map_get(m, x, y);
+                if terrain_solid(current_t) continue;
+
+                // Mark as skylight in tile display
+                td := map_get_display(m, x, y);
+                if td != null {
+                    td.is_skylight = true;
+                }
+
+                // Skylights are always lit (disable shading)
+                vis := map_get_visibility(m, x, y);
+                if vis != null {
+                    vis.lit = true;
+                }
+            }
+        }
+    }
+
     if !makelev_quiet {
         print("Generated dungeon (ORIGINAL MakeLev) depth % with % rooms, % up-stairs, % down-stairs, % monsters, % items\n",
               depth, m.rooms.count, up_stairs.count, down_stairs.count, m.monsters.count, m.items.count);
