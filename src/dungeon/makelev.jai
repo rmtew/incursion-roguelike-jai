@@ -2156,6 +2156,24 @@ write_shaped :: (m: *GenMap, gs: *GenState, panel: Rect, depth: s32) {
     }
 }
 
+// Look up a RuntimeTile by grid character
+find_tile :: (region: *RuntimeRegion, ch: u8) -> *RuntimeTile {
+    for *t: region.tiles {
+        if t.ch == ch return t;
+    }
+    return null;
+}
+
+// Derive base Terrain enum from RuntimeTerrain flags
+terrain_type_from_rt :: (rt: *RuntimeTerrain) -> Terrain {
+    if rt == null return .FLOOR;
+    if rt.flags & TF_FALL   return .CHASM;
+    if rt.flags & TF_LAVA   return ifx rt.flags & TF_DEEP then .DEEP_LAVA else .LAVA;
+    if rt.flags & TF_WATER  return ifx rt.flags & TF_DEEP then .DEEP_WATER else .WATER;
+    if rt.is_solid           return .WALL;
+    return .FLOOR;
+}
+
 write_shaped_from_region :: (m: *GenMap, gs: *GenState, panel: Rect, region: *RuntimeRegion) {
     floor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
@@ -2193,6 +2211,16 @@ write_shaped_from_region :: (m: *GenMap, gs: *GenState, panel: Rect, region: *Ru
 
         mx := start_x + actual_col;
         my := start_y + actual_row;
+
+        // Check tile overrides first
+        tile := find_tile(region, cast(u8) ch);
+        if tile != null {
+            tile_rt := terrain_registry_get(*gs.terrain_registry, tile.terrain_ref);
+            tile_terrain := terrain_type_from_rt(tile_rt);
+            write_at_with_terrain(m, gs, mx, my, tile_terrain, tile_rt, PRIO_VAULT);
+            col += 1;
+            continue;
+        }
 
         // Map character to terrain
         if ch == {
@@ -2262,6 +2290,16 @@ write_grid_at_position :: (m: *GenMap, gs: *GenState, start_x: s32, start_y: s32
 
         mx := start_x + col;
         my := start_y + row;
+
+        // Check tile overrides first
+        tile := find_tile(region, cast(u8) ch);
+        if tile != null {
+            tile_rt := terrain_registry_get(*gs.terrain_registry, tile.terrain_ref);
+            tile_terrain := terrain_type_from_rt(tile_rt);
+            write_at_with_terrain(m, gs, mx, my, tile_terrain, tile_rt, PRIO_VAULT);
+            col += 1;
+            continue;
+        }
 
         // Map character to terrain (same mapping as write_shaped_from_region)
         if ch == {

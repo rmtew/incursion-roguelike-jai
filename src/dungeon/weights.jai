@@ -37,6 +37,18 @@ RuntimeRegion :: struct {
 
     // Size constraint
     size: s32;             // SZ_* constant (0 = any)
+
+    // Grid tile overrides (from Tiles: section)
+    tiles: [] RuntimeTile;
+}
+
+// Grid tile override (terrain/object for a specific grid character)
+RuntimeTile :: struct {
+    ch:           u8;       // Grid character ('A', '1', etc.)
+    terrain_ref:  string;   // $"terrain name" (base terrain)
+    object_ref:   string;   // $"name" from 'with' clause (deferred)
+    owner_ref:    string;   // $"name" from 'of' clause (deferred)
+    flags:        u32;      // TILE_* flags bitmask
 }
 
 // Region flags (from Defines.h)

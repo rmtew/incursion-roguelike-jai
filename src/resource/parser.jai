@@ -498,6 +498,7 @@ ParsedRegion :: struct {
     grid:         string;        // Map grid content
     grid_width:   s64;           // Width calculated from grid
     grid_height:  s64;           // Height calculated from grid
+    tiles:        [..] ParsedTile;  // Tile overrides from Tiles: section
     flags:        [..] s64;      // RF_VAULT, RF_CORRIDOR, RF_STAPLE, etc.
     lists:        [..] ParsedWeightList;
     constants:    [..] ParsedConstant;
@@ -606,6 +607,15 @@ ParsedArtifact :: struct {
 ParsedSpecial :: struct {
     room_ref:     string;        // $"room name"
     at_level:     s64;
+}
+
+// Grid tile override (from Tiles: section in regions)
+ParsedTile :: struct {
+    ch:           u8;            // Grid character ('A', '1', etc.)
+    terrain_ref:  string;        // $"terrain name" (base terrain)
+    object_ref:   string;        // $"name" from 'with' clause (monster/item/feature)
+    owner_ref:    string;        // $"name" from 'of' clause (template/god)
+    flags:        u32;           // TILE_* flags bitmask
 }
 
 // Weight list entry for dungeon/region Lists:
@@ -3372,20 +3382,89 @@ parse_region :: (p: *Parser) -> bool {
             }
             match(p, .SEMICOLON);
         } else if tok.type == .KW_TILES {
-            // Tiles: - skip this section
+            // Tiles: 'ch': $"terrain" [with $"obj" [of $"owner"]] [as COLOR GLYPH] [[TILE_*]] (,|;)
             advance(p);
             _, colon2_ok := consume(p, .COLON, "Expected ':'");
             if !colon2_ok return false;
-            // Skip until we hit a keyword, semicolon at end of block, or rbrace
+
             while !check(p, .RBRACE) && !parser_is_at_end(p) {
+                // Check for section-ending keywords
                 next := peek(p);
-                // Stop if we hit another property keyword
                 if next.type == .KW_LISTS || next.type == .KW_FLAGS ||
                    next.type == .KW_ON || next.type == .KW_EVENT ||
-                   next.type == .KW_GRID {
+                   next.type == .KW_GRID || next.type == .KW_CONSTANTS ||
+                   next.type == .KW_DESC || next.type == .KW_TILES {
                     break;
                 }
+
+                // Expect CHAR_CONST: 'A', '1', etc.
+                if !check(p, .CHAR_CONST) break;
+                ch_tok := peek(p);
                 advance(p);
+
+                _, tile_colon_ok := consume(p, .COLON, "Expected ':' after tile character");
+                if !tile_colon_ok break;
+
+                tile: ParsedTile;
+                tile.ch = cast(u8) ch_tok.int_value;
+
+                // Terrain ref: $"terrain name"
+                if check(p, .RES_REF) {
+                    ref_tok := peek(p);
+                    advance(p);
+                    tile.terrain_ref = extract_res_ref_name(ref_tok.text);
+                }
+
+                // Optional: with $"object" [of $"owner"]
+                if check(p, .KW_WITH) {
+                    advance(p);
+                    if check(p, .RES_REF) {
+                        obj_tok := peek(p);
+                        advance(p);
+                        tile.object_ref = extract_res_ref_name(obj_tok.text);
+                    }
+                    // Optional: of $"owner"
+                    if check(p, .KW_OF) {
+                        advance(p);
+                        if check(p, .RES_REF) {
+                            owner_tok := peek(p);
+                            advance(p);
+                            tile.owner_ref = extract_res_ref_name(owner_tok.text);
+                        }
+                    }
+                }
+
+                // Optional: as COLOR GLYPH (skip - visual override deferred)
+                if check(p, .KW_AS) {
+                    advance(p);
+                    // Skip color token
+                    if check(p, .COLOR) || check(p, .CONSTANT) || check(p, .IDENTIFIER) {
+                        advance(p);
+                    }
+                    // Skip glyph constant
+                    if check(p, .CONSTANT) || check(p, .IDENTIFIER) {
+                        advance(p);
+                    }
+                }
+
+                // Optional: [TILE_FLAG1 | TILE_FLAG2 ...]
+                if check(p, .LBRACKET) {
+                    advance(p);
+                    flags_val, flags_ok := parse_cexpr(p);
+                    if flags_ok {
+                        tile.flags = cast(u32) flags_val;
+                    }
+                    match(p, .RBRACKET);
+                }
+
+                array_add(*region.tiles, tile);
+
+                // Comma continues, semicolon ends section
+                if check(p, .SEMICOLON) {
+                    advance(p);
+                    break;
+                }
+                match(p, .COMMA);
             }
         } else if tok.type == .KW_ON || tok.type == .KW_EVENT {
             skip_event_handler(p);

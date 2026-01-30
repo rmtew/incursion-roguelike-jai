@@ -287,6 +287,21 @@ convert_region :: (pr: ParsedRegion) -> RuntimeRegion {
 
     rr.size = cast(s32) ifx pr.has_size then pr.size else 0;
 
+    // Grid tile overrides
+    if pr.tiles.count > 0 {
+        tiles: [..] RuntimeTile;
+        for pt: pr.tiles {
+            rt: RuntimeTile;
+            rt.ch = pt.ch;
+            rt.terrain_ref = copy_string(pt.terrain_ref);
+            rt.object_ref = copy_string(pt.object_ref);
+            rt.owner_ref = copy_string(pt.owner_ref);
+            rt.flags = pt.flags;
+            array_add(*tiles, rt);
+        }
+        rr.tiles = tiles;
+    }
+
     return rr;
 }
 

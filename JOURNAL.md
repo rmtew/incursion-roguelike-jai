@@ -3061,3 +3061,44 @@ Updated implementation-review.md: Step 1 PARTIAL→MATCHES, RF_* flags PARTIAL�
 
 - Both targets compile cleanly
 - 213/217 tests pass (same 4 pre-existing failures)
+
+## 2026-01-31: Grid Tiles Section (Gap 22)
+
+Implemented parsing and runtime application of the `Tiles:` section for grid-based region definitions. Previously, the parser skipped Tiles sections entirely. Now tile definitions are parsed, stored in runtime data, and applied as terrain overrides during grid writing.
+
+### What Changed
+
+**Parser** (`src/resource/parser.jai`):
+- Added `ParsedTile` struct (ch, terrain_ref, object_ref, owner_ref, flags)
+- Added `tiles` field to `ParsedRegion`
+- Replaced the Tiles section skip logic with full parsing:
+  - `'ch': $"terrain" [with $"object" [of $"owner"]] [as COLOR GLYPH] [[TILE_FLAGS]] (,|;)`
+  - Handles `as COLOR GLYPH` by advancing past it (visual override deferred)
+  - Handles `[TILE_*]` flag brackets via `parse_cexpr()`
+  - C-style comments between entries handled by the lexer
+
+**Runtime** (`src/dungeon/weights.jai`):
+- Added `RuntimeTile` struct mirroring ParsedTile
+- Added `tiles: [] RuntimeTile` field to `RuntimeRegion`
+
+**Baking** (`src/resource/bake.jai`):
+- Extended `convert_region()` to copy tile data from ParsedTile to RuntimeTile
+
+**Grid Writers** (`src/dungeon/makelev.jai`):
+- Added `find_tile()` — looks up a RuntimeTile by grid character
+- Added `terrain_type_from_rt()` — derives base Terrain enum from RuntimeTerrain flags (TF_FALL→CHASM, TF_LAVA→LAVA/DEEP_LAVA, TF_WATER→WATER/DEEP_WATER, is_solid→WALL, else FLOOR)
+- Modified `write_shaped_from_region()` and `write_grid_at_position()` to check tile overrides before the default character switch — tile-defined characters get terrain from their tile definition via `terrain_registry_get()`
+
+### Scope
+
+- **Terrain overrides**: Fully implemented. Grid characters like `'A'`, `'1'`, `'$'` etc. now resolve to their defined terrain (bloodstain, guardian runes, etc.)
+- **`with`/`of` clauses**: Parsed and stored but not acted on (monster/item/feature instantiation is a separate system)
+- **`as COLOR GLYPH`**: Parsed to advance past it but not stored (glyph overrides require full display system)
+- **`[TILE_*]` flags**: Parsed and stored (e.g., TILE_START, TILE_GUARDING) for future use
+
+### Verification
+
+- `build.bat test` + `build.bat game` compile cleanly
+- 213/217 tests pass (same 4 pre-existing failures)
+- dungeon.irh parses 91 regions (unchanged)
+- Grid processing in implementation-review.md updated from PARTIAL to MATCHES

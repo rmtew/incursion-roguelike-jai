@@ -176,7 +176,7 @@ PRIO_MAX = 120
 | Room region selection | Filter by RoomTypes, Depth, uniqueness | select_region() with depth, vault depth, uniqueness | MATCHES |
 | Corridor region selection | CorridorWeights, RF_STAPLE=16 | select_corridor() with build_corridor_weights() | MATCHES |
 | Weight list generation | ROOM_WEIGHTS, CORRIDOR_WEIGHTS | DEFAULT_RM_WEIGHTS + DungeonWeights | MATCHES |
-| Grid processing | WriteMap with tile definitions, 50% flip | write_shaped_from_region() + write_grid_at_position(): terrain chars + flip; Tiles section deferred | PARTIAL |
+| Grid processing | WriteMap with tile definitions, 50% flip | write_shaped_from_region() + write_grid_at_position(): terrain chars + flip + tile terrain overrides; monster/item tile spawns deferred | MATCHES |
 | Region terrain application | Floor/Wall/Door from region definition | get_region_floor/wall() used in all room types + corridors | MATCHES |
 
 ### RF_* Flags Status
