@@ -2835,3 +2835,42 @@ Separated tests from `main.jai` so the game executable and test runner are indep
 - `build.bat` compiles 6/8 targets cleanly (2 pre-existing failures: `dungeon_screenshot` and `dungeon_verify` missing `visibility.jai` load — predates this change)
 - `src/tests/test.exe` — 213/217 pass (same 4 pre-existing mon1-4.irh failures)
 - `src/main.exe` — Runs, prints version + resource counts + status, exits cleanly
+
+## 2026-01-30: Correctness Gap 17 — Corridor Regions
+
+Enabled themed corridor terrain so corridors can get floor/wall appearance from `RF_CORRIDOR` regions defined in `dungeon.irh`. Four corridor regions exist: "Winding Corridor", "Rough-Hewn Tunnel", "Vaulted Corridor", "Twisty Little Passage".
+
+### Bug Fix: Region rtype not folded into flags
+
+`convert_region()` in `bake.jai` was packing `pr.flags` into `rr.flags` but ignoring `pr.rtype`. The region type (e.g. `RF_CORRIDOR = 0x04`) is stored in `ParsedRegion.rtype` (from the `: RF_CORRIDOR` syntax on the region definition line) but was never ORed into `RuntimeRegion.flags`. This meant corridor regions had `flags == 0` and `load_baked_regions()` categorized them as room regions instead of corridor regions.
+
+**Fix:** OR `pr.rtype` into `rr.flags` before processing additional flags.
+
+**Also fixed:** The flag packing loop had `flag >= 0 && flag < 32` which was wrong — flag values are bitmasks (e.g. `RF_STAPLE = 0x20 = 32`), not bit positions. The `< 32` check excluded `RF_STAPLE` exactly. Changed to `flag > 0` since flags are already valid bitmask values from the constants table.
+
+### Corridor Weight System
+
+Added `build_corridor_weights()` in `weights.jai` matching original `Annot.cpp:381-396`:
+- `RF_STAPLE` corridor regions get weight 16
+- Non-staple regions get weight 1
+- Stored as `WeightListEntry` pairs in `DungeonWeights.corridor_weights`
+
+Updated `select_corridor()` to look up weights from `corridor_weights` instead of using hardcoded weight 1. Called automatically from `load_baked_regions()` after categorizing regions.
+
+### Corridor Region Application
+
+Added optional `corridor_region: *RuntimeRegion` parameter to `carve_tunnel()`. When provided, the corridor writing phase uses `write_at_with_terrain()` to apply themed floor/wall glyphs and colors from the region. When null, behavior is unchanged (plain terrain).
+
+In `connect_panels()` and `fixup_tunneling()`, corridor region is selected via `select_corridor()` for tunnels longer than 5 tiles (matching the original's distance threshold for themed corridors vs. short connecting passages).
+
+### Files Changed
+
+- **`src/resource/bake.jai`** — Fixed `convert_region()`: OR `pr.rtype` into flags, fixed flag validity check
+- **`src/dungeon/weights.jai`** — Added `build_corridor_weights()`, updated `select_corridor()` to use stored weights
+- **`src/dungeon/makelev.jai`** — Added `corridor_region` param to `carve_tunnel()`, themed terrain in corridor write phase, corridor selection in `connect_panels()` and `fixup_tunneling()`
+- **`docs/research/specs/dungeon-generation/implementation-review.md`** — Marked corridor regions as MATCHES/DONE
+
+### Verification
+
+- All 8 build targets compile cleanly
+- 213/217 tests pass (same 4 pre-existing mon1-4.irh failures)

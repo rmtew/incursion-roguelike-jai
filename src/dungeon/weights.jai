@@ -321,9 +321,14 @@ select_corridor :: (state: *SelectionState, weights: *DungeonWeights) -> *Runtim
         // Skip RF_NOGEN
         if region.flags & RF_NOGEN continue;
 
-        // Default weight of 1 if no explicit weight
+        // Look up weight from corridor_weights (default 1)
         w: s32 = 1;
-        // Could look up in corridor_weights if we stored them
+        for cw: weights.corridor_weights {
+            if cw.value == cast(s64) i {
+                w = cast(s32) cw.weight;
+                break;
+            }
+        }
 
         for j: 0..w-1 {
             if count >= 1024 break;
@@ -422,6 +427,9 @@ load_baked_regions :: (weights: *DungeonWeights, db: *ResourceDB) {
     if weights.room_regions.count == 0 {
         add_test_regions(weights);
     }
+
+    // Build corridor weights from categorized corridor regions
+    build_corridor_weights(weights);
 }
 
 // Add test regions with different terrain for demonstration
@@ -491,6 +499,25 @@ add_test_regions :: (weights: *DungeonWeights) {
     dirt_room.floor_ref = "dirt floor";
     dirt_room.wall_ref = "stone wall";
     array_add(*weights.room_regions, dirt_room);
+}
+
+// Build corridor weights from corridor_regions[]
+// Original: Annot.cpp:381-396 — RF_STAPLE corridors get weight 16, others get 1
+build_corridor_weights :: (weights: *DungeonWeights) {
+    array_reset(*weights.corridor_weights);
+
+    for i: 0..weights.corridor_regions.count-1 {
+        region := *weights.corridor_regions[i];
+
+        entry: WeightListEntry;
+        entry.value = cast(s64) i;
+        if region.flags & RF_STAPLE {
+            entry.weight = 16;
+        } else {
+            entry.weight = 1;
+        }
+        array_add(*weights.corridor_weights, entry);
+    }
 }
 
 free_dungeon_weights :: (weights: *DungeonWeights) {

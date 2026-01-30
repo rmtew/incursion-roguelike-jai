@@ -80,12 +80,12 @@ This document compares the existing Jai implementation in `src/dungeon/makelev.j
 | Door creation at intersections | Check solid + corridor wall priority | Collision checks + post-process | MATCHES |
 | Stubborn corridor | STUBBORN_CORRIDOR controls direction persistence | gs.con.STUBBORN_CORRIDOR = 30 | MATCHES |
 | Panel connection | Edge tiles, closest pairs, left/up/diagonal | Edge tiles + closest pairs, left/up/diagonal | MATCHES |
-| Region selection | CorridorWeights, one-time use unless RF_STAPLE | Not using regions for corridors | MISSING |
+| Region selection | CorridorWeights, one-time use unless RF_STAPLE | select_corridor() with RF_STAPLE=16 weights | MATCHES |
 
 ### Key Corridor Differences
 
 1. **Door placement timing**: Spec places doors during tunneling; implementation does post-process pass
-2. **Corridor regions**: Spec uses themed corridor appearances; implementation uses plain corridors
+2. ~~**Corridor regions**: Spec uses themed corridor appearances; implementation uses plain corridors~~ **FIXED** (corridor regions with themed terrain)
 
 ## Terrain Assignment Comparison
 
@@ -177,7 +177,7 @@ PRIO_MAX = 120
 | TRegion structure | Walls/Floor/Door refs, RoomTypes mask | RuntimeRegion struct | PARTIAL |
 | RF_* flags | 27 flags defined | 12 flags defined | PARTIAL |
 | Room region selection | Filter by RoomTypes, Depth, uniqueness | select_region() | MATCHES |
-| Corridor region selection | CorridorWeights, RF_STAPLE=16 | select_corridor() | PARTIAL |
+| Corridor region selection | CorridorWeights, RF_STAPLE=16 | select_corridor() with build_corridor_weights() | MATCHES |
 | Weight list generation | ROOM_WEIGHTS, CORRIDOR_WEIGHTS | Hardcoded defaults | DIFFERS |
 | Grid processing | WriteMap with tile definitions, 50% flip | NOT IMPLEMENTED | MISSING |
 | Region terrain application | Floor/Wall/Door from region definition | Not applying region terrain | MISSING |
@@ -214,7 +214,7 @@ Missing: RF_ROCKTYPE, RF_CAVE, RF_AUTO, RF_OPT_DIM, RF_VAULT, RF_NOMONSTER, RF_N
 
 ### Medium Priority (Affects Variety)
 
-1. **Corridor regions** - No themed corridor appearances
+1. ~~**Corridor regions** - No themed corridor appearances~~ **FIXED** (Gap 17)
 2. ~~**Streamer system** - Simplified compared to original~~ **FIXED** (MIN/MAX_STREAMERS loop, depth restrictions)
 3. ~~**Missing room types** - RM_DESTROYED, RM_RANDTOWN, RM_GRID, RM_LIFELINK~~ **FIXED** (RM_DESTROYED, RM_GRID, RM_LIFELINK)
 4. ~~**Door states** - No open/locked/trapped states~~ **FIXED**

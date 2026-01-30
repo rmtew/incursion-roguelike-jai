@@ -250,10 +250,14 @@ convert_region :: (pr: ParsedRegion) -> RuntimeRegion {
 
     rr.depth = cast(s32) ifx pr.has_depth then pr.depth else 0;
 
-    // Pack flags
+    // Pack flags: start with region type (RF_CORRIDOR, RF_ROOM, etc.)
     rr.flags = 0;
+    if pr.rtype > 0 {
+        rr.flags |= cast(u32) pr.rtype;
+    }
+    // Additional flags from "Flags:" line
     for flag: pr.flags {
-        if flag >= 0 && flag < 32 {
+        if flag > 0 {
             rr.flags |= cast(u32) flag;
         }
     }

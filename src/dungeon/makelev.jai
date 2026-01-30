@@ -2479,7 +2479,7 @@ correct_dir :: (x: s32, y: s32, dx: s32, dy: s32, curr: TunnelDir) -> TunnelDir 
 // Advanced tunnel carving with turns and segments
 // Based on original: uint16 Map::Tunnel(...)
 // tflags: TT_* flags controlling termination behavior
-carve_tunnel :: (m: *GenMap, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32, tflags: u8 = TT_DIRECT | TT_WANDER) {
+carve_tunnel :: (m: *GenMap, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32, tflags: u8 = TT_DIRECT | TT_WANDER, corridor_region: *RuntimeRegion = null) {
     corridor := gs.con.TERRAIN_FLOOR;
     wall := gs.con.TERRAIN_WALL;
 
@@ -2679,18 +2679,29 @@ carve_tunnel :: (m: *GenMap, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32, 
     }
 
     // Write the corridor
+    // Resolve themed terrain from corridor region (if provided)
+    floor_terrain: *RuntimeTerrain = null;
+    wall_terrain: *RuntimeTerrain = null;
+    if corridor_region != null {
+        floor_terrain = corridor_region.floor_terrain;
+        wall_terrain = corridor_region.wall_terrain;
+    }
+
     for p: path {
         if map_get(m, p.x, p.y) == .ROCK {
-            map_set(m, p.x, p.y, corridor);
-
-            // Update cell info
-            // Source: MakeLev.cpp:3581 — const int f_prio = PRIO_ROOM_FLOOR
-            // Corridor floors use PRIO_ROOM_FLOOR (70) so they can't be
-            // overwritten by room walls (40), preserving connectivity
-            cell := get_cell(gs, m, p.x, p.y);
-            if cell != null {
-                cell.priority = PRIO_ROOM_FLOOR;
-                cell.solid = false;
+            if floor_terrain != null {
+                write_at_with_terrain(m, gs, p.x, p.y, corridor, floor_terrain, PRIO_ROOM_FLOOR);
+            } else {
+                map_set(m, p.x, p.y, corridor);
+                // Update cell info
+                // Source: MakeLev.cpp:3581 — const int f_prio = PRIO_ROOM_FLOOR
+                // Corridor floors use PRIO_ROOM_FLOOR (70) so they can't be
+                // overwritten by room walls (40), preserving connectivity
+                cell := get_cell(gs, m, p.x, p.y);
+                if cell != null {
+                    cell.priority = PRIO_ROOM_FLOOR;
+                    cell.solid = false;
+                }
             }
 
             // Add walls around corridor
@@ -2700,10 +2711,14 @@ carve_tunnel :: (m: *GenMap, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32, 
                     wx := p.x + cast(s32)dx;
                     wy := p.y + cast(s32)dy;
                     if map_get(m, wx, wy) == .ROCK {
-                        map_set(m, wx, wy, wall);
-                        wcell := get_cell(gs, m, wx, wy);
-                        if wcell != null && wcell.priority < PRIO_CORRIDOR_WALL {
-                            wcell.priority = PRIO_CORRIDOR_WALL;
+                        if wall_terrain != null {
+                            write_at_with_terrain(m, gs, wx, wy, wall, wall_terrain, PRIO_CORRIDOR_WALL);
+                        } else {
+                            map_set(m, wx, wy, wall);
+                            wcell := get_cell(gs, m, wx, wy);
+                            if wcell != null && wcell.priority < PRIO_CORRIDOR_WALL {
+                                wcell.priority = PRIO_CORRIDOR_WALL;
+                            }
                         }
                     }
                 }
@@ -2881,7 +2896,12 @@ connect_panels :: (m: *GenMap, gs: *GenState) {
                 }
 
                 if best_dist < m.width * m.height {
-                    carve_tunnel(m, gs, bsx, bsy, bdx, bdy);
+                    // Select corridor region for longer tunnels
+                    cr: *RuntimeRegion = null;
+                    if dist(bsx, bsy, bdx, bdy) > 5 {
+                        cr = select_corridor(*gs.selection, *gs.dungeon_weights);
+                    }
+                    carve_tunnel(m, gs, bsx, bsy, bdx, bdy, corridor_region=cr);
                 }
             }
         }
@@ -4250,7 +4270,12 @@ fixup_tunneling :: (m: *GenMap, gs: *GenState) {
             bp.sx = -1;
 
             // Tunnel and re-flood from source
-            carve_tunnel(m, gs, sx, sy, bp.dx, bp.dy, TT_DIRECT | TT_WANDER);
+            // Select corridor region for longer tunnels
+            cr: *RuntimeRegion = null;
+            if dist(sx, sy, bp.dx, bp.dy) > 5 {
+                cr = select_corridor(*gs.selection, *gs.dungeon_weights);
+            }
+            carve_tunnel(m, gs, sx, sy, bp.dx, bp.dy, TT_DIRECT | TT_WANDER, corridor_region=cr);
             flood_connect(gs, m, sx, sy);
             tunneled = true;
         }
