@@ -488,8 +488,10 @@ clear_connected :: (gs: *GenState, m: *GenMap) {
     }
 }
 
-// Find unconnected open tiles and return arrays of connected and unconnected edge tiles
-// In original, this is the fix-up tunneling step
+// Find edge tiles of connected and unconnected regions
+// Source: MakeLev.cpp:1785-1810
+// Connected edges: open tiles where at least one cardinal neighbor is NOT connected
+// Unconnected edges: open tiles where at least one cardinal neighbor is solid
 find_disconnected_regions :: (gs: *GenState, m: *GenMap) -> connected_edges: [..] Point, unconnected_edges: [..] Point {
     connected_edges: [..] Point;
     connected_edges.allocator = temp;
@@ -497,27 +499,39 @@ find_disconnected_regions :: (gs: *GenState, m: *GenMap) -> connected_edges: [..
     unconnected_edges: [..] Point;
     unconnected_edges.allocator = temp;
 
-    // Find edge tiles (open tiles adjacent to solid)
     for y: 1..m.height-2 {
         for x: 1..m.width-2 {
-            if is_solid(gs, m, x, y) continue;
+            if is_solid_for_flood(m, x, y) continue;
 
-            // Count open neighbors
-            open_count := 0;
-            if !is_solid(gs, m, x-1, y) open_count += 1;
-            if !is_solid(gs, m, x+1, y) open_count += 1;
-            if !is_solid(gs, m, x, y-1) open_count += 1;
-            if !is_solid(gs, m, x, y+1) open_count += 1;
+            cell := get_cell(gs, m, x, y);
+            if cell == null continue;
 
-            // Edge tile has < 4 open neighbors
-            if open_count < 4 {
-                cell := get_cell(gs, m, x, y);
-                if cell != null {
-                    if cell.connected {
-                        array_add(*connected_edges, Point.{x, y});
-                    } else {
-                        array_add(*unconnected_edges, Point.{x, y});
-                    }
+            if cell.connected {
+                // Connected tile: edge if any cardinal neighbor is NOT connected
+                // Source: MakeLev.cpp:1793-1797 — counts At(neighbor).Connected
+                connected_count: s32 = 0;
+                nc := get_cell(gs, m, x-1, y);
+                if nc != null && nc.connected  connected_count += 1;
+                nc = get_cell(gs, m, x+1, y);
+                if nc != null && nc.connected  connected_count += 1;
+                nc = get_cell(gs, m, x, y-1);
+                if nc != null && nc.connected  connected_count += 1;
+                nc = get_cell(gs, m, x, y+1);
+                if nc != null && nc.connected  connected_count += 1;
+
+                if connected_count < 4 {
+                    array_add(*connected_edges, Point.{x, y});
+                }
+            } else {
+                // Unconnected tile: edge if any cardinal neighbor is solid
+                // Source: MakeLev.cpp:1802-1808
+                has_solid := false;
+                if is_solid_for_flood(m, x-1, y) has_solid = true;
+                if is_solid_for_flood(m, x+1, y) has_solid = true;
+                if is_solid_for_flood(m, x, y-1) has_solid = true;
+                if is_solid_for_flood(m, x, y+1) has_solid = true;
+                if has_solid {
+                    array_add(*unconnected_edges, Point.{x, y});
                 }
             }
         }
@@ -526,9 +540,14 @@ find_disconnected_regions :: (gs: *GenState, m: *GenMap) -> connected_edges: [..
     return connected_edges, unconnected_edges;
 }
 
-// Manhattan distance
+// Diagonal approximation distance (max + min/2)
+// Source: Inline.h:237-242
+// Closer to Euclidean than Manhattan, used for pair ranking
 dist :: (x1: s32, y1: s32, x2: s32, y2: s32) -> s32 {
-    return abs(x1 - x2) + abs(y1 - y2);
+    dx := abs(x1 - x2);
+    dy := abs(y1 - y2);
+    if dx > dy return dx + dy / 2;
+    return dy + dx / 2;
 }
 
 // Point struct for edge tile lists
@@ -4060,8 +4079,20 @@ populate_dungeon :: (m: *GenMap, depth: s32) {
 
 // Fix-up tunneling: ensure all regions are connected
 // In original: "Step 5: Final, Fix-Up Tunneling" in Map::Generate
+// Best pair per disconnected region for multi-region fixup
+BestPair :: struct {
+    region_id: s32;  // Room index of unconnected region (-1 = corridor)
+    sx: s32;         // Source (connected side)
+    sy: s32;
+    dx: s32;         // Destination (unconnected side)
+    dy: s32;
+    best_dist: s32;  // Distance (max sentinel = used/not found)
+}
+
 fixup_tunneling :: (m: *GenMap, gs: *GenState) {
-    MAX_TRIALS :: 26;  // Same as original
+    MAX_TRIALS :: 26;        // Same as original
+    MAX_CONNECTIONS :: 3;    // Connect up to 3 regions per trial
+    MAX_DIST_SENTINEL :: 99999;
 
     // Clear all connected flags
     clear_connected(gs, m);
@@ -4069,7 +4100,7 @@ fixup_tunneling :: (m: *GenMap, gs: *GenState) {
     // Find first open tile and flood fill from there
     for y: 1..m.height-2 {
         for x: 1..m.width-2 {
-            if !is_solid(gs, m, x, y) {
+            if !is_solid_for_flood(m, x, y) {
                 flood_connect(gs, m, x, y);
                 break y;  // Break both loops
             }
@@ -4086,43 +4117,89 @@ fixup_tunneling :: (m: *GenMap, gs: *GenState) {
             break;
         }
 
-        // Find the closest pair of connected <-> unconnected edge tiles
-        best_dist: s32 = m.width * m.height;
-        best_sx: s32 = -1;
-        best_sy: s32 = -1;
-        best_dx: s32 = -1;
-        best_dy: s32 = -1;
+        // Build best-pair-per-region array
+        // Source: MakeLev.cpp:1811-1842
+        best_pairs: [..] BestPair;
+        best_pairs.allocator = temp;
 
+        // Identify distinct regions among unconnected edges
+        for u: unconnected_edges {
+            region_id := find_room_at(m, u.x, u.y);
+
+            // Check if we already track this region
+            found := false;
+            for bp: best_pairs {
+                if bp.region_id == region_id {
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                bp: BestPair;
+                bp.region_id = region_id;
+                bp.best_dist = MAX_DIST_SENTINEL;
+                bp.sx = -1;
+                array_add(*best_pairs, bp);
+            }
+        }
+
+        // Find closest connected<->unconnected pair per region
         for c: connected_edges {
             for u: unconnected_edges {
+                region_id := find_room_at(m, u.x, u.y);
                 d := dist(c.x, c.y, u.x, u.y);
-                if d < best_dist {
-                    best_dist = d;
-                    best_sx = c.x;
-                    best_sy = c.y;
-                    best_dx = u.x;
-                    best_dy = u.y;
+
+                for *bp: best_pairs {
+                    if bp.region_id == region_id && d < bp.best_dist {
+                        bp.sx = c.x;
+                        bp.sy = c.y;
+                        bp.dx = u.x;
+                        bp.dy = u.y;
+                        bp.best_dist = d;
+                    }
                 }
             }
         }
 
-        // Tunnel from connected to unconnected
-        if best_sx >= 0 {
-            carve_tunnel(m, gs, best_sx, best_sy, best_dx, best_dy, TT_DIRECT | TT_WANDER);
-
-            // Re-flood to update connected status
-            clear_connected(gs, m);
-            for y: 1..m.height-2 {
-                for x: 1..m.width-2 {
-                    if !is_solid(gs, m, x, y) {
-                        flood_connect(gs, m, x, y);
-                        break y;
-                    }
+        // Connect up to MAX_CONNECTIONS regions per trial (closest first)
+        // Source: MakeLev.cpp:1844-1864
+        tunneled := false;
+        for conn: 0..MAX_CONNECTIONS-1 {
+            // Find closest remaining pair
+            min_dist: s32 = MAX_DIST_SENTINEL;
+            min_idx: s32 = -1;
+            for bp, idx: best_pairs {
+                if bp.best_dist < min_dist && bp.sx >= 0 {
+                    min_dist = bp.best_dist;
+                    min_idx = cast(s32) idx;
                 }
             }
-        } else {
-            // No valid pair found
-            break;
+            if min_idx < 0 break;
+
+            // Mark as used
+            bp := *best_pairs[min_idx];
+            sx := bp.sx;
+            sy := bp.sy;
+            bp.best_dist = MAX_DIST_SENTINEL;
+            bp.sx = -1;
+
+            // Tunnel and re-flood from source
+            carve_tunnel(m, gs, sx, sy, bp.dx, bp.dy, TT_DIRECT | TT_WANDER);
+            flood_connect(gs, m, sx, sy);
+            tunneled = true;
+        }
+
+        if !tunneled break;
+
+        // Full re-flood for next trial iteration
+        clear_connected(gs, m);
+        for y: 1..m.height-2 {
+            for x: 1..m.width-2 {
+                if !is_solid_for_flood(m, x, y) {
+                    flood_connect(gs, m, x, y);
+                    break y;
+                }
+            }
         }
     }
 }

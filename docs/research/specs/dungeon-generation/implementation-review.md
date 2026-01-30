@@ -15,7 +15,7 @@ This document compares the existing Jai implementation in `src/dungeon/makelev.j
 | 3. Special Rooms | AN_DUNSPEC annotations, predefined maps at specific depths | Hardcoded VAULTS array, simpler selection | DIFFERS |
 | 4. Draw Panels | Weighted room type + region selection, 200 tries max | Weighted selection implemented, regions optional | PARTIAL |
 | 5. Connect Panels | Edge tiles, closest pairs, TT_DIRECT\|TT_WANDER tunnels | connect_panels() with edge tiles + closest pairs | MATCHES |
-| 5b. Fix-Up | 26 trials flood-fill connectivity check | fixup_tunneling() with 26 trials | MATCHES |
+| 5b. Fix-Up | 26 trials, 3 regions/trial, per-region best pairs | fixup_tunneling() with multi-region + diagonal dist | MATCHES |
 | 2b. Chasm Propagation | Copy chasms from above level, 50% narrow chance | Step 2b with REDUCE_CHASM_CHANCE | MATCHES |
 | 6. Place Stairs | Up-stairs at Above coordinates, MIN_STAIRS to MAX_STAIRS down | Simple first/last room placement | DIFFERS |
 | 7. Deallocation | Free FloodArray, EmptyArray | Not needed (temp allocator) | N/A |
@@ -254,3 +254,4 @@ Missing: RF_ROCKTYPE, RF_CAVE, RF_AUTO, RF_OPT_DIM, RF_VAULT, RF_NOMONSTER, RF_N
 11. ~~Add skylight marking for tiles below chasms~~ **DONE (2026-01-30)**
 12. ~~Add door validation and secret door protection near stairs~~ **DONE (2026-01-30)**
 13. ~~Fix flood fill door bug + corridor edge clamping scope~~ **DONE (2026-01-30)**
+14. ~~Fixup tunneling overhaul (edge detection, distance, multi-region)~~ **DONE (2026-01-30)**

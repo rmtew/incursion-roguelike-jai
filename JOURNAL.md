@@ -2709,3 +2709,35 @@ The edge clamping code (redirect corridor if within 2-3 tiles of map edge) was i
 ### Verification
 - Compiles cleanly on first attempt
 - All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)
+
+## 2026-01-30: Correctness Gap 14 — Fixup Tunneling Overhaul
+
+Three fixes to the connectivity fixup system, all in `fixup_tunneling()` and its supporting functions.
+
+### Fix 1: Connected Edge Detection (High Impact)
+
+`find_disconnected_regions()` used `is_solid()` to determine edge tiles for both connected and unconnected regions. The original MakeLev.cpp:1793-1797 uses different criteria:
+- **Connected tiles**: edge if any cardinal neighbor's `Connected` flag is false (regardless of terrain)
+- **Unconnected tiles**: edge if any cardinal neighbor is solid
+
+The old code missed connection opportunities where two regions were separated by open but unconnected tiles (e.g., across a door). Now correctly checks `cell.connected` for connected edge detection.
+
+### Fix 2: Distance Function (Medium Impact)
+
+Changed `dist()` from Manhattan distance (`dx + dy`) to the original's 1.5 diagonal approximation (`max(dx,dy) + min(dx,dy)/2`), matching Inline.h:237-242. Manhattan distance over-penalizes diagonal connections — a pair at (5,5) scores 10 in Manhattan but 7 in the original (closer to Euclidean 7.07). This improves pair selection for diagonal connections.
+
+### Fix 3: Multi-Region Connection (Critical Impact)
+
+The old code found one single best pair per trial iteration. The original MakeLev.cpp:1811-1864 tracks **one best pair per distinct disconnected region** and connects **up to 3 regions per trial**.
+
+New algorithm:
+1. Identify distinct regions among unconnected edges (using `find_room_at()` as region proxy)
+2. Find closest connected→unconnected pair for each region separately
+3. Inner loop: pick the 3 closest regions (by pair distance), tunnel to each, re-flood from tunnel source
+4. After all inner connections, do a full clear+re-flood for the next trial
+
+This means the algorithm can connect up to 78 regions (26 trials × 3) instead of 26, and converges faster since multiple disconnected islands are handled per iteration.
+
+### Verification
+- Compiles cleanly on first attempt
+- All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)
