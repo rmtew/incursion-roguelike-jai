@@ -892,67 +892,79 @@ write_lifecave :: (m: *GenMap, gs: *GenState, r: Rect) {
     }
 }
 
-// Write overlapping rectangles (2-4 random boxes)
-// In original: case RM_OVERLAP in DrawPanel
+// Write overlapping rectangles (2-4 boxes with overlap enforcement)
+// Original MakeLev.cpp:2588-2627: each box is 2/3 normal size, uses WriteRoom,
+// boxes 2+ must overlap at least one previous box via do-while loop.
+// Probabilistic stop: 1/3 after box 2, 1/2 after box 3.
 write_overlap :: (m: *GenMap, gs: *GenState, panel: Rect) {
-    floor := gs.con.TERRAIN_FLOOR;
-    wall := gs.con.TERRAIN_WALL;
+    con := gs.con;
+    floor := con.TERRAIN_FLOOR;
+    wall := con.TERRAIN_WALL;
     floor_terrain := get_region_floor(gs.current_region, gs.default_floor);
     wall_terrain := get_region_wall(gs.current_region, gs.default_wall);
 
-    // Draw 2-4 overlapping rectangles
-    num_boxes := 2 + random(3);  // 2, 3, or 4 boxes
+    rects: [4]Rect;
+    n_rects: s32 = 0;
 
-    for i: 0..num_boxes-1 {
-        // Random size for each box (smaller than normal rooms)
-        box_w := 3 + random(6);  // 3-8
-        box_h := 3 + random(5);  // 3-7
+    for box_i: 0..3 {
+        // Each box: 2/3-scale sizing (original: (ROOM_MIN + random(MAX-MIN)) * 2 / 3)
+        sx := (con.ROOM_MINX + random(con.ROOM_MAXX - con.ROOM_MINX)) * 2 / 3;
+        sy := (con.ROOM_MINY + random(con.ROOM_MAXY - con.ROOM_MINY)) * 2 / 3;
 
-        // Random position within panel
-        panel_w := rect_width(panel);
-        panel_h := rect_height(panel);
+        r: Rect;
+        if box_i == 0 {
+            // First box: just place it
+            r = place_within_panel(panel, sx, sy);
+        } else {
+            // Must overlap at least one previous box (do-while in original)
+            for attempt: 0..999 {
+                r = place_within_panel(panel, sx, sy);
+                found_overlap := false;
+                for prev: 0..n_rects-1 {
+                    if r.x1 <= rects[prev].x2 && r.x2 >= rects[prev].x1 &&
+                       r.y1 <= rects[prev].y2 && r.y2 >= rects[prev].y1 {
+                        found_overlap = true;
+                        break;
+                    }
+                }
+                if found_overlap break;
+            }
+        }
 
-        x1 := panel.x1 + 2 + random(cast(s32)max(1, panel_w - box_w - 4));
-        y1 := panel.y1 + 2 + random(cast(s32)max(1, panel_h - box_h - 4));
-
-        r := Rect.{x1, y1, x1 + box_w - 1, y1 + box_h - 1};
-
-        // Fill with floor
+        // WriteRoom: fill interior with floor
         for y: r.y1..r.y2 {
             for x: r.x1..r.x2 {
                 write_at_with_terrain(m, gs, x, y, floor, floor_terrain, PRIO_ROOM_FLOOR);
             }
         }
-    }
 
-    // Add walls around all floor tiles
-    for y: panel.y1..panel.y2 {
-        for x: panel.x1..panel.x2 {
-            if map_get(m, x, y) == floor {
-                // Check neighbors for rock and add walls
-                for dy: -1..1 {
-                    for dx: -1..1 {
-                        if dx == 0 && dy == 0 continue;
-                        nx := x + cast(s32)dx;
-                        ny := y + cast(s32)dy;
-                        if map_get(m, nx, ny) == .ROCK {
-                            write_at_with_terrain(m, gs, nx, ny, wall, wall_terrain, PRIO_ROOM_WALL);
-                        }
-                    }
-                }
-            }
+        // WriteRoom: draw walls around perimeter
+        for x: r.x1-1..r.x2+1 {
+            if map_get(m, x, r.y1-1) == .ROCK  write_at_with_terrain(m, gs, x, r.y1-1, wall, wall_terrain, PRIO_ROOM_WALL);
+            if map_get(m, x, r.y2+1) == .ROCK  write_at_with_terrain(m, gs, x, r.y2+1, wall, wall_terrain, PRIO_ROOM_WALL);
         }
+        for y: r.y1-1..r.y2+1 {
+            if map_get(m, r.x1-1, y) == .ROCK  write_at_with_terrain(m, gs, r.x1-1, y, wall, wall_terrain, PRIO_ROOM_WALL);
+            if map_get(m, r.x2+1, y) == .ROCK  write_at_with_terrain(m, gs, r.x2+1, y, wall, wall_terrain, PRIO_ROOM_WALL);
+        }
+
+        rects[box_i] = r;
+        n_rects += 1;
+
+        // Probabilistic stop (original: !random(3) after box 2, !random(2) after box 3)
+        if box_i == 1 && random(3) == 0 break;
+        if box_i == 2 && random(2) == 0 break;
     }
 
-    // Track as room
+    // Track as room (using first box, matching original xe.cRoom = r)
     room: Room;
-    room.bounds = panel;
+    room.bounds = rects[0];
     room.connected = false;
     array_add(*m.rooms, room);
 
     // Record center
     if gs.n_centers < 16 {
-        cx, cy := rect_center(panel);
+        cx, cy := rect_center(rects[0]);
         gs.centers[gs.n_centers] = cast(u16)(cx + cy * 256);
         gs.n_centers += 1;
     }
@@ -2178,22 +2190,32 @@ write_shaped :: (m: *GenMap, gs: *GenState, panel: Rect, depth: s32) {
 
 // Place room within a panel
 // Returns the rect where room was placed
+// Place a room of given size within a panel, with 2-tile margin from edges
+// Source: Base.h:285-298 (Rect::PlaceWithinSafely)
+// Random offset from panel origin, then hard clamp to 2-tile inset.
+// Room may be smaller than requested if panel is tight.
 place_within_panel :: (panel: Rect, room_w: s32, room_h: s32) -> Rect {
     panel_w := rect_width(panel);
     panel_h := rect_height(panel);
 
-    // Center the room in the panel with some margin
-    margin_x := (panel_w - room_w) / 2;
-    margin_y := (panel_h - room_h) / 2;
+    // Random offset within available space
+    // Source: x1 = panel.x1 + random(max(0, (x2-x1-1) - sx))
+    range_x := cast(s32) max(1, (panel_w - 1) - room_w);
+    range_y := cast(s32) max(1, (panel_h - 1) - room_h);
 
-    // Add some randomness to position
-    offset_x := random(cast(s32)max(1, margin_x));
-    offset_y := random(cast(s32)max(1, margin_y));
+    x1 := panel.x1 + random(range_x);
+    y1 := panel.y1 + random(range_y);
+    x2 := x1 + room_w - 1;
+    y2 := y1 + room_h - 1;
 
-    x1 := panel.x1 + offset_x;
-    y1 := panel.y1 + offset_y;
+    // Hard clamp: enforce 2-tile margin from panel edges
+    // Source: Base.h:293-296
+    x1 = cast(s32) max(x1, panel.x1 + 2);
+    y1 = cast(s32) max(y1, panel.y1 + 2);
+    x2 = cast(s32) min(x2, panel.x2 - 2);
+    y2 = cast(s32) min(y2, panel.y2 - 2);
 
-    return Rect.{x1, y1, x1 + room_w - 1, y1 + room_h - 1};
+    return Rect.{x1, y1, x2, y2};
 }
 
 // Draw a panel with a room
@@ -2295,8 +2317,14 @@ draw_panel :: (m: *GenMap, gs: *GenState, px: s32, py: s32) {
             // Original MakeLev.cpp:2748-2749: ROOM_MIN + random(ROOM_MAX-ROOM_MIN) + 3
             sx = con.ROOM_MINX + random(con.ROOM_MAXX - con.ROOM_MINX) + 3;
             sy = con.ROOM_MINY + random(con.ROOM_MAXY - con.ROOM_MINY) + 3;
+        case RM_OCTAGON;
+            // Original MakeLev.cpp:2628-2632: ROOM_MIN + random(MAX-MIN) + 3, min 9
+            sx = con.ROOM_MINX + random(con.ROOM_MAXX - con.ROOM_MINX) + 3;
+            sy = con.ROOM_MINY + random(con.ROOM_MAXY - con.ROOM_MINY) + 3;
+            sx = cast(s32) max(sx, 9);
+            sy = cast(s32) max(sy, 9);
         case;
-            // RM_NORMAL, RM_CIRCLE, RM_OCTAGON, etc. use default sizing
+            // RM_NORMAL, RM_CIRCLE, etc. use default sizing
     }
 
     // Place room in panel
@@ -2611,12 +2639,13 @@ carve_tunnel :: (m: *GenMap, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32, 
 
         // Hard edge clamping: override direction if within 2-3 tiles of edge
         // Runs EVERY iteration (not just on force_turn) per MakeLev.cpp:3534-3541
+        // Order matches original: x<=2, y<=2, x>=sizeX-3, y>=sizeY-3
         if x <= 2 {
             curr_dir = .EAST;
-        } else if x >= m.width - 3 {
-            curr_dir = .WEST;
         } else if y <= 2 {
             curr_dir = .SOUTH;
+        } else if x >= m.width - 3 {
+            curr_dir = .WEST;
         } else if y >= m.height - 3 {
             curr_dir = .NORTH;
         }

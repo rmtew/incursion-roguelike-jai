@@ -2790,3 +2790,31 @@ Changed the termination distance check from Manhattan (`abs(x-dx) + abs(y-dy)`) 
 ### Verification
 - Compiles cleanly on first attempt
 - All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)
+
+## 2026-01-30: Correctness Gap 16 — Room Sizing + Edge Clamping Order
+
+Four fixes to room sizing and tunnel edge clamping, matching MakeLev.cpp behavior.
+
+### Fix 1: PlaceWithinSafely 2-Tile Margin Clamping (High)
+
+Rewrote `place_within_panel()` to match `PlaceWithinSafely` from TMap.cpp. The original enforces a hard 2-tile margin from panel edges after random placement, preventing rooms from touching the panel boundary. The Jai version was missing this margin clamping — rooms could be placed flush against panel edges, creating connectivity issues.
+
+### Fix 2: RM_OCTAGON +3 Sizing with min(9) Clamp (Moderate)
+
+Added explicit sizing case for RM_OCTAGON in `draw_panel()`. Per MakeLev.cpp:2628-2632, octagons use `ROOM_MIN + random(MAX-MIN) + 3` with a `max(sx, 9)` minimum clamp. Previously fell through to default sizing (no offset, no minimum), producing octagons too small for proper corner cutting.
+
+### Fix 3: RM_OVERLAP Overlap Enforcement (Moderate)
+
+Rewrote `write_overlap()` to match MakeLev.cpp:2588-2627. Key differences from old implementation:
+- **Size**: Each box uses 2/3-scale sizing (`(ROOM_MIN + random(MAX-MIN)) * 2 / 3`) instead of arbitrary 3-8/3-7
+- **Overlap enforcement**: Boxes 2+ must overlap at least one previous box via do-while placement loop (old code had no overlap guarantee)
+- **Probabilistic count**: 1/3 chance to stop at 2 boxes, 1/2 at 3, otherwise 4 (old code used `2 + random(3)`)
+- **Per-box walls**: Each sub-box gets its own WriteRoom treatment (walls+floor) instead of combined shape
+
+### Fix 4: Edge Clamping Order (Low)
+
+Fixed tunnel edge clamping if/else chain order from x/x/y/y to x/y/x/y matching MakeLev.cpp:3534-3541. Original checks: `x<=2 → EAST, y<=2 → SOUTH, x>=sizeX-3 → WEST, y>=sizeY-3 → NORTH`. This affects corner behavior — in corners, the first matching condition wins, so checking order determines which axis gets priority.
+
+### Verification
+- Compiles cleanly on first attempt
+- All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)

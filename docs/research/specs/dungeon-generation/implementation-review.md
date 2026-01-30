@@ -31,13 +31,13 @@ This document compares the existing Jai implementation in `src/dungeon/makelev.j
 | RM_NORMAL | WriteRoom (rect + walls) | write_room() | MATCHES |
 | RM_LARGE | Larger WriteRoom (1d4 - panel edge) | max(panel/2, panel-(random(8)+2)) | MATCHES |
 | RM_CROSS | WriteCross (overlapping bars) | write_cross() | MATCHES |
-| RM_OVERLAP | 2-4 overlapping rectangles | write_overlap() | MATCHES |
+| RM_OVERLAP | 2-4 overlapping rectangles | write_overlap() 2/3-scale, overlap enforce | MATCHES |
 | RM_ADJACENT | 4 quadrants sharing center | write_adjacent() | MATCHES |
 | RM_AD_ROUND | Adjacent with circles | write_adjacent(use_circles=true) | MATCHES |
 | RM_AD_MIXED | Adjacent mixed shapes | write_adjacent(mixed=true) | MATCHES |
 | RM_CIRCLE | WriteCircle | write_circle() | MATCHES |
 | RM_LCIRCLE | Large circle variant | max(panel/2, panel-(random(5)+5)) | MATCHES |
-| RM_OCTAGON | WriteOctagon (corners cut) | write_octagon() | MATCHES |
+| RM_OCTAGON | WriteOctagon (corners cut) | write_octagon(), +3 size, min(9) | MATCHES |
 | RM_DOUBLE | Room within room | write_double() | MATCHES |
 | RM_PILLARS | Room with pillar grid | write_pillars(), +3 size, even dims | MATCHES |
 | RM_CASTLE | Subdivided building | write_castle(), large sizing | MATCHES |
@@ -256,3 +256,4 @@ Missing: RF_ROCKTYPE, RF_CAVE, RF_AUTO, RF_OPT_DIM, RF_VAULT, RF_NOMONSTER, RF_N
 13. ~~Fix flood fill door bug + corridor edge clamping scope~~ **DONE (2026-01-30)**
 14. ~~Fixup tunneling overhaul (edge detection, distance, multi-region)~~ **DONE (2026-01-30)**
 15. ~~Fix tunnel function (floor priority, collision checks, axis turn, termination)~~ **DONE (2026-01-30)**
+16. ~~Fix room sizing (PlaceWithinSafely margins, RM_OCTAGON +3/min9, RM_OVERLAP enforcement, edge clamp order)~~ **DONE (2026-01-30)**
