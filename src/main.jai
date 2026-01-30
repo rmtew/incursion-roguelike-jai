@@ -1,5 +1,4 @@
-// Incursion Port - Main Entry Point
-// Reconstructed from RECONSTRUCTION.md
+// Incursion Port - Main Game Entry Point
 
 #import "Basic";
 #import "Math";
@@ -46,13 +45,14 @@
 #load "game/loop.jai";
 #load "game/log.jai";
 
-// Load tests
-#load "tests.jai";
-
 main :: () {
     print("Incursion Port - %\n", VERSION_STRING);
-    print("Running tests...\n");
 
-    random_seed(cast(u64) 12345);
-    run_all_tests();
+    init_resource_db();
+    db := get_resource_db();
+    print("Resources loaded: % monsters, % items, % terrains\n",
+          db.monsters.count, db.items.count, db.terrains.count);
+
+    print("Game is not yet playable as a standalone executable.\n");
+    print("Use tools/headless.jai or tools/inspect.jai for testing.\n");
 }

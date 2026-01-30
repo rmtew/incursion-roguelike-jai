@@ -30,11 +30,26 @@
 ## Build & Test
 
 ```bash
-# Compile
-C:/Data/R/jai/bin/jai.exe src/main.jai
+# Build all targets
+build.bat
+
+# Build specific target(s)
+build.bat test             # test runner only
+build.bat game             # game executable only
+build.bat game test        # multiple targets
 
 # Run tests
-./main.exe
+./src/tests/test.exe
+
+# Build targets:
+#   game              src/main.jai         (game entry point)
+#   test              src/tests/test.jai   (test runner)
+#   headless          tools/headless.jai
+#   dungeon_test      tools/dungeon_test.jai
+#   dungeon_screenshot tools/dungeon_screenshot.jai
+#   dungeon_verify    tools/dungeon_verify.jai
+#   inspect           tools/inspect.jai
+#   replay            tools/replay.jai
 ```
 
 ## Conventions
@@ -92,8 +107,8 @@ After completing all tasks, halt for user review before proceeding to new work.
 ### Verification
 
 **Correctness testing:**
-- Compile with `C:/Data/R/jai/bin/jai.exe src/main.jai`
-- Run `./main.exe` to execute test suite
+- Compile with `build.bat test`
+- Run `./src/tests/test.exe` to execute test suite
 - All tests must pass before committing
 
 **Verification standard:**

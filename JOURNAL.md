@@ -2818,3 +2818,20 @@ Fixed tunnel edge clamping if/else chain order from x/x/y/y to x/y/x/y matching 
 ### Verification
 - Compiles cleanly on first attempt
 - All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)
+
+## 2026-01-30: Build System Restructure
+
+Separated tests from `main.jai` so the game executable and test runner are independent compilation targets. Added `build.bat` to compile all targets from a single script.
+
+### Changes
+
+- **`src/main.jai`** — Stripped test loading and execution. Now serves as game entry point: prints version, initializes resource DB, prints status message.
+- **`src/tests/suites.jai`** — Moved from `src/tests.jai` (rename only, no content changes). Contains all 17 test suites and test framework helpers.
+- **`src/tests/test.jai`** — New test runner entry point. Loads all core modules via `../` relative paths (same pattern as `tools/headless.jai`), loads `suites.jai`, runs `run_all_tests()`.
+- **`build.bat`** — Build script supporting 8 targets: `game`, `test`, `headless`, `dungeon_test`, `dungeon_screenshot`, `dungeon_verify`, `inspect`, `replay`. Default builds all. Supports individual target names as arguments.
+- **`CLAUDE.md`** — Updated build/test instructions to use `build.bat` and `src/tests/test.exe`.
+
+### Verification
+- `build.bat` compiles 6/8 targets cleanly (2 pre-existing failures: `dungeon_screenshot` and `dungeon_verify` missing `visibility.jai` load — predates this change)
+- `src/tests/test.exe` — 213/217 pass (same 4 pre-existing mon1-4.irh failures)
+- `src/main.exe` — Runs, prints version + resource counts + status, exits cleanly
