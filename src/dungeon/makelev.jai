@@ -1641,6 +1641,168 @@ write_grid :: (m: *GenMap, gs: *GenState, r: Rect) {
     }
 }
 
+// Draw a single building within a town grid cell
+// Draws wall perimeter at PRIO_ROOM_FURNITURE (75) to overwrite street floor (70),
+// with random size shrinkage for variety (min 3x3) and one door on a random side.
+write_town_building :: (m: *GenMap, gs: *GenState, cell: Rect, wall_terrain: *RuntimeTerrain, floor_terrain: *RuntimeTerrain) {
+    wall := gs.con.TERRAIN_WALL;
+    floor := gs.con.TERRAIN_FLOOR;
+
+    // Optionally shrink the building within the cell for variety (min 3x3 interior)
+    cw := rect_width(cell);
+    ch := rect_height(cell);
+    shrink_x : s32 = 0;
+    shrink_y : s32 = 0;
+    if cw > 4  shrink_x = random(min(cw - 4, 2));
+    if ch > 4  shrink_y = random(min(ch - 4, 2));
+
+    bx1 : s32 = cell.x1 + shrink_x;
+    by1 : s32 = cell.y1 + shrink_y;
+    bx2 : s32 = cell.x2 - (shrink_x / 2);
+    by2 : s32 = cell.y2 - (shrink_y / 2);
+
+    // Need at least 3x3 for a building
+    if (bx2 - bx1) < 2 || (by2 - by1) < 2  return;
+
+    // Draw wall perimeter
+    for x: bx1..bx2 {
+        write_at_with_terrain(m, gs, x, by1, wall, wall_terrain, PRIO_ROOM_FURNITURE);
+        write_at_with_terrain(m, gs, x, by2, wall, wall_terrain, PRIO_ROOM_FURNITURE);
+    }
+    for y: by1..by2 {
+        write_at_with_terrain(m, gs, bx1, y, wall, wall_terrain, PRIO_ROOM_FURNITURE);
+        write_at_with_terrain(m, gs, bx2, y, wall, wall_terrain, PRIO_ROOM_FURNITURE);
+    }
+
+    // Fill interior with floor (higher priority so it's clearly inside)
+    for y: by1+1..by2-1 {
+        for x: bx1+1..bx2-1 {
+            write_at_with_terrain(m, gs, x, y, floor, floor_terrain, PRIO_ROOM_FURNITURE);
+        }
+    }
+
+    // Place one door on a random wall side
+    side := random(4);
+    if side == 0 {
+        // North wall
+        dx := bx1 + 1 + random(bx2 - bx1 - 1);
+        write_at_with_terrain(m, gs, dx, by1, floor, floor_terrain, PRIO_ROOM_FURNITURE);
+    } else if side == 1 {
+        // South wall
+        dx := bx1 + 1 + random(bx2 - bx1 - 1);
+        write_at_with_terrain(m, gs, dx, by2, floor, floor_terrain, PRIO_ROOM_FURNITURE);
+    } else if side == 2 {
+        // West wall
+        dy := by1 + 1 + random(by2 - by1 - 1);
+        write_at_with_terrain(m, gs, bx1, dy, floor, floor_terrain, PRIO_ROOM_FURNITURE);
+    } else {
+        // East wall
+        dy := by1 + 1 + random(by2 - by1 - 1);
+        write_at_with_terrain(m, gs, bx2, dy, floor, floor_terrain, PRIO_ROOM_FURNITURE);
+    }
+}
+
+// Write a random town layout: grid of small buildings separated by streets
+// In original: case RM_RANDTOWN in DrawPanel (defined but never implemented - fell through to basic room)
+// Algorithm: floor-fill for streets, divide into grid cells, ~75% get buildings, outer perimeter walls
+write_randtown :: (m: *GenMap, gs: *GenState, r: Rect) {
+    floor := gs.con.TERRAIN_FLOOR;
+    wall := gs.con.TERRAIN_WALL;
+    floor_terrain := get_region_floor(gs.current_region, gs.default_floor);
+    wall_terrain := get_region_wall(gs.current_region, gs.default_wall);
+
+    w := rect_width(r);
+    h := rect_height(r);
+
+    // Need minimum space for a 2x2 grid with streets (7 = 5 min cell + 2 street gap)
+    if w < 14 || h < 14 {
+        write_room(m, gs, r);
+        return;
+    }
+
+    // Calculate grid dimensions
+    cols : s32 = cast(s32)max(2, min(3, w / 7));
+    rows : s32 = cast(s32)max(2, min(4, h / 7));
+
+    // Phase 1: Floor-fill entire rect (creates streets)
+    for y: r.y1..r.y2 {
+        for x: r.x1..r.x2 {
+            write_at_with_terrain(m, gs, x, y, floor, floor_terrain, PRIO_ROOM_FLOOR);
+        }
+    }
+
+    // Phase 2: Place buildings in grid cells
+    // Cell size = available space / grid dims, with 2-tile street gaps between cells
+    cell_w : s32 = (w - (cols - 1) * 2) / cols;
+    cell_h : s32 = (h - (rows - 1) * 2) / rows;
+
+    // Track how many buildings we placed for minimum guarantee
+    buildings_placed : s32 = 0;
+    total_cells : s32 = cols * rows;
+    cells_remaining : s32 = total_cells;
+
+    for row: 0..rows-1 {
+        for col: 0..cols-1 {
+            cx1 := r.x1 + cast(s32)col * (cell_w + 2);
+            cy1 := r.y1 + cast(s32)row * (cell_h + 2);
+            cx2 := cx1 + cell_w - 1;
+            cy2 := cy1 + cell_h - 1;
+
+            // Clamp to town bounds
+            if cx2 > r.x2  cx2 = r.x2;
+            if cy2 > r.y2  cy2 = r.y2;
+
+            cells_remaining -= 1;
+
+            // ~75% chance to place a building, but guarantee at least half are filled
+            min_needed := total_cells / 2 - buildings_placed;
+            place_building := random(100) < 75;
+            if !place_building && min_needed > cells_remaining {
+                place_building = true;  // Force placement to meet minimum
+            }
+
+            if place_building {
+                cell := Rect.{cx1, cy1, cx2, cy2};
+                write_town_building(m, gs, cell, wall_terrain, floor_terrain);
+                buildings_placed += 1;
+            }
+        }
+    }
+
+    // Phase 3: Outer perimeter walls (where floor meets rock)
+    for x: r.x1-1..r.x2+1 {
+        if map_get(m, x, r.y1-1) == .ROCK  write_at_with_terrain(m, gs, x, r.y1-1, wall, wall_terrain, PRIO_ROOM_WALL);
+        if map_get(m, x, r.y2+1) == .ROCK  write_at_with_terrain(m, gs, x, r.y2+1, wall, wall_terrain, PRIO_ROOM_WALL);
+    }
+    for y: r.y1-1..r.y2+1 {
+        if map_get(m, r.x1-1, y) == .ROCK  write_at_with_terrain(m, gs, r.x1-1, y, wall, wall_terrain, PRIO_ROOM_WALL);
+        if map_get(m, r.x2+1, y) == .ROCK  write_at_with_terrain(m, gs, r.x2+1, y, wall, wall_terrain, PRIO_ROOM_WALL);
+    }
+
+    // Phase 4: Register room + centers/corners
+    if gs.n_centers < 16 {
+        cx, cy := rect_center(r);
+        gs.centers[gs.n_centers] = cast(u16)(cx + cy * 256);
+        gs.n_centers += 1;
+    }
+
+    if gs.n_corners < 28 {
+        gs.corners[gs.n_corners] = cast(u16)(r.x1 + r.y1 * 256);
+        gs.n_corners += 1;
+        gs.corners[gs.n_corners] = cast(u16)(r.x2 + r.y1 * 256);
+        gs.n_corners += 1;
+        gs.corners[gs.n_corners] = cast(u16)(r.x1 + r.y2 * 256);
+        gs.n_corners += 1;
+        gs.corners[gs.n_corners] = cast(u16)(r.x2 + r.y2 * 256);
+        gs.n_corners += 1;
+    }
+
+    room: Room;
+    room.bounds = r;
+    room.connected = false;
+    array_add(*m.rooms, room);
+}
+
 // Write linked life caves (multiple connected cavern systems)
 // In original: case RM_LIFELINK in DrawPanel
 // Similar to LIFECAVE but creates multiple connected cavern clusters
@@ -2087,8 +2249,9 @@ draw_panel :: (m: *GenMap, gs: *GenState, px: s32, py: s32) {
             write_shaped(m, gs, panel, m.depth);
 
         case RM_RANDTOWN;
-            // Random town - falls through to normal for now (placeholder)
-            write_room(m, gs, r);
+            // Random town - grid of small buildings separated by streets
+            town_r := Rect.{panel.x1 + 2, panel.y1 + 2, panel.x2 - 2, panel.y2 - 2};
+            write_randtown(m, gs, town_r);
 
         case;
             // Default to normal room

@@ -2381,3 +2381,34 @@ A correctness analysis had flagged three potential gaps in the dungeon generatio
 
 ### Conclusion
 No code changes needed. The earlier correctness analysis incorrectly identified these as gaps — all three features were already implemented and are functioning at runtime.
+
+## 2026-01-30: Implement RM_RANDTOWN (Correctness Gap 4)
+
+### Background
+`RM_RANDTOWN` (constant 22) was defined in original Incursion but never implemented — it fell through to basic room generation. The Jai port had the same placeholder at the `draw_panel()` dispatch (`case RM_RANDTOWN; write_room(m, gs, r);`).
+
+### Implementation
+Added two new functions in `src/dungeon/makelev.jai` after `write_grid`:
+
+**`write_town_building()`** — helper that draws one building within a grid cell:
+- Wall perimeter at `PRIO_ROOM_FURNITURE` (75), overwriting street floor (70)
+- Random size shrinkage within cell for visual variety (minimum 3×3)
+- One door gap (floor at priority 75) placed on a random wall side
+
+**`write_randtown()`** — main room writer following the standard pattern:
+- Gets region floor/wall terrain via `get_region_floor`/`get_region_wall`
+- Falls back to `write_room()` if panel too small (< 14 in either dimension)
+- Grid calculation: `cols = max(2, min(3, w/7))`, `rows = max(2, min(4, h/7))`
+- **Phase 1**: Floor-fill entire rect (creates streets between buildings)
+- **Phase 2**: Place buildings in grid cells (~75% occupancy, guaranteed at least half)
+- **Phase 3**: Outer perimeter walls (same pattern as `write_room`)
+- **Phase 4**: Register Room + centers/corners for corridor connection
+
+Updated `draw_panel()` dispatch to call `write_randtown` with panel-inset rect (matching castle/building pattern).
+
+### Jai Type Considerations
+Required explicit `s32` type annotations for grid arithmetic variables (`cols`, `rows`, `cell_w`, `cell_h`, `shrink_x`, `shrink_y`, etc.) because Jai's `min`/`max` and integer literal `0` produce `s64`, which then propagated through arithmetic to the `Rect` struct literal and `write_at_with_terrain` calls expecting `s32`.
+
+### Verification
+- Compiles cleanly
+- All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)
