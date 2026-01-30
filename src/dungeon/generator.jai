@@ -227,13 +227,13 @@ bsp_connect_rooms :: (node: *BSPNode, m: *GenMap, rng: *Random_State) {
 
 // Main dungeon generation function
 // Mode parameter kept for API compatibility but only ORIGINAL is supported
-generate_dungeon :: (m: *GenMap, seed: u64 = 0, mode: GeneratorMode = .ORIGINAL, depth: s32 = 1) {
-    generate_dungeon_original(m, cast(u32)seed, depth);
+generate_dungeon :: (m: *GenMap, seed: u64 = 0, mode: GeneratorMode = .ORIGINAL, depth: s32 = 1, above_map: *GenMap = null) {
+    generate_dungeon_original(m, cast(u32)seed, depth, above_map);
 }
 
 // Original-compatible dungeon generation using MT19937
 // Uses MakeLev panel-based generation
-generate_dungeon_original :: (m: *GenMap, seed: u32, depth: s32 = 1) {
+generate_dungeon_original :: (m: *GenMap, seed: u32, depth: s32 = 1, above_map: *GenMap = null) {
     // Use the MakeLev-style generation
-    generate_makelev(m, seed, depth = depth);
+    generate_makelev(m, seed, depth = depth, above_map = above_map);
 }

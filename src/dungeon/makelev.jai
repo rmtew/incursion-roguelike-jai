@@ -305,6 +305,7 @@ DungeonConstants :: struct {
     MIN_RIVER_DEPTH     : s32 : 3;   // Minimum depth for river streamers
     MIN_CHASM_DEPTH     : s32 : 5;   // Minimum depth for chasm streamers
     DUN_DEPTH           : s32 : 20;  // Total dungeon depth (no chasms on last level)
+    REDUCE_CHASM_CHANCE : s32 : 50;  // % chance that chasms narrow when propagating down
     // Corridor constants (original defaults from Annot.cpp:GetConst)
     TURN_CHANCE         : s32 : 10;  // % chance to turn each step after min segment
     SEGMENT_MINLEN      : s32 : 4;   // Minimum segment length before turning
@@ -4173,7 +4174,7 @@ place_down_stairs :: (m: *GenMap, gs: *GenState, up_stairs: [] StairPos, depth: 
 
 // Main generation function - matches Map::Generate structure
 // Extended to support multi-level generation with stair continuity
-generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[], depth: s32 = 1, max_depth: s32 = 10) -> down_stairs: [..] StairPos {
+generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[], depth: s32 = 1, max_depth: s32 = 10, above_map: *GenMap = null) -> down_stairs: [..] StairPos {
     // Initialize RNG
     random_init(seed);
 
@@ -4263,6 +4264,32 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
             last_stype = stype;
             has_last_stype = true;
             streamers_placed += 1;
+        }
+    }
+
+    // Step 2b: Multi-level chasm propagation
+    // Source: MakeLev.cpp:1466-1490
+    // If the level above has chasms, propagate them down (with optional narrowing)
+    if above_map != null && depth != gs.con.DUN_DEPTH {
+        narrow_chasm := random(100) < gs.con.REDUCE_CHASM_CHANCE;
+
+        for y: 0..m.height-1 {
+            for x: 0..m.width-1 {
+                above_t := map_get(above_map, x, y);
+                if above_t != .CHASM continue;
+
+                if narrow_chasm {
+                    // Only propagate if surrounded by chasms on all 4 cardinal sides above
+                    if x <= 0 || x >= above_map.width-1 || y <= 0 || y >= above_map.height-1 continue;
+                    if map_get(above_map, x-1, y) != .CHASM continue;
+                    if map_get(above_map, x+1, y) != .CHASM continue;
+                    if map_get(above_map, x, y-1) != .CHASM continue;
+                    if map_get(above_map, x, y+1) != .CHASM continue;
+                }
+
+                // Propagate chasm to current level
+                write_at(m, *gs, x, y, .CHASM, PRIO_RIVER_STREAMER);
+            }
         }
     }
 

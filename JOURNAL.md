@@ -2600,3 +2600,33 @@ The original processes 3 pairs (water, brimstone/magma, igneous/obsidian). We im
 ### Verification
 - Compiles cleanly on first attempt
 - All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)
+
+## 2026-01-30: Correctness Gap 10 — Multi-Level Chasm Propagation
+
+Added chasm propagation from the level above, matching MakeLev.cpp:1466-1490. Chasms now persist and optionally narrow across dungeon levels, creating vertical continuity.
+
+### API Change
+
+Added `above_map: *GenMap = null` parameter to `generate_makelev()`, `generate_dungeon_original()`, and `generate_dungeon()`. When null (the default), chasm propagation is skipped — backward compatible with all existing callers.
+
+### Algorithm (Step 2b in generation pipeline)
+
+After streamer placement (Step 2) and before vaults (Step 3):
+
+1. If `above_map` is null or current depth equals `DUN_DEPTH`, skip
+2. Roll `REDUCE_CHASM_CHANCE` (default 50%) — if it passes, enable "narrow chasm" mode
+3. Scan every tile on the above level. For each `.CHASM` tile:
+   - **Narrow mode**: Only propagate if all 4 cardinal neighbors on the above map are also `.CHASM` (chasms get smaller each level)
+   - **Normal mode**: Propagate unconditionally
+4. Write `.CHASM` on the current level at `PRIO_RIVER_STREAMER` (90)
+
+This means chasms created by streamers on level N appear on level N+1 (and N+2, etc.), with a 50% chance of shrinking each level. The original describes this as creating opportunities for "rickety bridges" and "rope bridges" when corridors cross these persistent chasms.
+
+### New Constant
+
+Added `REDUCE_CHASM_CHANCE: s32: 50` to `DungeonConstants` (from Annot.cpp:GetConst, line 498).
+
+### Verification
+- Compiles cleanly on first attempt
+- All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)
+- Single-level generation unchanged (above_map defaults to null)
