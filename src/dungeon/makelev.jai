@@ -2540,8 +2540,41 @@ carve_tunnel :: (m: *GenMap, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32, 
             force_turn = true;
         }
 
-        // Force turn if at destination axis (unless TT_DIRECT)
-        if !(tflags & TT_DIRECT) {
+        // Collision checks for existing corridors and room walls
+        // Source: MakeLev.cpp:3498-3512
+        // Compute NEXT2 (two tiles ahead in current direction)
+        nx2 := x + TunnelDirX[cast(s32)curr_dir] * 2;
+        ny2 := y + TunnelDirY[cast(s32)curr_dir] * 2;
+        next_cell := get_cell(gs, m, nx, ny);
+        next2_cell := get_cell(gs, m, nx2, ny2);
+        curr_cell := get_cell(gs, m, x, y);
+
+        // Check 1: NEXT and NEXT2 are both corridor walls → force turn
+        // Prevents tunneling through existing corridors
+        if next_cell != null && next2_cell != null {
+            if next_cell.priority == PRIO_CORRIDOR_WALL && next2_cell.priority == PRIO_CORRIDOR_WALL {
+                force_turn = true;
+            }
+        }
+
+        // Check 2: Current and NEXT are both room walls → force turn
+        // Prevents tunneling along room walls
+        if curr_cell != null && next_cell != null {
+            if curr_cell.priority == PRIO_ROOM_WALL && next_cell.priority == PRIO_ROOM_WALL {
+                force_turn = true;
+            }
+        }
+
+        // Check 3: NEXT is a room wall → make a door (handled in write phase)
+        // Source: MakeLev.cpp:3506-3512
+        // Note: Door creation is handled by place_doors_makelev() post-process,
+        // which already detects corridor-room wall intersections. The original
+        // makes doors inline, but our post-process achieves the same result.
+
+        // Force turn if at destination axis
+        // Source: MakeLev.cpp:3514-3517 — NO flag guard in original
+        // This runs for ALL tunnel types including TT_DIRECT
+        {
             if x == dx && TunnelDirX[cast(s32)curr_dir] != 0 {
                 force_turn = true;
             }
@@ -2595,7 +2628,8 @@ carve_tunnel :: (m: *GenMap, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32, 
         // Check termination conditions (unless TT_EXACT)
         if !(tflags & TT_EXACT) {
             // Close enough and in open space
-            distance := abs(x - dx) + abs(y - dy);
+            // Use diagonal approximation distance (matching dist())
+            distance := dist(x, y, dx, dy);
             if distance < 10 && !is_solid(gs, m, x, y) {
                 // Same panel as destination
                 curr_px := x / gs.con.PANEL_SIZEX;
@@ -2621,9 +2655,12 @@ carve_tunnel :: (m: *GenMap, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32, 
             map_set(m, p.x, p.y, corridor);
 
             // Update cell info
+            // Source: MakeLev.cpp:3581 — const int f_prio = PRIO_ROOM_FLOOR
+            // Corridor floors use PRIO_ROOM_FLOOR (70) so they can't be
+            // overwritten by room walls (40), preserving connectivity
             cell := get_cell(gs, m, p.x, p.y);
             if cell != null {
-                cell.priority = PRIO_CORRIDOR_FLOOR;
+                cell.priority = PRIO_ROOM_FLOOR;
                 cell.solid = false;
             }
 

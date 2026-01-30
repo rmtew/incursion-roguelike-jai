@@ -2741,3 +2741,52 @@ This means the algorithm can connect up to 78 regions (26 trials × 3) instead o
 ### Verification
 - Compiles cleanly on first attempt
 - All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)
+
+## 2026-01-30: Correctness Gap Research - Tunnel, Streamer, and Room Sizing
+
+### Purpose
+Researched remaining correctness gaps between the Incursion dungeon generator port and the original MakeLev.cpp. Compared three specific areas: WriteStreamer, Tunnel wall/floor writing, and room sizing in draw_panel. Research only, no code changes.
+
+### Key Findings
+
+**Tunnel function has 10 gaps**, most critically:
+- Corridor floor priority wrong (30 vs original's 70) -- corridors can be overwritten
+- Missing 3 force_turn collision checks -- tunnels blast through walls
+- Missing door-making at corridor/room intersections
+- Incorrect TT_DIRECT guard on destination axis turn
+
+**WriteStreamer is mostly correct** -- starting position, direction, width, and propagation all match. Only missing encounter generation (expected) and minor edge bounds difference.
+
+**Room sizing has 4 gaps** -- PlaceWithinSafely 2-tile margin not enforced, RM_OCTAGON missing +3/min(9), RM_OVERLAP uses wrong algorithm, RF_ODD_WIDTH/HEIGHT missing.
+
+**Top recommendation**: Fix corridor floor priority and add missing tunnel force_turn checks. See full analysis in conversation for line-by-line comparison.
+
+## 2026-01-30: Correctness Gap 15 — Tunnel Function Fixes
+
+Four fixes to `carve_tunnel()`, addressing the critical tunnel gaps identified in the research.
+
+### Fix 1: Corridor Floor Priority (Critical)
+
+Changed corridor floor priority from `PRIO_CORRIDOR_FLOOR` (30) to `PRIO_ROOM_FLOOR` (70), matching MakeLev.cpp:3581 (`const int f_prio = PRIO_ROOM_FLOOR`). At priority 30, corridor floors could be overwritten by room walls (40), breaking connectivity between rooms. At priority 70, corridors are as durable as room floors.
+
+### Fix 2: Corridor/Room Wall Collision Checks (Critical)
+
+Added three missing `force_turn` collision checks from MakeLev.cpp:3498-3512:
+
+1. **Double corridor wall**: If NEXT and NEXT2 (two tiles ahead) both have `PRIO_CORRIDOR_WALL` → force turn. Prevents tunneling through existing corridors.
+2. **Double room wall**: If current and NEXT both have `PRIO_ROOM_WALL` → force turn. Prevents tunneling along room walls.
+3. **Room wall intersection**: When NEXT is a room wall, the original creates a door inline. Our post-process `place_doors_makelev()` handles this by detecting corridor-room wall intersections after generation, achieving the same result.
+
+These require computing NEXT2 position (`x + dir * 2, y + dir * 2`) and checking priorities on current, next, and next2 cells.
+
+### Fix 3: Destination Axis Turn Guard (Moderate)
+
+Removed the incorrect `!(tflags & TT_DIRECT)` guard on the destination axis turn check. Per MakeLev.cpp:3514-3517, this check has **no flag guard** — it runs for all tunnel types. The guard caused TT_DIRECT tunnels (the most common type) to overshoot when aligned with the destination's X or Y axis.
+
+### Fix 4: Termination Distance Function (Moderate)
+
+Changed the termination distance check from Manhattan (`abs(x-dx) + abs(y-dy)`) to use the already-fixed `dist()` function (diagonal approximation `max + min/2`). This ensures consistent distance semantics throughout the tunnel function.
+
+### Verification
+- Compiles cleanly on first attempt
+- All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)

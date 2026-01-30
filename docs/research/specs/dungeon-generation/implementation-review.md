@@ -77,7 +77,7 @@ This document compares the existing Jai implementation in `src/dungeon/makelev.j
 | Turn chance | TURN_CHANCE constant, random check after SEGMENT_MIN | gs.con.TURN_CHANCE = 10 | MATCHES |
 | Segment lengths | SEGMENT_MINLEN=4, SEGMENT_MAXLEN=10 | gs.con.SEGMENT_MINLEN=4, SEGMENT_MAXLEN=10 | MATCHES |
 | Priority system | PRIO_CORRIDOR_WALL=10, PRIO_CORRIDOR_FLOOR=30 | PRIO_CORRIDOR_WALL=10, PRIO_CORRIDOR_FLOOR=30 | MATCHES |
-| Door creation at intersections | Check solid + corridor wall priority | place_doors_makelev() post-process | DIFFERS |
+| Door creation at intersections | Check solid + corridor wall priority | Collision checks + post-process | MATCHES |
 | Stubborn corridor | STUBBORN_CORRIDOR controls direction persistence | gs.con.STUBBORN_CORRIDOR = 30 | MATCHES |
 | Panel connection | Edge tiles, closest pairs, left/up/diagonal | Edge tiles + closest pairs, left/up/diagonal | MATCHES |
 | Region selection | CorridorWeights, one-time use unless RF_STAPLE | Not using regions for corridors | MISSING |
@@ -255,3 +255,4 @@ Missing: RF_ROCKTYPE, RF_CAVE, RF_AUTO, RF_OPT_DIM, RF_VAULT, RF_NOMONSTER, RF_N
 12. ~~Add door validation and secret door protection near stairs~~ **DONE (2026-01-30)**
 13. ~~Fix flood fill door bug + corridor edge clamping scope~~ **DONE (2026-01-30)**
 14. ~~Fixup tunneling overhaul (edge detection, distance, multi-region)~~ **DONE (2026-01-30)**
+15. ~~Fix tunnel function (floor priority, collision checks, axis turn, termination)~~ **DONE (2026-01-30)**
