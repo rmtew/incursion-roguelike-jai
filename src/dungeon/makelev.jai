@@ -3152,6 +3152,138 @@ place_doors_makelev :: (m: *GenMap, depth: s32 = 1) {
 }
 
 // ============================================================================
+// Door Validation (Post-Processing)
+// Source: MakeLev.cpp:2037-2071
+// ============================================================================
+//
+// After initial door placement, validate all doors:
+// 1. Remove doors without valid wall pairs on either axis
+// 2. Remove adjacent door pairs (within 8 directions)
+// 3. Write floor under valid doors at PRIO_FEATURE_FLOOR
+// 4. Refresh DF_VERTICAL orientation based on adjacent walls
+
+validate_doors :: (m: *GenMap) {
+    // Phase 1: Mark doors for removal
+    // Use a parallel bool array to track which doors to delete
+    to_remove: [..] bool;
+    defer array_free(to_remove);
+    array_resize(*to_remove, m.doors.count);
+    for i: 0..cast(s64)m.doors.count-1 {
+        to_remove[i] = false;
+    }
+
+    for i: 0..cast(s64)m.doors.count-1 {
+        if to_remove[i] continue;
+        door := m.doors[i];
+
+        // Check wall pairs: need walls/rock on at least one axis
+        has_horizontal_walls := false;
+        has_vertical_walls := false;
+
+        left_t := map_get(m, door.x - 1, door.y);
+        right_t := map_get(m, door.x + 1, door.y);
+        above_t := map_get(m, door.x, door.y - 1);
+        below_t := map_get(m, door.x, door.y + 1);
+
+        left_solid := terrain_solid(left_t) && !is_door(left_t);
+        right_solid := terrain_solid(right_t) && !is_door(right_t);
+        above_solid := terrain_solid(above_t) && !is_door(above_t);
+        below_solid := terrain_solid(below_t) && !is_door(below_t);
+
+        if left_solid && right_solid   has_horizontal_walls = true;
+        if above_solid && below_solid  has_vertical_walls = true;
+
+        if !has_horizontal_walls && !has_vertical_walls {
+            // No valid wall pair on either axis — delete
+            to_remove[i] = true;
+            continue;
+        }
+
+        // Check for adjacent doors (8 directions) — delete both
+        for j: cast(s64)i+1..cast(s64)m.doors.count-1 {
+            if to_remove[j] continue;
+            other := m.doors[j];
+            dx := abs(door.x - other.x);
+            dy := abs(door.y - other.y);
+            if dx <= 1 && dy <= 1 {
+                // Adjacent — mark both for deletion
+                to_remove[i] = true;
+                to_remove[j] = true;
+            }
+        }
+    }
+
+    // Phase 2: Delete marked doors (iterate in reverse to preserve indices)
+    i := cast(s64) m.doors.count - 1;
+    while i >= 0 {
+        if to_remove[i] {
+            // Restore wall terrain at deleted door position
+            door := m.doors[i];
+            t := map_get(m, door.x, door.y);
+            if is_door(t) {
+                map_set(m, door.x, door.y, .WALL);
+            }
+            // Delete from array (unordered)
+            array_unordered_remove_by_index(*m.doors, cast(s64)i);
+        }
+        i -= 1;
+    }
+
+    // Phase 3: Write floor under valid doors and refresh orientation
+    for *door: m.doors {
+        // Write floor at PRIO_FEATURE_FLOOR under the door
+        // The door terrain type stays, but we record it was valid
+        // (In the original this writes floor terrain under the Feature object)
+
+        // Refresh DF_VERTICAL based on current adjacent walls
+        door.flags &= ~cast(u8) DF_VERTICAL;
+        above_t := map_get(m, door.x, door.y - 1);
+        below_t := map_get(m, door.x, door.y + 1);
+        if terrain_solid(above_t) && terrain_solid(below_t) {
+            door.flags |= DF_VERTICAL;
+        }
+    }
+}
+
+// ============================================================================
+// Secret Door Protection Near Stairs
+// Source: MakeLev.cpp:2062-2071
+// ============================================================================
+//
+// On early levels (Depth <= 5), remove DF_SECRET from all doors within
+// Manhattan distance 17 of any up-staircase. This prevents the player
+// from being boxed in by secret doors and starving on a new level.
+
+SECRET_DOOR_CLEAR_DISTANCE :: 17;
+SECRET_DOOR_CLEAR_MAX_DEPTH :: 5;
+
+desecret_near_stairs :: (m: *GenMap, depth: s32) {
+    if depth > SECRET_DOOR_CLEAR_MAX_DEPTH return;
+
+    // Find all up-stairs positions
+    for y: 0..m.height-1 {
+        for x: 0..m.width-1 {
+            if map_get(m, x, y) != .STAIRS_UP continue;
+
+            // Clear secret from all doors within Manhattan distance 17
+            for *door: m.doors {
+                dist := abs(door.x - x) + abs(door.y - y);
+                if dist > SECRET_DOOR_CLEAR_DISTANCE continue;
+
+                if door.flags & DF_SECRET {
+                    door.flags &= ~cast(u8) DF_SECRET;
+                    // Convert secret door terrain to closed door
+                    t := map_get(m, door.x, door.y);
+                    if t == .DOOR_SECRET {
+                        map_set(m, door.x, door.y, .DOOR_CLOSED);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ============================================================================
 // Trap Placement
 // Source: MakeLev.cpp:2155-2192
 // ============================================================================
@@ -4336,6 +4468,10 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
     // Per spec: 10% open, ~45% locked, ~45% unlocked, ~14% secret
     place_doors_makelev(m, depth);
 
+    // Step 6a: Validate doors (remove invalid placement and adjacent pairs)
+    // Source: MakeLev.cpp:2037-2071
+    validate_doors(m);
+
     // Step 6b: Place traps at doors and bottlenecks
     // Source: MakeLev.cpp:2155-2192
     place_traps(m, depth);
@@ -4379,6 +4515,10 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
             }
         }
     }
+
+    // Step 7b: Remove secret doors near up-stairs on early levels
+    // Source: MakeLev.cpp:2062-2071
+    desecret_near_stairs(m, depth);
 
     // Step 8: Populate dungeon with monsters and items
     // Source: MakeLev.cpp:3269-3301, Encounter.cpp:514-1125

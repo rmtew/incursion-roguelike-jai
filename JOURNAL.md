@@ -2656,3 +2656,34 @@ After population (Step 8) and before final output:
 ### Verification
 - Compiles cleanly on first attempt
 - All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)
+
+## 2026-01-30: Correctness Gap 12 — Door Post-Processing
+
+Added two post-generation door passes matching MakeLev.cpp:2037-2071 and 2062-2071.
+
+### Door Validation (Step 6a: `validate_doors()`)
+
+After initial door placement, validates all doors in three phases:
+
+**Phase 1 — Mark invalid doors:**
+- Remove doors that don't have wall/rock pairs on either axis (left+right OR above+below). A door floating in open space is invalid.
+- Remove adjacent door pairs: if two doors are within 8 directions of each other (Chebyshev distance <= 1), BOTH are deleted. This prevents cluttered doorways.
+
+**Phase 2 — Delete marked doors:**
+- Iterates in reverse to preserve indices during unordered removal
+- Restores `.WALL` terrain at deleted door positions
+
+**Phase 3 — Refresh valid doors:**
+- Re-determines `DF_VERTICAL` orientation based on current adjacent wall geometry (walls above+below = vertical)
+
+### Secret Door Protection Near Stairs (Step 7b: `desecret_near_stairs()`)
+
+On early levels (Depth <= 5), clears `DF_SECRET` from all doors within Manhattan distance 17 of any up-staircase. Converts `DOOR_SECRET` terrain to `DOOR_CLOSED`. This prevents the player from being boxed in by secret doors and starving when entering a new level — matching the original's early-game protection.
+
+### Jai Language Note
+
+`cast(u8) ~DF_SECRET` fails at compile time because `~DF_SECRET` produces a large s64 value (`0xFFFFFFFFFFFFFFDF`) that doesn't fit in u8. The fix is `~cast(u8) DF_SECRET` — cast the constant to u8 first, then bitwise-negate, producing u8 `0xDF` (223).
+
+### Verification
+- Compiles cleanly (after fixing `remove` reserved word and cast order)
+- All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)

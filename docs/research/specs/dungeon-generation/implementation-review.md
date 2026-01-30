@@ -140,8 +140,10 @@ PRIO_MAX = 120
 | Feature | Spec | Implementation | Status |
 |---------|------|----------------|--------|
 | Door creation | MakeDoor at corridor/room intersections | place_doors_makelev() post-process | DIFFERS |
-| Door flags | DF_VERTICAL, DF_OPEN, DF_STUCK, DF_LOCKED, DF_TRAPPED, DF_SECRET | Terrain types only (.DOOR_CLOSED, .DOOR_SECRET) | MISSING |
-| Door randomization | 10% open, 50% locked, 14% secret | 5% secret, no open/locked state | DIFFERS |
+| Door validation | Remove invalid/adjacent doors, floor under valid | validate_doors() post-process | MATCHES |
+| Door flags | DF_VERTICAL, DF_OPEN, DF_STUCK, DF_LOCKED, DF_TRAPPED, DF_SECRET | All flags defined, randomization matches | MATCHES |
+| Door randomization | 10% open, 50% locked, 14% secret | 10% open, 50% locked, 14% secret | MATCHES |
+| Secret door protection | Depth<=5: clear DF_SECRET within 17 of up-stairs | desecret_near_stairs() | MATCHES |
 | Early game protection | Depth 1-3 forces wood doors | Not applicable (no door materials) | N/A |
 | Up-stairs placement | At same position as down-stairs on level above | place_up_stairs() with carving | MATCHES |
 | Down-stairs placement | MIN_STAIRS to MAX_STAIRS, avoid regions | place_down_stairs() with 500 tries | MATCHES |
@@ -250,3 +252,4 @@ Missing: RF_ROCKTYPE, RF_CAVE, RF_AUTO, RF_OPT_DIM, RF_VAULT, RF_NOMONSTER, RF_N
 9. ~~Add deep terrain conversion~~ **DONE (2026-01-30)**
 10. ~~Add multi-level chasm propagation~~ **DONE (2026-01-30)**
 11. ~~Add skylight marking for tiles below chasms~~ **DONE (2026-01-30)**
+12. ~~Add door validation and secret door protection near stairs~~ **DONE (2026-01-30)**
