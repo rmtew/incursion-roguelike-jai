@@ -4986,8 +4986,12 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
     gs: GenState;
     gen_state_init(*gs, con, depth = depth);
 
+    // Debug: set seed context for crash reporting
+    debug_set_game_state(cast(u64)seed, depth, 0, 0, 0);
+
     // Step 1: Fill with TERRAIN_ROCK, edges with TERRAIN_MAPEDGE
     // Source: MakeLev.cpp:1413-1415 — WriteAt(r, x, y, Con[TERRAIN_MAPEDGE/TERRAIN_ROCK])
+    debug_set_gen_step(.INIT);
     for y: 0..m.height-1 {
         for x: 0..m.width-1 {
             if x == 0 || y == 0 || x == m.width-1 || y == m.height-1 {
@@ -5012,6 +5016,7 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
     // Original algorithm (MakeLev.cpp:1419-1464):
     //   Generate MIN_STREAMERS guaranteed, then STREAMER_CHANCE% each additional up to MAX_STREAMERS.
     //   50% chance to reuse previous streamer type. Depth restrictions for rivers/chasms.
+    debug_set_gen_step(.STREAMERS);
     {
         streamers_placed : s32 = 0;
         last_stype: StreamerType;
@@ -5071,6 +5076,7 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
     // Step 2b: Multi-level chasm propagation
     // Source: MakeLev.cpp:1466-1490
     // If the level above has chasms, propagate them down (with optional narrowing)
+    debug_set_gen_step(.CHASM_PROPAGATION);
     if above_map != null && depth != gs.con.DUN_DEPTH {
         narrow_chasm := random(100) < gs.con.REDUCE_CHASM_CHANCE;
 
@@ -5096,12 +5102,14 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
 
     // Step 3: Place dungeon specials (predefined rooms from dungeon definition)
     // Source: MakeLev.cpp:1494-1602
+    debug_set_gen_step(.DUNGEON_SPECIALS);
     if dungeon_name.count > 0 {
         place_dungeon_specials(m, *gs, dungeon_name, depth, above_down_stairs);
     }
 
     // Step 3b: Place vaults (special pre-designed rooms)
     // 20% chance per level, higher at deeper levels
+    debug_set_gen_step(.VAULTS);
     vault_chance := 20 + m.depth * 5;
     if random(100) < vault_chance {
         if try_place_vault(m, *gs, m.depth) {
@@ -5110,6 +5118,7 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
     }
 
     // Step 4: Draw each panel
+    debug_set_gen_step(.DRAW_PANELS);
     for py: 0..gs.panels_y-1 {
         for px: 0..gs.panels_x-1 {
             if !(gs.panels_drawn[py] & cast(u32)(1 << px)) {
@@ -5119,44 +5128,56 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
     }
 
     // Step 5: Connect panels with corridors
+    debug_set_gen_step(.CONNECT_PANELS);
     connect_panels(m, *gs);
 
     // Step 5.5: Fix-up tunneling - ensure all regions are connected
     // This is critical for playable dungeons!
+    debug_set_gen_step(.FIXUP_TUNNELING);
     fixup_tunneling(m, *gs);
 
     // Step 5.6: Furnish rooms with pillars, rubble, etc.
     // Source: MakeLev.cpp:2951-3266 (FurnishArea)
+    debug_set_gen_step(.FURNISH_ROOMS);
+    if g_debug_validate { vr := validate_map(m, .FIXUP_TUNNELING); debug_report_validation(*vr); }
     for room: m.rooms {
         furnish_room(m, room);
     }
 
     // Step 5.7: Place torches and calculate lighting
     // Source: MakeLev.cpp ROOM_LIT_CHANCE, TORCH_DENSITY
+    debug_set_gen_step(.PLACE_LIGHTS);
     place_room_lights(m, *gs, depth);
 
     // Step 5.8: Convert shallow terrain to deep where fully surrounded
     // Source: MakeLev.cpp:2139-2153 (post-processing pass)
+    debug_set_gen_step(.DEEP_TERRAIN);
     convert_deep_terrain(m);
 
     // Step 6: Place doors where corridors meet rooms
     // Per spec: 10% open, ~45% locked, ~45% unlocked, ~14% secret
+    debug_set_gen_step(.PLACE_DOORS);
     place_doors_makelev(m, depth);
 
     // Step 6a: Validate doors (remove invalid placement and adjacent pairs)
     // Source: MakeLev.cpp:2037-2071
+    debug_set_gen_step(.VALIDATE_DOORS);
     validate_doors(m);
 
     // Step 6b: Place traps at doors and bottlenecks
     // Source: MakeLev.cpp:2155-2192
+    debug_set_gen_step(.PLACE_TRAPS);
     place_traps(m, depth);
 
     // Step 6c: Place treasure deposits in solid rock
     // Per spec: count = 1d4 + Depth, hidden in fully-enclosed rock
+    debug_set_gen_step(.TREASURE_DEPOSITS);
     place_treasure_deposits(m, depth);
 
     // Step 7: Place stairs
     // Source: MakeLev.cpp:1706-1743 (up), 1879-1900 (down)
+    debug_set_gen_step(.PLACE_STAIRS);
+    if g_debug_validate { vr := validate_map(m, .VALIDATE_DOORS); debug_report_validation(*vr); }
 
     // Place up-stairs at positions from level above
     up_stairs := place_up_stairs(m, *gs, above_down_stairs);
@@ -5193,13 +5214,16 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
 
     // Step 7b: Remove secret doors near up-stairs on early levels
     // Source: MakeLev.cpp:2062-2071
+    debug_set_gen_step(.DESECRET_STAIRS);
     desecret_near_stairs(m, depth);
 
     // Step 8: Populate dungeon with monsters and items
     // Source: MakeLev.cpp:3269-3301, Encounter.cpp:514-1125
+    debug_set_gen_step(.POPULATE);
     populate_dungeon(m, depth);
 
     // Step 9: Skylight marking
+    debug_set_gen_step(.SKYLIGHTS);
     // Source: MakeLev.cpp:2235-2260
     // Mark tiles below chasms on the above level as skylights (cyan, always lit)
     if above_map != null && depth > 1 {
@@ -5227,6 +5251,10 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
             }
         }
     }
+
+    debug_set_gen_step(.COMPLETE);
+    debug_set_map_hash(debug_hash_map(m));
+    if g_debug_validate { vr := validate_map(m, .COMPLETE); debug_report_validation(*vr); }
 
     if !makelev_quiet {
         print("Generated dungeon (ORIGINAL MakeLev) depth % with % rooms, % up-stairs, % down-stairs, % monsters, % items\n",

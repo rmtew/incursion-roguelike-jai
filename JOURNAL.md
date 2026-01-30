@@ -3190,3 +3190,56 @@ The full 7-stage encounter algorithm includes Parts parsing (complex grammar for
 - 213/217 tests pass (same 4 pre-existing failures)
 - enclist.irh parses 87 encounters, now baked into ResourceDB
 - dungeon.irh still parses 91 regions
+
+## 2026-01-31: Debug Infrastructure for Crash Diagnosis
+
+### Overview
+
+Added three-component debug infrastructure to enable programmatic crash diagnosis: a crash handler with structured reports, a map state validator, and a stress test tool.
+
+### Components Created
+
+**`src/debug/crash_handler.jai`** — Global breadcrumb system. A `DebugContext` struct tracks seed, depth, generation step, RNG state, and current room. Breadcrumb functions (`debug_set_gen_step`, `debug_set_game_state`, etc.) are near-zero cost (single global struct write). On assertion failure, writes a structured `crash-report.txt` with all context. Custom assertion handler installed via `context.assertion_failed`.
+
+**`src/debug/validator.jai`** — Map invariant checker with 5 validators:
+- `validate_room_bounds` — rooms non-degenerate and within map
+- `validate_entity_positions` — entities on valid terrain (allows items in rock for treasure deposits)
+- `validate_terrain_values` — valid enum range, edges solid
+- `validate_door_consistency` — door terrain matches door data/flags
+- `validate_room_connectivity` — flood fill from room 0 to verify all rooms reachable
+
+Returns `ValidationResult` with up to 64 structured issues. Controlled by `g_debug_validate` flag (default false, zero overhead when off).
+
+**`tools/stress_test.jai`** — Headless stress tester generating dungeons across seed ranges:
+- `--count N` — test N seeds (default 1000)
+- `--seed N` — single seed reproduction
+- `--regen` — test free+regenerate cycle
+- `--validate` — run validators after each generation
+- `--all-depths` — test depths 1..20 per seed
+- `--no-determinism` — skip determinism check
+- Writes `stress-results.txt` with summary and failing seeds
+
+### Instrumentation
+
+**`src/rng.jai`** — Added `global_rng_call_count` (incremented in `random()`, reset in `random_init()`).
+
+**`src/dungeon/makelev.jai`** — Added `debug_set_gen_step()` at each of the 20 generation steps in `generate_makelev()`. Added conditional `validate_map()` calls at key checkpoints (after FIXUP_TUNNELING, VALIDATE_DOORS, and COMPLETE). Added `debug_set_map_hash()` at generation completion.
+
+**`src/game/loop.jai`** — Added `debug_set_game_state()` in `init_game()` and `debug_set_gen_step(.NONE)` in `free_game()`.
+
+**All tools and test runner** — Added `#load` for debug files and `game/hash.jai` (for FNV functions used by map hashing). Tools that already loaded game modules just needed the debug loads; tools that didn't load `game/state.jai` needed that too. Added `debug_init()` call in tools that have interactive use (dungeon_test, headless).
+
+### Findings
+
+Running `stress_test.exe --count 100` confirms 100/100 seeds pass basic generation + determinism check.
+
+Running with `--validate` reveals a pre-existing issue: **room connectivity failures** in most seeds. After `fixup_tunneling`, not all rooms are reachable from room 0 via flood fill through passable terrain and doors. This is a generator quality issue, not a debug infrastructure bug.
+
+Running with `--regen` revealed a crash in the allocator during `array_add` in `place_doors_makelev` — a pre-existing issue in the free+regenerate cycle. This demonstrates the stress tester's value for finding regen-specific bugs.
+
+### Verification
+
+- `build.bat test` compiles, 213/217 tests pass (unchanged)
+- All 9 tool targets compile cleanly (game, test, headless, dungeon_test, dungeon_screenshot, dungeon_verify, inspect, replay, stress_test)
+- `stress_test.exe --count 100` — 100/100 PASSED
+- `stress_test.exe --count 100 --validate` — correctly identifies room connectivity issues

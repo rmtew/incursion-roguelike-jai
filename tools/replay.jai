@@ -57,6 +57,10 @@
 #load "../src/game/loop.jai";
 #load "../src/game/log.jai";
 
+// Debug infrastructure
+#load "../src/debug/crash_handler.jai";
+#load "../src/debug/validator.jai";
+
 main :: () {
     args := get_command_line_arguments();
 

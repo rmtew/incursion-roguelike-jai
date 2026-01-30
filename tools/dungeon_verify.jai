@@ -43,6 +43,14 @@
 #load "../src/dungeon/visibility.jai";
 #load "../src/dungeon/render.jai";
 
+// Game state and hash (needed by debug infrastructure)
+#load "../src/game/state.jai";
+#load "../src/game/hash.jai";
+
+// Debug infrastructure
+#load "../src/debug/crash_handler.jai";
+#load "../src/debug/validator.jai";
+
 // Glyph to CP437 conversion
 #load "../src/glyph_cp437.jai";
 

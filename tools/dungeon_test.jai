@@ -50,6 +50,10 @@ stbi_write :: #import "stb_image_write";
 #load "../src/game/loop.jai";
 #load "../src/game/log.jai";
 
+// Debug infrastructure
+#load "../src/debug/crash_handler.jai";
+#load "../src/debug/validator.jai";
+
 // Glyph to CP437 conversion (must be before terminal/window.jai)
 #load "../src/glyph_cp437.jai";
 
@@ -221,6 +225,8 @@ draw_glyph_to_buffer :: (pixels: *u8, img_width: s32, img_height: s32, font: *Sc
 }
 
 main :: () {
+    debug_init();
+
     print("Incursion Dungeon Test\n");
     print("======================\n\n");
 
@@ -363,6 +369,7 @@ main :: () {
         // Regenerate if requested
         if regenerate {
             seed += 1;
+            debug_set_gen_step(.NONE, "regenerating");
             free_game(gs);
             init_game(gs, seed);
 

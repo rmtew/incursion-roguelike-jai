@@ -45,6 +45,10 @@
 #load "game/loop.jai";
 #load "game/log.jai";
 
+// Debug infrastructure
+#load "debug/crash_handler.jai";
+#load "debug/validator.jai";
+
 main :: () {
     print("Incursion Port - %\n", VERSION_STRING);
 

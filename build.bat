@@ -15,7 +15,7 @@ if errorlevel 1 (
     echo Unknown target: %~1
     echo.
     echo Usage: build.bat [target ...]
-    echo Targets: game test headless dungeon_test dungeon_screenshot dungeon_verify inspect replay
+    echo Targets: game test headless dungeon_test dungeon_screenshot dungeon_verify inspect replay stress_test
     echo Default: builds all targets
     set FAILED=1
 )
@@ -31,6 +31,7 @@ call :build_dungeon_screenshot
 call :build_dungeon_verify
 call :build_inspect
 call :build_replay
+call :build_stress_test
 goto done
 
 :build_game
@@ -125,6 +126,18 @@ if errorlevel 1 (
     set FAILED=1
 ) else (
     echo [replay] OK
+    set /a BUILT+=1
+)
+exit /b 0
+
+:build_stress_test
+echo [stress_test] tools/stress_test.jai
+%JAI% tools/stress_test.jai
+if errorlevel 1 (
+    echo [stress_test] FAILED
+    set FAILED=1
+) else (
+    echo [stress_test] OK
     set /a BUILT+=1
 )
 exit /b 0

@@ -192,3 +192,9 @@ Fully implemented in `src/glyph_cp437.jai`:
 ### Dungeon Generator
 - BSP tree nodes are individually allocated (could use pool)
 - Room array uses dynamic allocation (could be fixed size for MVP)
+- **Room connectivity**: `validate_room_connectivity` reports rooms unreachable from room 0 in most seeds. `fixup_tunneling` doesn't fully connect all regions. Discovered by stress test validator (2026-01-31).
+- **Regen crash**: `stress_test.exe --regen` triggers allocator crash in `place_doors_makelev` during free+regenerate cycle. Likely stale array state after `map_free` + `map_init`. The `features` array in GenMap is not freed in `map_free` or reset in `map_init` (memory leak). Discovered by stress test (2026-01-31).
+
+### Debug Infrastructure
+- Crash handler only triggers on assertion failures, not on allocator crashes or segfaults. Could add Windows structured exception handling for broader coverage.
+- Intermediate validation calls in `generate_makelev` print to stdout; could route to a file for less noise.

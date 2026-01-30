@@ -73,10 +73,14 @@ mt_random :: (state: *MT19937, max: s32) -> s32 {
 global_mt: MT19937;
 global_mt_initialized := false;
 
+// Debug: count total calls to random() for crash reproduction
+global_rng_call_count: s64 = 0;
+
 // Initialize global MT with seed
 random_init :: (seed: u32) {
     mt_seed(*global_mt, seed);
     global_mt_initialized = true;
+    global_rng_call_count = 0;
 }
 
 // Global random function matching Incursion's random()
@@ -85,6 +89,7 @@ random :: (max: s32) -> s32 {
         mt_seed(*global_mt, 5489);  // Default seed
         global_mt_initialized = true;
     }
+    global_rng_call_count += 1;
     return mt_random(*global_mt, max);
 }
 

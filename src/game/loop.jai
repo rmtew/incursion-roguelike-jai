@@ -34,12 +34,16 @@ init_game :: (gs: *GameState, seed: u64, depth: s32 = 1) {
     calculate_fov(*gs.dungeon, gs.player_x, gs.player_y);
 
     gs.initialized = true;
+
+    // Debug: snapshot game state for crash reporting
+    debug_set_game_state(gs.seed, gs.depth, gs.turn, gs.player_x, gs.player_y);
 }
 
 // Free game resources
 free_game :: (gs: *GameState) {
     map_free(*gs.dungeon);
     gs.initialized = false;
+    debug_set_gen_step(.NONE);
 }
 
 // ============================================================================

@@ -64,6 +64,14 @@ TC_WHITE        :: Color.{0.75, 0.75, 0.75, 1.0};
 #load "../src/dungeon/makelev.jai";
 #load "../src/dungeon/generator.jai";
 
+// Game state and hash (needed by debug infrastructure)
+#load "../src/game/state.jai";
+#load "../src/game/hash.jai";
+
+// Debug infrastructure
+#load "../src/debug/crash_handler.jai";
+#load "../src/debug/validator.jai";
+
 // Glyph to CP437 conversion
 #load "../src/glyph_cp437.jai";
 

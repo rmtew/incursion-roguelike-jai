@@ -53,7 +53,13 @@
 #load "../src/game/loop.jai";
 #load "../src/game/log.jai";
 
+// Debug infrastructure
+#load "../src/debug/crash_handler.jai";
+#load "../src/debug/validator.jai";
+
 main :: () {
+    debug_init();
+
     print("=== Headless Test Harness ===\n\n");
 
     // Initialize resources
