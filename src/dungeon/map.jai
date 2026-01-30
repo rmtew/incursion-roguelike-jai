@@ -19,9 +19,11 @@ Terrain :: enum u8 {
     DOOR_SECRET;    // Secret door (looks like wall)
     STAIRS_UP;      // Stairs going up
     STAIRS_DOWN;    // Stairs going down
-    WATER;          // Water
+    WATER;          // Shallow water
+    DEEP_WATER;     // Deep water (interior of pools/rivers)
     CHASM;          // Bottomless pit
-    LAVA;           // Molten lava
+    LAVA;           // Shallow lava
+    DEEP_LAVA;      // Deep lava (interior of lava lakes)
     TRAP;           // Visible trap ('^')
     TRAP_HIDDEN;    // Hidden trap (looks like floor until triggered)
     PILLAR;         // Pillar/column (blocks movement, not sight fully)
@@ -42,8 +44,10 @@ terrain_glyph :: (t: Terrain) -> u16 {
         case .STAIRS_UP;    return #char "<";
         case .STAIRS_DOWN;  return #char ">";
         case .WATER;        return #char "~";
+        case .DEEP_WATER;   return #char "~";
         case .CHASM;        return #char " ";
         case .LAVA;         return #char "~";
+        case .DEEP_LAVA;    return #char "~";
         case .TRAP;         return #char "^";
         case .TRAP_HIDDEN;  return #char ".";  // Looks like floor until found
         case .PILLAR;       return #char "0";  // Pillar/column
@@ -61,6 +65,16 @@ terrain_passable :: (t: Terrain) -> bool {
 // Is this terrain solid (blocks movement and sight)?
 terrain_solid :: (t: Terrain) -> bool {
     return t == .ROCK || t == .WALL || t == .DOOR_CLOSED || t == .DOOR_SECRET || t == .PILLAR;
+}
+
+// Is this terrain water (shallow or deep)?
+terrain_is_water :: (t: Terrain) -> bool {
+    return t == .WATER || t == .DEEP_WATER;
+}
+
+// Is this terrain lava (shallow or deep)?
+terrain_is_lava :: (t: Terrain) -> bool {
+    return t == .LAVA || t == .DEEP_LAVA;
 }
 
 // Rectangle helper

@@ -73,9 +73,11 @@ get_terrain_fg_color :: (t: Terrain) -> u8 {
         case .DOOR_SECRET;  return 7;   // GREY
         case .STAIRS_UP;    return 15;  // WHITE
         case .STAIRS_DOWN;  return 15;  // WHITE
-        case .WATER;        return 9;   // BRIGHT_BLUE
+        case .WATER;        return 9;   // BRIGHT_BLUE (shallow)
+        case .DEEP_WATER;   return 1;   // BLUE (deep - darker)
         case .CHASM;        return 0;   // BLACK
-        case .LAVA;         return 12;  // BRIGHT_RED
+        case .LAVA;         return 12;  // BRIGHT_RED (shallow)
+        case .DEEP_LAVA;    return 4;   // RED (deep - darker)
         case .TRAP;         return 12;  // BRIGHT_RED
         case .TRAP_HIDDEN;  return 6;   // BROWN
         case .PILLAR;       return 7;   // GREY
@@ -87,9 +89,11 @@ get_terrain_fg_color :: (t: Terrain) -> u8 {
 // Get background color for terrain (ANSI index 0-15)
 get_terrain_bg_color :: (t: Terrain) -> u8 {
     if t == {
-        case .WATER;  return 1;   // BLUE
-        case .CHASM;  return 0;   // BLACK (dark)
-        case .LAVA;   return 4;   // RED
+        case .WATER;       return 1;   // BLUE
+        case .DEEP_WATER;  return 1;   // BLUE
+        case .CHASM;       return 0;   // BLACK (dark)
+        case .LAVA;        return 4;   // RED
+        case .DEEP_LAVA;   return 4;   // RED
     }
     return 0;  // BLACK (default)
 }

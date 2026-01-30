@@ -3028,6 +3028,52 @@ try_place_vault :: (m: *GenMap, gs: *GenState, depth: s32) -> bool {
     return false;
 }
 
+// Convert shallow terrain to deep when fully surrounded
+// In original: MakeLev.cpp:2139-2153
+// For each WATER or LAVA tile, if all 8 neighbors are either:
+// (a) the same shallow terrain, (b) the corresponding deep terrain,
+// (c) solid terrain, or (d) out of bounds — convert to deep variant.
+// This creates shallow edges with deep interiors in pools and lava lakes.
+convert_deep_terrain :: (m: *GenMap) {
+    // Process two shallow/deep pairs: WATER→DEEP_WATER, LAVA→DEEP_LAVA
+    SHALLOW :: Terrain.[.WATER, .LAVA];
+    DEEP    :: Terrain.[.DEEP_WATER, .DEEP_LAVA];
+
+    for y: 0..m.height-1 {
+        for x: 0..m.width-1 {
+            t := map_get(m, x, y);
+
+            for pair: 0..SHALLOW.count-1 {
+                if t != SHALLOW[pair] continue;
+
+                // Check all 8 neighbors
+                all_valid := true;
+                for dy: -1..1 {
+                    for dx: -1..1 {
+                        if dx == 0 && dy == 0 continue;
+                        nx := x + cast(s32)dx;
+                        ny := y + cast(s32)dy;
+
+                        // Out of bounds counts as valid
+                        if !map_in_bounds(m, nx, ny) continue;
+
+                        nt := map_get(m, nx, ny);
+                        // Valid: same shallow, deep variant, or solid
+                        if nt != SHALLOW[pair] && nt != DEEP[pair] && !terrain_solid(nt) {
+                            all_valid = false;
+                            break dy;
+                        }
+                    }
+                }
+
+                if all_valid {
+                    map_set(m, x, y, DEEP[pair]);
+                }
+            }
+        }
+    }
+}
+
 // Place doors where floor meets wall with floor on opposite side
 // This finds corridor entrances to rooms
 // Per spec (Feature.cpp:310-337):
@@ -3643,19 +3689,19 @@ find_open_in_room :: (m: *GenMap, room: Room, is_aquatic: bool = false, is_aeria
         t := map_get(m, x, y);
 
         // Must be walkable terrain
-        if t != .FLOOR && t != .CORRIDOR && t != .WATER && t != .RUBBLE continue;
+        if t != .FLOOR && t != .CORRIDOR && !terrain_is_water(t) && t != .RUBBLE continue;
 
         // Aquatic placement rules (Source: Encounter.cpp:2556-2265)
         if is_aquatic {
             // Aquatic creatures must be in water
-            if t != .WATER continue;
+            if !terrain_is_water(t) continue;
         } else {
             // Non-aquatic creatures cannot be in water
-            if t == .WATER continue;
+            if terrain_is_water(t) continue;
         }
 
         // Fall terrain (chasm/lava) only for aerial creatures
-        if t == .CHASM || t == .LAVA {
+        if t == .CHASM || terrain_is_lava(t) {
             if !is_aerial continue;
         }
 
@@ -3717,7 +3763,7 @@ populate_panel :: (m: *GenMap, room_index: s32, room: Room, depth_cr: s32, party
     has_water := false;
     for y: room.bounds.y1..room.bounds.y2 {
         for x: room.bounds.x1..room.bounds.x2 {
-            if map_get(m, x, y) == .WATER {
+            if terrain_is_water(map_get(m, x, y)) {
                 has_water = true;
                 break y;
             }
@@ -4042,7 +4088,7 @@ is_valid_stair_pos :: (m: *GenMap, gs: *GenState, x: s32, y: s32, stairs_at: [] 
 
     // Must not be water or chasm (fall terrain)
     t := map_get(m, x, y);
-    if t == .WATER || t == .CHASM || t == .LAVA {
+    if terrain_is_water(t) || t == .CHASM || terrain_is_lava(t) {
         return false;
     }
 
@@ -4254,6 +4300,10 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
     // Step 5.7: Place torches and calculate lighting
     // Source: MakeLev.cpp ROOM_LIT_CHANCE, TORCH_DENSITY
     place_room_lights(m, *gs, depth);
+
+    // Step 5.8: Convert shallow terrain to deep where fully surrounded
+    // Source: MakeLev.cpp:2139-2153 (post-processing pass)
+    convert_deep_terrain(m);
 
     // Step 6: Place doors where corridors meet rooms
     // Per spec: 10% open, ~45% locked, ~45% unlocked, ~14% secret

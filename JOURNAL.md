@@ -2571,3 +2571,32 @@ This creates a visual "halo" of themed wall around cavern floors, extending the 
 ### Verification
 - Compiles cleanly on first attempt
 - All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)
+
+## 2026-01-30: Correctness Gap 9 — Deep Terrain Conversion
+
+Added deep terrain variant types and post-processing conversion matching MakeLev.cpp:2139-2153. Water pools and lava lakes now have shallow edges with deep interiors.
+
+### New Terrain Types
+
+Added `DEEP_WATER` and `DEEP_LAVA` to the Terrain enum in `map.jai`. These behave identically to their shallow counterparts for passability/solidity, but render with darker foreground colors (dark blue / dark red vs bright blue / bright red) to visually distinguish depth.
+
+Also added `terrain_is_water()` and `terrain_is_lava()` helper functions that check for both shallow and deep variants. Updated all terrain checks across the codebase:
+- `find_open_in_room()` — walkable terrain, aquatic/non-aquatic placement
+- `populate_panel()` — water detection for aquatic monster chance
+- `is_valid_stair_pos()` — hazard terrain exclusion
+- `game/loop.jai` — passable terrain check
+
+### Deep Conversion Algorithm
+
+New `convert_deep_terrain()` function runs as Step 5.8 in the generation pipeline (after rooms/corridors/lights, before doors/traps/population).
+
+For each WATER or LAVA tile, checks all 8 neighbors. If every neighbor is either the same shallow type, the deep variant, solid, or out of bounds — converts to the deep variant. This naturally creates:
+- Shallow water at pool/river edges (adjacent to floor or rock)
+- Deep water in pool/river interiors
+- Same for lava
+
+The original processes 3 pairs (water, brimstone/magma, igneous/obsidian). We implement 2 pairs (water, lava). The third pair (brimstone/magma) can be added when those terrain types are integrated from resource files.
+
+### Verification
+- Compiles cleanly on first attempt
+- All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)

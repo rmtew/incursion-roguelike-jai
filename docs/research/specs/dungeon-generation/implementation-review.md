@@ -94,6 +94,7 @@ This document compares the existing Jai implementation in `src/dungeon/makelev.j
 | Open tile tracking | OpenX[]/OpenY[] for corridor endpoints | open_x[]/open_y[] arrays | MATCHES |
 | WriteLifeCave | LIFE_PERCENT=45, 20 iterations, 5+/3- rule | LIFE_PERCENT=45, 20 iterations | MATCHES |
 | WriteStreamer | Rivers from edge, chasms min width 4 | write_streamer() | PARTIAL |
+| Deep terrain conversion | Shallow→deep when surrounded (water, lava, brimstone) | convert_deep_terrain() (water, lava) | MATCHES |
 | Region terrain refs | Floor/Wall/Door from region definition | Not using region terrain | MISSING |
 
 ### Priority System
@@ -143,7 +144,7 @@ PRIO_MAX = 120
 | Down-stairs placement | MIN_STAIRS to MAX_STAIRS, avoid regions | place_down_stairs() with 500 tries | MATCHES |
 | Stair region avoidance | Track stairsAt[], avoid same region | StairPos.room_index tracking | MATCHES |
 | Trap placement | At doors and bottlenecks based on DepthCR | place_traps() with TRAP_CHANCE | MATCHES |
-| Treasure deposits | 1d4+Depth in solid rock | NOT IMPLEMENTED | MISSING |
+| Treasure deposits | 1d4+Depth in solid rock | place_treasure_deposits() | MATCHES |
 
 ## Population System Comparison
 
