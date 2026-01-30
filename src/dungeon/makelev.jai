@@ -305,6 +305,12 @@ DungeonConstants :: struct {
     MIN_RIVER_DEPTH     : s32 : 3;   // Minimum depth for river streamers
     MIN_CHASM_DEPTH     : s32 : 5;   // Minimum depth for chasm streamers
     DUN_DEPTH           : s32 : 20;  // Total dungeon depth (no chasms on last level)
+    // Corridor constants (original defaults from Annot.cpp:GetConst)
+    TURN_CHANCE         : s32 : 10;  // % chance to turn each step after min segment
+    SEGMENT_MINLEN      : s32 : 4;   // Minimum segment length before turning
+    SEGMENT_MAXLEN      : s32 : 10;  // Maximum segment length before forced turn
+    STUBBORN_CORRIDOR   : s32 : 30;  // % chance to NOT correct direction toward target
+    MAX_CORRIDOR_LEN    : s32 : 500; // Safety limit
 }
 
 // Default constants for standard dungeon
@@ -2306,22 +2312,27 @@ TunnelDir :: enum s32 {
 TunnelDirX :: s32.[0, 1, 0, -1];  // N, E, S, W
 TunnelDirY :: s32.[-1, 0, 1, 0];  // N, E, S, W
 
-// Tunnel constants
-TURN_CHANCE       :: 25;   // % chance to turn each step after min segment
-SEGMENT_MIN_LEN   :: 3;    // Minimum segment length before turning
-SEGMENT_MAX_LEN   :: 12;   // Maximum segment length before forced turn
-STUBBORN_CORRIDOR :: 30;   // % chance to NOT correct direction toward target
-MAX_CORRIDOR_LEN  :: 500;  // Safety limit
+// Tunnel constants now in DungeonConstants (gs.con.TURN_CHANCE, etc.)
+
+// Helper: check if two tunnel directions are diametrically opposite
+is_diametric :: (a: TunnelDir, b: TunnelDir) -> bool {
+    return TunnelDirX[cast(s32)a] + TunnelDirX[cast(s32)b] == 0
+        && TunnelDirY[cast(s32)a] + TunnelDirY[cast(s32)b] == 0;
+}
 
 // Get direction that corrects toward destination
-// In original: Dir Map::CorrectDir(...)
+// In original: Dir Map::CorrectDir(...) at MakeLev.cpp:3611-3639
 correct_dir :: (x: s32, y: s32, dx: s32, dy: s32, curr: TunnelDir) -> TunnelDir {
-    // If on same row/column, go directly
+    // If on same row/column, return direct direction unless diametric to current
+    // (Original: returns immediately only if !DIAMETRIC)
+    direct := TunnelDir.NORTH;  // placeholder
     if x == dx {
-        return ifx y > dy then .NORTH else .SOUTH;
+        direct = ifx y > dy then .NORTH else .SOUTH;
+        if !is_diametric(direct, curr) return direct;
     }
     if y == dy {
-        return ifx x > dx then .WEST else .EAST;
+        direct = ifx x > dx then .WEST else .EAST;
+        if !is_diametric(direct, curr) return direct;
     }
 
     lx := abs(x - dx);
@@ -2337,7 +2348,7 @@ correct_dir :: (x: s32, y: s32, dx: s32, dy: s32, curr: TunnelDir) -> TunnelDir 
         option2 = tmp;
     }
 
-    // Sometimes swap for variety
+    // Sometimes swap for variety (25% chance)
     if random(4) == 0 {
         tmp := option1;
         option1 = option2;
@@ -2345,12 +2356,7 @@ correct_dir :: (x: s32, y: s32, dx: s32, dy: s32, curr: TunnelDir) -> TunnelDir 
     }
 
     // Don't go back the way we came (diametric check)
-    curr_dx := TunnelDirX[cast(s32)curr];
-    curr_dy := TunnelDirY[cast(s32)curr];
-    opt1_dx := TunnelDirX[cast(s32)option1];
-    opt1_dy := TunnelDirY[cast(s32)option1];
-
-    if curr_dx + opt1_dx == 0 && curr_dy + opt1_dy == 0 {
+    if is_diametric(option1, curr) {
         return option2;
     }
     return option1;
@@ -2388,7 +2394,7 @@ carve_tunnel :: (m: *GenMap, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32, 
     path: [..] Point;
     path.allocator = temp;
 
-    while total_length < MAX_CORRIDOR_LEN {
+    while total_length < gs.con.MAX_CORRIDOR_LEN {
         // Track rooms touched (for TT_WANDER and TT_NOTOUCH)
         if !(tflags & TT_NOTOUCH) {
             cell := get_cell(gs, m, x, y);
@@ -2459,12 +2465,12 @@ carve_tunnel :: (m: *GenMap, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32, 
         }
 
         // Force turn if segment too long
-        if seg_length > SEGMENT_MAX_LEN {
+        if seg_length > gs.con.SEGMENT_MAXLEN {
             force_turn = true;
         }
 
         // Random turn chance after minimum segment (if not TT_DIRECT)
-        if !force_turn && seg_length > SEGMENT_MIN_LEN && random(100) < TURN_CHANCE {
+        if !force_turn && seg_length > gs.con.SEGMENT_MINLEN && random(100) < gs.con.TURN_CHANCE {
             force_turn = true;
         }
 
@@ -2473,7 +2479,7 @@ carve_tunnel :: (m: *GenMap, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32, 
             seg_length = 0;
             // TT_DIRECT: always correct toward destination
             // Otherwise: usually correct, sometimes go random (STUBBORN_CORRIDOR)
-            if (tflags & TT_DIRECT) || random(100) > STUBBORN_CORRIDOR {
+            if (tflags & TT_DIRECT) || random(100) > gs.con.STUBBORN_CORRIDOR {
                 curr_dir = correct_dir(x, y, dx, dy, curr_dir);
             } else {
                 // Random perpendicular turn
@@ -2617,63 +2623,113 @@ carve_corridor_simple :: (m: *GenMap, gs: *GenState, sx: s32, sy: s32, dx: s32, 
 }
 
 // Connect panels with corridors
+// In original: MakeLev.cpp:1616-1696, "Step 5: Connect Each Panel"
+// Uses edge-tile detection + closest-pair matching between panels
 connect_panels :: (m: *GenMap, gs: *GenState) {
-    // For each adjacent pair of panels, connect them
+    MAX_EDGE_POINTS :: 200;  // Max edge points tracked per panel
+
+    // Per-panel edge point storage
+    PanelEdges :: struct {
+        points: [MAX_EDGE_POINTS] Point;
+        count: s32;
+    }
+
+    num_panels := gs.panels_x * gs.panels_y;
+    edges: [..] PanelEdges;
+    edges.allocator = temp;
+    array_resize(*edges, num_panels);
+
+    // Phase 1: Find edge floor tiles in each panel
+    // An "edge" tile is a non-solid tile with at least one solid cardinal neighbor
+    // (Original: MakeLev.cpp:1634-1656)
     for py: 0..gs.panels_y-1 {
         for px: 0..gs.panels_x-1 {
-            // Find a floor tile in this panel
-            panel_x := px * gs.con.PANEL_SIZEX + gs.con.PANEL_SIZEX / 2;
-            panel_y := py * gs.con.PANEL_SIZEY + gs.con.PANEL_SIZEY / 2;
+            panel_num := cast(s32)py * gs.panels_x + cast(s32)px;
+            pe := *edges[panel_num];
+            pe.count = 0;
 
-            // Search for nearest floor
-            sx, sy: s32 = -1, -1;
-            for dy: -10..10 {
-                for dx: -10..10 {
-                    tx := panel_x + cast(s32)dx;
-                    ty := panel_y + cast(s32)dy;
-                    if map_get(m, tx, ty) == .FLOOR {
-                        sx = tx;
-                        sy = ty;
-                        break dy;
+            base_x := cast(s32)px * gs.con.PANEL_SIZEX;
+            base_y := cast(s32)py * gs.con.PANEL_SIZEY;
+
+            for ly: 0..gs.con.PANEL_SIZEY-1 {
+                for lx: 0..gs.con.PANEL_SIZEX-1 {
+                    x := base_x + cast(s32)lx;
+                    y := base_y + cast(s32)ly;
+
+                    if is_solid(gs, m, x, y) continue;
+
+                    // Count non-solid cardinal neighbors
+                    open_count : s32 = 0;
+                    if x > 0         && !is_solid(gs, m, x-1, y) then open_count += 1;
+                    if x < m.width-1 && !is_solid(gs, m, x+1, y) then open_count += 1;
+                    if y > 0         && !is_solid(gs, m, x, y-1) then open_count += 1;
+                    if y < m.height-1&& !is_solid(gs, m, x, y+1) then open_count += 1;
+
+                    // Has at least one solid neighbor = edge tile
+                    if open_count < 4 && pe.count < MAX_EDGE_POINTS {
+                        pe.points[pe.count] = Point.{x, y};
+                        pe.count += 1;
                     }
                 }
             }
+        }
+    }
 
-            if sx < 0 continue;  // No floor found
+    // Phase 2: Connect adjacent panels using closest edge pairs
+    // Original connects: left, up, diagonal-up-left (MakeLev.cpp:1658-1696)
+    for py: 0..gs.panels_y-1 {
+        for px: 0..gs.panels_x-1 {
+            pn1 := cast(s32)py * gs.panels_x + cast(s32)px;
 
-            // Connect to right neighbor
-            if px < gs.panels_x - 1 {
-                next_x := (px + 1) * gs.con.PANEL_SIZEX + gs.con.PANEL_SIZEX / 2;
-                next_y := py * gs.con.PANEL_SIZEY + gs.con.PANEL_SIZEY / 2;
+            // Build neighbor list: left, up, diagonal-up-left
+            neighbors: [3] s32;
+            nc : s32 = 0;
 
-                // Find floor in next panel
-                for dy: -10..10 {
-                    for dx: -10..10 {
-                        tx := next_x + cast(s32)dx;
-                        ty := next_y + cast(s32)dy;
-                        if map_get(m, tx, ty) == .FLOOR {
-                            carve_corridor(m, gs, sx, sy, tx, ty);
-                            break dy;
+            if px > 0 {
+                neighbors[nc] = cast(s32)py * gs.panels_x + (cast(s32)px - 1);
+                nc += 1;
+            }
+            if py > 0 {
+                neighbors[nc] = (cast(s32)py - 1) * gs.panels_x + cast(s32)px;
+                nc += 1;
+            }
+            if py > 0 && px > 0 {
+                neighbors[nc] = (cast(s32)py - 1) * gs.panels_x + (cast(s32)px - 1);
+                nc += 1;
+            }
+
+            pe1 := *edges[pn1];
+            if pe1.count == 0 continue;
+
+            for k: 0..nc-1 {
+                pn2 := neighbors[cast(s32)k];
+                pe2 := *edges[pn2];
+                if pe2.count == 0 continue;
+
+                // Find closest pair of edge points between panels
+                best_dist := m.width * m.height;
+                bsx : s32 = 0;
+                bsy : s32 = 0;
+                bdx : s32 = 0;
+                bdy : s32 = 0;
+
+                for i: 0..pe1.count-1 {
+                    p1 := pe1.points[cast(s32)i];
+                    for j: 0..pe2.count-1 {
+                        p2 := pe2.points[cast(s32)j];
+                        d := abs(p1.x - p2.x) + abs(p1.y - p2.y);
+                        if d < best_dist {
+                            best_dist = d;
+                            bsx = p1.x;
+                            bsy = p1.y;
+                            bdx = p2.x;
+                            bdy = p2.y;
                         }
                     }
                 }
-            }
 
-            // Connect to bottom neighbor
-            if py < gs.panels_y - 1 {
-                next_x := px * gs.con.PANEL_SIZEX + gs.con.PANEL_SIZEX / 2;
-                next_y := (py + 1) * gs.con.PANEL_SIZEY + gs.con.PANEL_SIZEY / 2;
-
-                // Find floor in next panel
-                for dy: -10..10 {
-                    for dx: -10..10 {
-                        tx := next_x + cast(s32)dx;
-                        ty := next_y + cast(s32)dy;
-                        if map_get(m, tx, ty) == .FLOOR {
-                            carve_corridor(m, gs, sx, sy, tx, ty);
-                            break dy;
-                        }
-                    }
+                if best_dist < m.width * m.height {
+                    carve_tunnel(m, gs, bsx, bsy, bdx, bdy);
                 }
             }
         }

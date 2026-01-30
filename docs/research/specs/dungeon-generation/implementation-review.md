@@ -14,7 +14,7 @@ This document compares the existing Jai implementation in `src/dungeon/makelev.j
 | 2. Streamers | MIN_STREAMERS to MAX_STREAMERS, weighted selection, chasm propagation | MIN_STREAMERS to MAX_STREAMERS loop, depth restrictions, type reuse | PARTIAL |
 | 3. Special Rooms | AN_DUNSPEC annotations, predefined maps at specific depths | Hardcoded VAULTS array, simpler selection | DIFFERS |
 | 4. Draw Panels | Weighted room type + region selection, 200 tries max | Weighted selection implemented, regions optional | PARTIAL |
-| 5. Connect Panels | Edge tiles, closest pairs, TT_DIRECT\|TT_WANDER tunnels | connect_panels() implemented | PARTIAL |
+| 5. Connect Panels | Edge tiles, closest pairs, TT_DIRECT\|TT_WANDER tunnels | connect_panels() with edge tiles + closest pairs | MATCHES |
 | 5b. Fix-Up | 26 trials flood-fill connectivity check | fixup_tunneling() with 26 trials | MATCHES |
 | 6. Place Stairs | Up-stairs at Above coordinates, MIN_STAIRS to MAX_STAIRS down | Simple first/last room placement | DIFFERS |
 | 7. Deallocation | Free FloodArray, EmptyArray | Not needed (temp allocator) | N/A |
@@ -71,18 +71,19 @@ This document compares the existing Jai implementation in `src/dungeon/makelev.j
 | Aspect | Spec | Implementation | Status |
 |--------|------|----------------|--------|
 | Tunnel flags | TT_CONNECT, TT_DIRECT, TT_LENGTH, TT_NOTOUCH, TT_EXACT, TT_WANDER, TT_NATURAL | All defined | MATCHES |
-| Direction correction | CorrectDir with diametric check | correct_dir() | PARTIAL |
-| Turn chance | TURN_CHANCE constant, random check after SEGMENT_MIN | TURN_CHANCE = 25 | DIFFERS |
-| Priority system | PRIO_CORRIDOR_WALL=10, PRIO_CORRIDOR_FLOOR=30 | PRIO_CORRIDOR_WALL=20, PRIO_CORRIDOR_FLOOR=30 | DIFFERS |
+| Direction correction | CorrectDir with diametric check | correct_dir() with is_diametric() | MATCHES |
+| Turn chance | TURN_CHANCE constant, random check after SEGMENT_MIN | gs.con.TURN_CHANCE = 10 | MATCHES |
+| Segment lengths | SEGMENT_MINLEN=4, SEGMENT_MAXLEN=10 | gs.con.SEGMENT_MINLEN=4, SEGMENT_MAXLEN=10 | MATCHES |
+| Priority system | PRIO_CORRIDOR_WALL=10, PRIO_CORRIDOR_FLOOR=30 | PRIO_CORRIDOR_WALL=10, PRIO_CORRIDOR_FLOOR=30 | MATCHES |
 | Door creation at intersections | Check solid + corridor wall priority | place_doors_makelev() post-process | DIFFERS |
-| Stubborn corridor | STUBBORN_CORRIDOR controls direction persistence | STUBBORN_CORRIDOR = 30 | PARTIAL |
+| Stubborn corridor | STUBBORN_CORRIDOR controls direction persistence | gs.con.STUBBORN_CORRIDOR = 30 | MATCHES |
+| Panel connection | Edge tiles, closest pairs, left/up/diagonal | Edge tiles + closest pairs, left/up/diagonal | MATCHES |
 | Region selection | CorridorWeights, one-time use unless RF_STAPLE | Not using regions for corridors | MISSING |
 
 ### Key Corridor Differences
 
 1. **Door placement timing**: Spec places doors during tunneling; implementation does post-process pass
-2. **Priority values**: PRIO_CORRIDOR_WALL is 10 in spec, 20 in implementation
-3. **Corridor regions**: Spec uses themed corridor appearances; implementation uses plain corridors
+2. **Corridor regions**: Spec uses themed corridor appearances; implementation uses plain corridors
 
 ## Terrain Assignment Comparison
 
@@ -235,7 +236,10 @@ Missing: RF_ROCKTYPE, RF_CAVE, RF_AUTO, RF_OPT_DIM, RF_VAULT, RF_NOMONSTER, RF_N
 
 ### Phase 3: Full Spec Compliance
 1. ~~Fix priority values to match spec~~ **DONE (2026-01-28)**
-2. Implement missing room types
+2. ~~Implement missing room types~~ **DONE (2026-01-30)** (RM_RANDTOWN, RM_DESTROYED, RM_GRID, RM_LIFELINK)
 3. Add all RF_* flags
-4. Implement treasure deposits
-5. Add corridor edge clamping
+4. ~~Implement treasure deposits~~ **DONE (2026-01-28)**
+5. ~~Add corridor edge clamping~~ **DONE (2026-01-28)**
+6. ~~Fix corridor constants (TURN_CHANCE, SEGMENT_MINLEN, SEGMENT_MAXLEN)~~ **DONE (2026-01-30)**
+7. ~~Rewrite connect_panels (edge tiles + closest pairs)~~ **DONE (2026-01-30)**
+8. ~~Fix correct_dir diametric check~~ **DONE (2026-01-30)**

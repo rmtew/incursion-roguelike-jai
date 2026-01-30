@@ -2498,3 +2498,46 @@ Boosted standard rooms:
 ### Verification
 - Compiles cleanly
 - All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)
+
+## 2026-01-30: Correctness Gap 7 — Corridor Generation
+
+Rewrote corridor generation to match the original MakeLev.cpp algorithm in three areas: constants, panel connection, and direction correction.
+
+### Corridor Constants → DungeonConstants
+
+Moved hardcoded module-level tunnel constants into `DungeonConstants` struct with correct defaults from `Annot.cpp:GetConst`:
+
+| Constant | Old Value | New Value (matches original) |
+|----------|-----------|------------------------------|
+| TURN_CHANCE | 25 | 10 |
+| SEGMENT_MINLEN | 3 (was SEGMENT_MIN_LEN) | 4 |
+| SEGMENT_MAXLEN | 12 (was SEGMENT_MAX_LEN) | 10 |
+| STUBBORN_CORRIDOR | 30 | 30 (unchanged) |
+| MAX_CORRIDOR_LEN | 500 | 500 (unchanged) |
+
+Updated all `carve_tunnel()` references to use `gs.con.*` instead of module constants.
+
+### connect_panels Rewrite
+
+**Old algorithm**: Find any floor tile within ±10 of panel center, connect right and bottom neighbors center-to-center.
+
+**New algorithm** (matching MakeLev.cpp:1616-1696):
+1. **Edge tile detection**: For each panel, collect all floor tiles that have at least one solid cardinal neighbor (edge tiles)
+2. **Connection pattern**: Only connect left, up, and diagonal-up-left neighbors (original pattern, not right/down)
+3. **Closest-pair matching**: For each pair of adjacent panels, find the closest pair of edge points using Manhattan distance
+4. **Tunnel carving**: Route corridors between the closest edge points
+
+This produces more natural corridor placement — corridors start from room/cavern edges rather than arbitrary center tiles.
+
+### correct_dir Diametric Fix
+
+**Bug**: When on the same row or column as the target, the old code unconditionally returned the direct direction. The original checks `!DIAMETRIC(direct, curr)` first — if the direct direction is opposite to the current heading, it falls through to the two-option distance-biased logic instead.
+
+Also extracted `is_diametric()` helper for clarity.
+
+### Jai Quirk: `xx` Variable Name
+Jai disallows `xx` as a variable name due to auto-cast syntax ambiguity (`xx` is the auto-cast operator). Renamed to `lx`/`ly`.
+
+### Verification
+- Compiles cleanly (one fix for `xx` variable name)
+- All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)
