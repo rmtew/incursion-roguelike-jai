@@ -2097,6 +2097,24 @@ Twelve docs (01-11, 16) now have implementation-level detail.
 - Item level calculations (weapon QPlus, armor QPlus×1.5)
 - Weapon-specific (DamageType optimization, bane system, ParryVal formula with skill cap)
 
+## 2026-01-30: Completing Correctness Research - All Docs Fully Researched
+
+### Batch Expansion Session
+Completed the review pass to expand all 18 correctness-research documents to implementation-level detail. This session processed the remaining docs that were still at "Architecture researched from headers" status.
+
+**Documents expanded this session:**
+- `14-social-quest.md` - Social.cpp: all 12 interaction modes, hostility system, companion PHD pools, shop pricing tables
+- `15-ui-display.md` - Message.cpp grammar engine (XPrint format tags, article detection, name pipelines), Display.cpp rendering pipeline, Player.cpp input/rest systems
+- `03-event-system.md` - Event.cpp: 128-entry EventStack, three-phase dispatch, 10-level handler priority chain, resource script interception
+- `07-magic-system.md` - Magic.cpp/Effects.cpp/Prayer.cpp: spellcasting flow, 27 metamagic flags, spell resistance, effect archetypes, divine prayer system
+- `12-encounter-generation.md` - Encounter.cpp: 7-stage generation pipeline, XCR budget math, template application, alignment constraints
+- `13-skills-feats.md` - Skills.cpp/Create.cpp: SkillCheck multi-roll system, 29-step character creation, crafting, turning, level advancement
+- `17-values-calcvalues.md` - Values.cpp: 19-phase computation order, AttrAdj bonus stacking, all attribute formulas, HP/resistance/skill computation
+
+**Final status:** 17 of 18 docs fully researched. Doc 09 (map-system) notes "dungeon generation DONE (see specs/dungeon-generation/)" - detailed map generation specs exist in separate spec files.
+
+---
+
 ## 2026-01-30: Social.cpp Correctness Research
 
 Expanded `docs/research/correctness-research/14-social-quest.md` from a brief summary into a comprehensive implementation-level reference covering all of Social.cpp (2565 lines).
@@ -2147,3 +2165,144 @@ Expanded `docs/research/correctness-research/14-social-quest.md` from a brief su
 - SpendHours (awake time limit formula, hostile sight prevention)
 - DaysPassed dungeon regeneration (7-step: strip timed stati, restore traps, repopulate to equilibrium, anti-scumming item stripping, staple item generation)
 - Options system (900-slot byte array, 7 categories by 100-range, file I/O to Options.Dat)
+
+## 2026-01-30: Encounter Generation Correctness Research
+
+### Full Implementation Analysis of Encounter.cpp
+Performed deep-dive analysis of the original `Encounter.cpp` (3346 lines) covering:
+
+**XCR Budget Math**: The XCR formula is cubic `(CR+3)^3`, not exponential as earlier notes suggested. CR1=64, CR5=512, CR10=2197. Sub-zero CRs use a hardcoded lookup table.
+
+**7-Stage Generation Pipeline**: Stage 0 (init), Stage 1 (region encounter list), Stage 2 (global encounter scan), Stage 3 (weighted selection), Stage 4 (part filtering: percentile, EP_ELSE, EP_OR), Stage 5 (XCR budget division with sleep/room-size scaling), Stage 6 (part generation), Stage 7 (build + party composition).
+
+**Key Algorithms Documented**:
+- Deviance testing (>50% triggers retry, max 5 attempts)
+- Skew formulas for amount vs CR tradeoff (3:1 or 1:4 weighting)
+- Template application priority (9 steps: explicit, universal, class, mount, freaky, skill, dragon age)
+- Alignment constraint tightening (UpdateAlignRestrict progressive narrowing)
+- Adaptive filling (dynamic count adjustment during generation)
+- Monster selection filtering (CR, depth, aquatic, alignment, type, script criteria)
+- Uniform selection cache (50-slot key-value cache for NF_UNIFORM encounters)
+- Mount generation with undead rider auto-conversion
+- Item generation with luck-based level adjustment and quality distribution
+
+**HACKFIX noted**: Hard cap of 5 creatures per encounter (`cEncMem = min(cEncMem, 5)`).
+
+Updated `docs/research/correctness-research/12-encounter-generation.md` with complete implementation-level detail.
+
+## 2026-01-30: Event System Implementation Research
+
+### Scope
+Deep-dive into `Event.cpp` and related handler files to document implementation-level event dispatch mechanics. Extended `docs/research/correctness-research/03-event-system.md` from header-level research to full implementation detail.
+
+### Key Findings
+
+**Event Stack**: Fixed 128-entry `EventStack` array with stack pointer for recursive event dispatch. Originally 32, overflowed during gameplay.
+
+**Three-Phase Dispatch (RealThrow)**: Every event fires in three phases -- `PRE(ev)`, `ev`, `POST(ev)` -- using arithmetic offsets (+500, +1000). PRE can abort/complete to prevent main; POST always fires unless ABORT.
+
+**ThrowEvent Handler Priority Chain (10 levels)**:
+1. Region at subject position
+2. Terrain (if TF_SPECIAL)
+3. Illusionary terrain
+4. Dungeon resource
+5. Field/effect resource
+6. God conduct evaluation (actor, GODWATCH)
+7. God conduct evaluation (victim, GODWATCH+EVICTIM)
+8. Map object
+9. TRAP_EVENT stati on parameter objects
+10. Parameter objects via ThrowTo (p[3] down to p[0])
+
+**ThrowTo Type Hierarchy**: Uses HIER macro to walk C++ inheritance chain. For a Player: `Player::Event -> Character::Event -> Creature::Event -> Thing::Event`. Each level can handle or pass to next.
+
+**Resource Script Interception**: Resources use annotations with AN_EVENT type. Each annotation holds up to 5 event handlers. Positive event code = VM bytecode handler, negative = message string. EventMask (16-bit hash) provides fast rejection.
+
+**ReThrow Bidirectional Propagation**: Changes to EventInfo during sub-events propagate back to caller (except Terse flag). RedirectEff is the one-way variant for triggering secondary effects.
+
+**Event Code Arithmetic**: PRE(+500), POST(+1000), EVICTIM(+2000), EITEM(+4000), META(+10000), GODWATCH(+20000).
+
+**Attack Flow Traced**: EV_ATTK -> EV_WATTACK -> EV_STRIKE (with PRE/POST) -> EV_HIT or EV_MISS -> EV_DAMAGE -> EV_DEATH. Each step goes through full handler chain.
+
+**Bug Found**: PEVENT and DAMAGE macros set `e.EXVal = actor->y` instead of `e.EYVal = actor->y`.
+
+## 2026-01-30: Magic/Effects/Prayer System Research
+
+### Source Files Analyzed
+- `Magic.cpp` (~3800 lines) - Core spellcasting, targeting, area-of-effect, spell rating, mana, metamagic, counterspelling, item magic
+- `Effects.cpp` (~2350 lines) - Effect archetype implementations (Blast, Grant, Inflict, Healing, Summon, Polymorph, Terraform, Travel, Dispel, Reveal, Illusion, Creation)
+- `Prayer.cpp` (~2000 lines) - Divine system: prayer, sacrifice, favour, transgression, divine intervention, altar conversion
+
+### Specification Created
+Full implementation-level spec written to `docs/research/specs/magic-effects-system.md` covering all three subsystems with formulas, constants, and control flow extracted directly from the original source code.
+
+## 2026-01-30: CalcValues System Deep Research
+
+### Source Files Analyzed
+- `Values.cpp` (2620 lines) - Main CalcValues system, bonus stacking, resistance, HP, breakdown display
+- `Creature.cpp` - Mod/Mod2/KMod/KMod2 modifier functions
+- `Create.cpp` - SkillLevel, IAttr, CasterLev, GetBAB
+- `Monster.cpp` - BestHDType
+- `Tables.cpp` - GoodSave, PoorSave, ManaMultiplier, BonusSpells, FaceRadius lookup tables
+- `Defines.h` - All 41 attribute indices, 39 bonus types, percent_attr/bonus_is_mult macros
+
+### Document Updated
+Fully rewrote `docs/research/correctness-research/17-values-calcvalues.md` with complete implementation details extracted from the original source. The document now covers:
+
+- **Architecture**: Static AttrAdj[41][39] array, shared weapon pointers, recursion guard
+- **Bonus stacking**: AddBonus/StackBonus with WESMAX macro, dodge/circ always stack, penalties always stack, MR uses diminishing returns
+- **19-phase computation order**: From pre-calculation setup through post-calculation fixup, each phase documented with exact formulas
+- **All attribute formulas**: Hit (5 modes), damage (5 modes), speed (5 modes), saves (3), defense, movement, armour, casting (5 types)
+- **HP calculation**: Separate formulas for characters (roll-based + level + CON) and monsters (HD * HDType), size multipliers, template adjustments
+- **Resistance system**: Diminishing returns stacking (100% + 50% + 33% each), immunity checks, armour integration
+- **Skill computation**: ranks + Mod2(attr) + training + feats + synergy + armour penalty + size + many bonus categories
+- **KnownOnly parameter**: Gates equipment enhancement bonuses behind identification, stores to KAttr[], Character always calculates both modes
+- **Percent attributes**: Multiplicative composition for speed/movement with specific bonus types
+- **Known bugs**: Penalty stacking from same source, WESMAX ordering dependency, possible archery BAB bug in speed calc
+- **All lookup tables**: GoodSave, PoorSave, ManaMultiplier, BonusSpells, FaceRadius, MonHDType, MonGoodSaves, weapon skill bonuses, encumbrance penalties, size modifiers
+
+## 2026-01-30: Magic System Correctness Research Update
+
+Updated `docs/research/correctness-research/07-magic-system.md` from header-level research (290 lines) to full implementation-level detail (580+ lines). Incorporated all findings from the spec at `docs/research/specs/magic-effects-system.md` including:
+
+- **Spellcasting flow**: Complete Creature::Cast with all pre-checks, component requirements, two-weapon penalty, timeout formula, staff fatigue, metamagic fatigue, bard spellbreak, mana check, success/failure roll with damage penalty and concentration buffer
+- **Spell Rating**: Full formulas for both monster (Creature::SpellRating) and character (Character::SpellRating) versions with all modifiers
+- **Spell Save DC**: Complete formula with all 10 components (base, level, attr, focus, will, beguile, trick, hard, height, affinity) plus item/trap/ability variants
+- **Mana Cost**: Formula with metamagic multiplier, specialist school modifier, buff cost reduction, racial affinity
+- **Metamagic**: Full table of 27 metamagic flags with feat mappings and effects
+- **Spell Resistance**: d100 + CR*2 + penetration vs MR + CR*2 formula
+- **Counterspelling**: Detection, counter selection, Spellcraft DC, mana cost reduction tiers, AI behavior options, reflective counterspell
+- **Effect Calculation**: Caster level determination, range/radius/damage formulas, SpellDmgBonus
+- **Duration**: All tiers with modifier stacking
+- **Area-of-Effect**: All 12 area types with implementation details
+- **Effect Archetypes**: Implementation details for Blast, Grant, Inflict, Drain, Healing, Polymorph, Summon, Dispel, Terraform, Travel, Illusion, Reveal, Vision, Creation
+- **Item Magic**: Potion, scroll, wand, activation mechanics with formulas
+- **Prayer System**: Complete divine flow including PrePray, Insight, IBlessing, Prayer, trouble priority, divine deflect, resurrection, altar conversion
+- **Favour/Sacrifice**: calcFavour formula, sacrifice value calculation, impressive sacrifice thresholds, anger reduction
+- **Transgression**: Anger accumulation, thresholds, forsake mechanics
+- **Expanded porting considerations**: 12 items covering compound spells, spell rating variants, item magic flows, prayer system
+
+## 2026-01-30: Skills, Feats & Character Creation Research
+
+### Research Scope
+Deep dive into two original Incursion C++ source files:
+- `Skills.cpp` (5650 lines) - Skill system, class abilities, crafting, turning, devour, legend lore
+- `Create.cpp` (4366 lines) - Character creation, attribute generation, level advancement, XP, feat prerequisites
+
+### Document Updated
+Fully rewrote `docs/research/correctness-research/13-skills-feats.md` with complete implementation-level details extracted from the original source. The document expanded from ~120 lines of header-only architecture notes to ~550 lines of implementation details including:
+
+- **SkillCheck()**: Multi-roll system (2-3d20 for reliability skills), Skill Mastery minimum, Most Skilled Ally substitution, natural 20 restrictions, Suggestion clause for social skills, exercise on barely-succeeded checks
+- **SkillLevel()**: 16+ bonus categories with stacking rules, feat-to-skill mappings (20 feat pairs), training bonus formula (+1 per source then +2 minimum), synergy system, armour check penalties, size modifier (Hide only), circumstance penalties (charging -20, singing -2)
+- **MaxRanks table**: Progressive non-linear table allowing skill broadening at higher levels (not standard OGL)
+- **Skill kit system**: Primary/secondary/rope/innate kit sources with short-circuit for kitless skills
+- **Individual skills**: Listen (active with sound types and distance), Hide, Search, Handle Device, Animal Empathy, Heal, Disguise (race similarity DCs), Balance, Tumble, Jump
+- **Class abilities**: Berserk Rage (armour-based fatigue, level-scaled bonus), Lay on Hands (heal/harm formula), Soothing Word, Tracking, Manifestation, Protective Ward, Feat of Strength, Unbind
+- **Crafting system**: 7 crafting modes, XP cost table (21 entries), tempering mechanics, repair/augment paths
+- **Legend Lore**: 7-tier progressive identification by `(10 + level + INT) - itemlevel`, Decipher for runic items
+- **Turning undead**: `(check * 750) / (resist * 100)` ratio formula, 5 effect tiers, Command variant, divine feat integration
+- **Devour system**: Resistance gains, attribute gains, dragon mana, theological consequences with deity-specific transgressions
+- **Feat prerequisites**: DNF boolean evaluation (OR of ANDs), 12 condition types, IAttr() prevents item-boosted stat abuse
+- **Character creation**: 29-step sequential flow, 3 attribute generation methods, point buy cost table, perk system with weighted types
+- **Level advancement**: Full flow with alignment validation, HP/mana rolling options, feat granting schedule (every 3rd level + bonus at 1st)
+- **XP system**: Base XP by CR table, 20-element CR-difference scale, slow advancement table, multiclass penalty rules, kill sharing
+- **Studies system**: 8 study types mapping feats to class ability progression
