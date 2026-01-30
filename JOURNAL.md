@@ -2353,3 +2353,31 @@ Added `test_game_loop()` to `src/tests.jai` (8 test blocks):
 - **`starts_with` name collision** — Jai's Basic module exports `starts_with`, conflicting with local helper. Renamed to `log_starts_with`.
 - **Bitmask negation** — `~DF_OPEN` produces a large s64 constant that doesn't fit in u8. Fixed with `xx,no_check ~DF_OPEN`.
 - **Pillar at room center** — Seed 42 places a castle room whose center has a pillar. Fixed `game_init_player_position` to search outward from center.
+
+## 2026-01-30: Correctness Gaps 1-3 Runtime Verification
+
+### Context
+A correctness analysis had flagged three potential gaps in the dungeon generation system: (1) region terrain not flowing to rooms, (2) room lighting not scaling with depth, (3) door states not being randomized. A plan-mode investigation determined all three were already implemented, and this session verified them at runtime.
+
+### Verification Results
+
+**All three features confirmed working via code review and test execution (217 tests, 213 passed, 4 pre-existing mon1-4 parse failures).**
+
+**Region Terrain Pipeline** — Full end-to-end chain verified:
+- `load_baked_regions()` populates `room_regions` from baked data (91 regions from dungeon.irh), with hardcoded test region fallback ensuring the array is never empty
+- `resolve_region_terrains()` resolves string refs (e.g. "ice floor") to `*RuntimeTerrain` pointers via case-insensitive terrain registry lookup
+- `get_region_floor()`/`get_region_wall()` (weights.jai:555-568) return resolved terrain or default — never null
+- All 15+ room-drawing functions (`write_room`, `write_circle`, `write_octagon`, etc.) call these functions and pass results to `write_at_with_terrain()` → `map_set_with_display()` which sets custom glyph/color per tile
+
+**Room Lighting** — `place_room_lights()` (makelev.jai:2824-2879):
+- `lit_chance = 50 - 4*depth`, minimum 5%
+- Torches placed on walls with 1-in-10 density
+- Called in main generation loop at line 3913
+
+**Door States** — `place_doors_makelev()` (makelev.jai:2725-2792):
+- 14% secret, ~9% open, ~41% closed+locked, ~36% closed+unlocked
+- Lock DC = `10 + depth*2 + random(5)`
+- DoorInfo entries pushed to `m.doors` with appropriate DF_* flags
+
+### Conclusion
+No code changes needed. The earlier correctness analysis incorrectly identified these as gaps — all three features were already implemented and are functioning at runtime.
