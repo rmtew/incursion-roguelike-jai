@@ -11,7 +11,7 @@ This document compares the existing Jai implementation in `src/dungeon/makelev.j
 | Step | Spec (MakeLev.cpp) | Implementation (makelev.jai) | Status |
 |------|-------------------|------------------------------|--------|
 | 1. Initialize | Fill with TERRAIN_ROCK, edge with TERRAIN_MAPEDGE, load constants | Fill with ROCK, edge with WALL | PARTIAL |
-| 2. Streamers | MIN_STREAMERS to MAX_STREAMERS, weighted selection, chasm propagation | Single 30% chance streamer, hardcoded weights | DIFFERS |
+| 2. Streamers | MIN_STREAMERS to MAX_STREAMERS, weighted selection, chasm propagation | MIN_STREAMERS to MAX_STREAMERS loop, depth restrictions, type reuse | PARTIAL |
 | 3. Special Rooms | AN_DUNSPEC annotations, predefined maps at specific depths | Hardcoded VAULTS array, simpler selection | DIFFERS |
 | 4. Draw Panels | Weighted room type + region selection, 200 tries max | Weighted selection implemented, regions optional | PARTIAL |
 | 5. Connect Panels | Edge tiles, closest pairs, TT_DIRECT\|TT_WANDER tunnels | connect_panels() implemented | PARTIAL |
@@ -208,7 +208,7 @@ Missing: RF_ROCKTYPE, RF_CAVE, RF_AUTO, RF_OPT_DIM, RF_VAULT, RF_NOMONSTER, RF_N
 ### Medium Priority (Affects Variety)
 
 1. **Corridor regions** - No themed corridor appearances
-2. **Streamer system** - Simplified compared to original
+2. ~~**Streamer system** - Simplified compared to original~~ **FIXED** (MIN/MAX_STREAMERS loop, depth restrictions)
 3. ~~**Missing room types** - RM_DESTROYED, RM_RANDTOWN, RM_GRID, RM_LIFELINK~~ **FIXED** (RM_DESTROYED, RM_GRID, RM_LIFELINK)
 4. ~~**Door states** - No open/locked/trapped states~~ **FIXED**
 5. ~~**Furnishing system** - No room furniture~~ **FIXED**

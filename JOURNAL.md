@@ -2412,3 +2412,43 @@ Required explicit `s32` type annotations for grid arithmetic variables (`cols`, 
 ### Verification
 - Compiles cleanly
 - All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)
+
+## 2026-01-30: Streamer System Upgrade (Correctness Gap 5)
+
+### Background
+The streamer generation system (rivers, chasms, lava, rubble) had a significant deviation from the original. The port generated 0-1 streamers per level (single 30% chance), while the original generates **2-4 streamers** per level with a more sophisticated algorithm.
+
+### Original Algorithm (MakeLev.cpp:1419-1464)
+From `Annot.cpp:GetConst` defaults:
+- `MIN_STREAMERS = 2` — guaranteed minimum per level
+- `MAX_STREAMERS = 4` — hard cap
+- `STREAMER_CHANCE = 70%` — chance for each additional beyond minimum
+- `MIN_RIVER_DEPTH = 3` — rivers only on depth 3+
+- `MIN_CHASM_DEPTH = 5` — chasms only on depth 5+
+- `MAX_STREAMER_WIDTH = 5` — non-river max width
+- No chasms on last dungeon level (nowhere to fall)
+- 50% chance to **reuse** previous streamer type (`goto SecondStreamerSame`)
+- Up to 20 tries to find valid type that passes depth restrictions
+
+### Changes
+
+**`DungeonConstants` struct** — added 7 new constants: `MIN_STREAMERS`, `MAX_STREAMERS`, `STREAMER_CHANCE`, `MAX_STREAMER_WIDTH`, `MIN_RIVER_DEPTH`, `MIN_CHASM_DEPTH`, `DUN_DEPTH` with defaults matching original `Annot.cpp:GetConst`.
+
+**Streamer generation loop** (Step 2 in `makelev`) — replaced single 30% chance with original algorithm:
+- Loop generates MIN_STREAMERS guaranteed, then STREAMER_CHANCE% each additional up to MAX_STREAMERS
+- 50% chance to reuse previous type (matches `random(10) > 5` / `goto SecondStreamerSame`)
+- Depth restrictions: rivers require MIN_RIVER_DEPTH, chasms require MIN_CHASM_DEPTH
+- No chasms on last level
+- Up to 20 tries for valid type selection (breaks if none found)
+
+**`write_streamer()` function** — updated to match original `WriteStreamer()` (MakeLev.cpp:841-911):
+- **Starting position**: Non-rivers now start at random map coordinates (original passes `1+random(LEVEL_SIZEX-2)`) instead of corner-based positions
+- **Non-river max width**: Now uses `2 + random(MAX_STREAMER_WIDTH)` instead of hardcoded info table values
+- **Meander ratios**: Fixed to `2 + random(10)` (was `2 + random(8)`)
+- **Movement probability**: Fixed to `random(rx+ry) + 1 <= rx` matching original (was `random(rx+ry) < rx`)
+- **Drawing loop**: Changed from symmetric `-half..+half` to `0..width-1` offset from `(sx - width/2)`, matching original
+
+### Verification
+- Compiles cleanly
+- All 213 tests pass (4 pre-existing mon1-4.irh failures unchanged)
+- Generated dungeons now have 2-4 streamers per level instead of 0-1

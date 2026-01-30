@@ -297,6 +297,14 @@ DungeonConstants :: struct {
     TERRAIN_ROCK    : Terrain : .ROCK;
     TERRAIN_FLOOR   : Terrain : .FLOOR;
     TERRAIN_WALL    : Terrain : .WALL;
+    // Streamer constants (original defaults from Annot.cpp:GetConst)
+    MIN_STREAMERS       : s32 : 2;   // Minimum guaranteed streamers per level
+    MAX_STREAMERS       : s32 : 4;   // Maximum streamers per level
+    STREAMER_CHANCE     : s32 : 70;  // % chance for each additional streamer beyond minimum
+    MAX_STREAMER_WIDTH  : s32 : 5;   // Maximum non-river streamer width
+    MIN_RIVER_DEPTH     : s32 : 3;   // Minimum depth for river streamers
+    MIN_CHASM_DEPTH     : s32 : 5;   // Minimum depth for chasm streamers
+    DUN_DEPTH           : s32 : 20;  // Total dungeon depth (no chasms on last level)
 }
 
 // Default constants for standard dungeon
@@ -2648,74 +2656,59 @@ connect_panels :: (m: *GenMap, gs: *GenState) {
 
 // Write a streamer (river or chasm) across the map
 // In original: void Map::WriteStreamer(Rect &r, uint8 sx, uint8 sy, Dir d, rID regID)
+// Original: WriteStreamer(Rect &r, uint8 sx, uint8 sy, Dir d, rID regID)
+// Caller passes random map coordinates; rivers override to start from edge.
 write_streamer :: (m: *GenMap, gs: *GenState, stype: StreamerType) {
     info := STREAMER_INFO[cast(s32) stype];
     terrain := info.terrain;
     is_river := info.is_river;
 
-    // Pick starting position and direction
-    sx: s32;
-    sy: s32;
+    // Starting position: random point on map (original MakeLev.cpp:1424-1425)
+    sx : s32 = 1 + random(m.width - 2);
+    sy : s32 = 1 + random(m.height - 2);
     dir: Dir;
-
-    if is_river {
-        // Rivers start from edge
-        if random(2) == 0 {
-            sx = random(m.width);
-            sy = 0;
-            dir = ifx random(2) == 0 then Dir.SOUTHEAST else Dir.SOUTHWEST;
-        } else {
-            sx = 0;
-            sy = random(m.height);
-            dir = ifx random(2) == 0 then Dir.SOUTHEAST else Dir.NORTHEAST;
-        }
-    } else {
-        // Non-river streamers start from corner area
-        corner := random(4);
-        if corner == 0 {
-            sx = 2 + random(10);
-            sy = 2 + random(10);
-            dir = Dir.SOUTHEAST;
-        } else if corner == 1 {
-            sx = m.width - 3 - random(10);
-            sy = 2 + random(10);
-            dir = Dir.SOUTHWEST;
-        } else if corner == 2 {
-            sx = 2 + random(10);
-            sy = m.height - 3 - random(10);
-            dir = Dir.NORTHEAST;
-        } else {
-            sx = m.width - 3 - random(10);
-            sy = m.height - 3 - random(10);
-            dir = Dir.NORTHWEST;
-        }
-    }
 
     // Width control
     width: s32;
     max_width: s32;
+
     if is_river {
-        width = info.min_width + random(info.max_width - info.min_width + 1);
+        // Rivers: fixed width, start from edge (original MakeLev.cpp:848-856)
+        width = 2 + random(4);
         max_width = width;
+        if sx > sy {
+            sy = 0;
+            dir = ifx random(2) != 0 then Dir.SOUTHEAST else Dir.SOUTHWEST;
+        } else {
+            sx = 0;
+            dir = ifx random(2) != 0 then Dir.SOUTHEAST else Dir.NORTHEAST;
+        }
     } else {
-        width = info.min_width;
-        max_width = info.max_width;
+        // Non-rivers: start at 1 width, grow to max (original MakeLev.cpp:858-863)
+        width = 1;
+        max_width = 2 + random(gs.con.MAX_STREAMER_WIDTH);
+        // Random diagonal direction
+        droll := random(4);
+        if droll == 0       dir = Dir.SOUTHEAST;
+        else if droll == 1  dir = Dir.SOUTHWEST;
+        else if droll == 2  dir = Dir.NORTHEAST;
+        else                dir = Dir.NORTHWEST;
     }
 
-    // For chasms, ensure minimum width
+    // Chasms: minimum width 4 (original MakeLev.cpp:866-867)
     if stype == .CHASM {
-        if max_width < 4 then max_width = 4;
+        max_width = cast(s32)max(4, max_width + 1);
     }
 
-    // Movement ratios (controls how diagonal the path is)
-    rx := 2 + random(8);
-    ry := 2 + random(8);
+    // Meander ratios (original MakeLev.cpp:869-870)
+    rx := 2 + random(10);
+    ry := 2 + random(10);
 
     midpoint := false;
 
-    // Walk across the map
+    // Walk across the map (original MakeLev.cpp:873-909)
     while width > 0 && sx >= 0 && sx < m.width && sy >= 0 && sy < m.height {
-        // Vary width for non-rivers
+        // Non-rivers vary width (original: !random(13))
         if !is_river && random(13) == 0 {
             if midpoint {
                 width -= 1;
@@ -2724,23 +2717,24 @@ write_streamer :: (m: *GenMap, gs: *GenState, stype: StreamerType) {
             }
         }
 
-        if width >= max_width {
-            midpoint = true;
-        }
-
-        // Move in direction (weighted random between x and y movement)
-        if random(rx + ry) < rx {
+        // Move in direction (original: random(rx+ry)+1 <= rx)
+        if random(rx + ry) + 1 <= rx {
             sx += DirX(dir);
         } else {
             sy += DirY(dir);
         }
 
-        // Draw the streamer at current position with current width
-        half_w := width / 2;
-        for iy: -half_w..half_w {
-            for ix: -half_w..half_w {
-                tx := sx + ix;
-                ty := sy + iy;
+        if width >= max_width {
+            midpoint = true;
+        }
+
+        // Draw width x width square centered at position
+        mx := sx - (width / 2);
+        my := sy - (width / 2);
+        for iy: 0..width-1 {
+            for ix: 0..width-1 {
+                tx := mx + cast(s32)ix;
+                ty := my + cast(s32)iy;
                 if tx >= 1 && tx < m.width - 1 && ty >= 1 && ty < m.height - 1 {
                     write_at(m, gs, tx, ty, terrain, info.priority);
                 }
@@ -4011,33 +4005,63 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
     }
 
     // Step 2: Place streamers (rivers, chasms)
-    // 30% chance for a streamer
-    if random(100) < 30 {
-        streamer_roll := random(100);
-        stype: StreamerType;
+    // Original algorithm (MakeLev.cpp:1419-1464):
+    //   Generate MIN_STREAMERS guaranteed, then STREAMER_CHANCE% each additional up to MAX_STREAMERS.
+    //   50% chance to reuse previous streamer type. Depth restrictions for rivers/chasms.
+    {
+        streamers_placed : s32 = 0;
+        last_stype: StreamerType;
+        has_last_stype := false;
 
-        if streamer_roll < 35 {
-            // Water river (35%)
-            stype = .WATER_RIVER;
-        } else if streamer_roll < 55 {
-            // Chasm (20%)
-            stype = .CHASM;
-        } else if streamer_roll < 75 {
-            // Water stream (20%)
-            stype = .WATER_STREAM;
-        } else if streamer_roll < 90 {
-            // Lava river (15%) - deeper levels
-            if m.depth >= 5 {
-                stype = .LAVA_RIVER;
+        while streamers_placed < gs.con.MIN_STREAMERS ||
+              (random(100) < gs.con.STREAMER_CHANCE && streamers_placed < gs.con.MAX_STREAMERS) {
+
+            // 50% chance to reuse previous streamer type (original: random(10) > 5)
+            reuse := has_last_stype && random(10) > 5;
+            stype: StreamerType;
+
+            if reuse {
+                stype = last_stype;
             } else {
-                stype = .WATER_STREAM;
-            }
-        } else {
-            // Rubble (10%)
-            stype = .RUBBLE;
-        }
+                // Weighted random selection with depth restrictions (up to 20 tries)
+                found := false;
+                for try_i: 0..19 {
+                    streamer_roll := random(100);
 
-        write_streamer(m, *gs, stype);
+                    if streamer_roll < 35 {
+                        stype = .WATER_RIVER;
+                    } else if streamer_roll < 55 {
+                        stype = .CHASM;
+                    } else if streamer_roll < 75 {
+                        stype = .WATER_STREAM;
+                    } else if streamer_roll < 90 {
+                        stype = .LAVA_RIVER;
+                    } else {
+                        stype = .RUBBLE;
+                    }
+
+                    // Depth restrictions (original MakeLev.cpp:1446-1456)
+                    if stype == .WATER_RIVER || stype == .LAVA_RIVER {
+                        if m.depth < gs.con.MIN_RIVER_DEPTH  continue;
+                    }
+                    if stype == .CHASM {
+                        if m.depth < gs.con.MIN_CHASM_DEPTH  continue;
+                        // No chasms on last level (nowhere to fall)
+                        if m.depth == gs.con.DUN_DEPTH  continue;
+                    }
+
+                    found = true;
+                    break;
+                }
+                if !found  break;  // Couldn't find valid type after 20 tries
+            }
+
+            // Place the streamer at random position
+            write_streamer(m, *gs, stype);
+            last_stype = stype;
+            has_last_stype = true;
+            streamers_placed += 1;
+        }
     }
 
     // Step 3: Place vaults (special pre-designed rooms)
