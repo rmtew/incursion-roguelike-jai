@@ -690,22 +690,22 @@ parser_init :: (tokens: [] Token) -> Parser {
 }
 
 parser_free :: (p: *Parser) {
-    array_free(p.errors);
-    array_free(p.flavors);
-    array_free(p.items);
-    array_free(p.monsters);
-    array_free(p.effects);
-    array_free(p.features);
-    array_free(p.terrains);
-    array_free(p.races);
-    array_free(p.classes);
-    array_free(p.templates);
-    array_free(p.regions);
-    array_free(p.encounters);
-    array_free(p.domains);
-    array_free(p.gods);
-    array_free(p.texts);
-    array_free(p.dungeons);
+    array_free(p.errors);      p.errors.data = null;
+    array_free(p.flavors);     p.flavors.data = null;
+    array_free(p.items);       p.items.data = null;
+    array_free(p.monsters);    p.monsters.data = null;
+    array_free(p.effects);     p.effects.data = null;
+    array_free(p.features);    p.features.data = null;
+    array_free(p.terrains);    p.terrains.data = null;
+    array_free(p.races);       p.races.data = null;
+    array_free(p.classes);     p.classes.data = null;
+    array_free(p.templates);   p.templates.data = null;
+    array_free(p.regions);     p.regions.data = null;
+    array_free(p.encounters);  p.encounters.data = null;
+    array_free(p.domains);     p.domains.data = null;
+    array_free(p.gods);        p.gods.data = null;
+    array_free(p.texts);       p.texts.data = null;
+    array_free(p.dungeons);    p.dungeons.data = null;
 }
 
 // Helper functions

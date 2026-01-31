@@ -47,21 +47,30 @@ terrain_registry_init :: (reg: *TerrainRegistry) {
 
 // Free terrain registry resources
 terrain_registry_free :: (reg: *TerrainRegistry) {
+    // Free the lowercase string keys allocated by to_lower_copy in terrain_registry_add
+    for reg.by_name {
+        free(it_index);
+    }
     deinit(*reg.by_name);
     array_free(reg.terrains);
+    reg.terrains.data = null;
 }
 
-// Add a terrain to the registry
-terrain_registry_add :: (reg: *TerrainRegistry, terrain: RuntimeTerrain) -> *RuntimeTerrain {
-    // Add to storage array
+// Add a terrain to the storage array (does NOT update the hash index).
+// Call terrain_registry_build_index after all terrains are added.
+terrain_registry_add :: (reg: *TerrainRegistry, terrain: RuntimeTerrain) {
     array_add(*reg.terrains, terrain);
-    ptr := *reg.terrains[reg.terrains.count - 1];
+}
 
-    // Add to lookup table with lowercase key for case-insensitive lookup
-    lower_name := to_lower_copy(terrain.name);
-    table_add(*reg.by_name, lower_name, ptr);
-
-    return ptr;
+// Build the name→pointer hash index from the terrains array.
+// Must be called after all terrain_registry_add calls are complete,
+// because pointers into the terrains array are invalidated by array growth.
+terrain_registry_build_index :: (reg: *TerrainRegistry) {
+    for i: 0..reg.terrains.count-1 {
+        ptr := *reg.terrains[i];
+        lower_name := to_lower_copy(ptr.name);
+        table_add(*reg.by_name, lower_name, ptr);
+    }
 }
 
 // Look up terrain by name (case-insensitive)
@@ -105,6 +114,8 @@ build_terrain_registry :: (reg: *TerrainRegistry, parsed: [] ParsedTerrain) {
 
         terrain_registry_add(reg, rt);
     }
+
+    terrain_registry_build_index(reg);
 }
 
 // Build terrain registry from baked RuntimeTerrain array
@@ -115,6 +126,8 @@ build_terrain_registry_from_baked :: (reg: *TerrainRegistry, baked: [] RuntimeTe
         // Copy the terrain (baked data is already in RuntimeTerrain format)
         terrain_registry_add(reg, terrain);
     }
+
+    terrain_registry_build_index(reg);
 }
 
 // Default terrains (used when no resources loaded)
@@ -247,6 +260,8 @@ create_default_terrains :: (reg: *TerrainRegistry) {
     cobblestone.is_solid = false;
     cobblestone.is_opaque = false;
     terrain_registry_add(reg, cobblestone);
+
+    terrain_registry_build_index(reg);
 }
 
 // Convert color constant to RGB TerrainColor

@@ -17,6 +17,8 @@
 #import "Random";
 #import "File";
 #import "Sort";
+DefaultAlloc :: #import "Default_Allocator";
+#import "Overwriting_Allocator";
 
 // Core modules
 #load "../src/defines.jai";
@@ -74,6 +76,7 @@ StressConfig :: struct {
     all_depths: bool;        // --all-depths: test depths 1..20
     max_depth: s32;          // Maximum depth to test (default 20)
     determinism_check: bool; // Check determinism (generate twice, compare hashes)
+    debug_alloc: bool;       // --debug-alloc: use overwriting allocator to catch use-after-free
 }
 
 DEFAULT_CONFIG :: StressConfig.{
@@ -85,6 +88,7 @@ DEFAULT_CONFIG :: StressConfig.{
     all_depths = false,
     max_depth = 20,
     determinism_check = true,
+    debug_alloc = false,
 };
 
 // ============================================================================
@@ -165,8 +169,23 @@ test_generate :: (config: *StressConfig, results: *StressResults, seed: u64, dep
 
     // Regen test: free and regenerate with next seed
     if config.do_regen {
+        mapped_before: s64;
+        if DefaultAlloc.is_initialized() {
+            mapped_before = DefaultAlloc.global_statistics().mapped;
+        }
+
         free_game(gs);
         init_game(gs, seed + 1, depth);
+
+        if DefaultAlloc.is_initialized() {
+            mapped_after := DefaultAlloc.global_statistics().mapped;
+            growth := mapped_after - mapped_before;
+            if growth > 65536 {
+                add_failure(results, seed, depth, "memory",
+                    tprint("regen grew mapped by % bytes (before=%, after=%)", growth, mapped_before, mapped_after));
+                return false;
+            }
+        }
 
         if config.do_validate {
             vr := validate_map(*gs.dungeon, .COMPLETE);
@@ -267,6 +286,8 @@ parse_config :: (args: [] string) -> StressConfig, bool {
             }
         } else if arg == "--no-determinism" {
             config.determinism_check = false;
+        } else if arg == "--debug-alloc" {
+            config.debug_alloc = true;
         } else if arg == "--help" || arg == "-h" {
             show_help = true;
         }
@@ -283,6 +304,7 @@ parse_config :: (args: [] string) -> StressConfig, bool {
         print("  --all-depths          Test depths 1..20 per seed\n");
         print("  --max-depth N         Maximum depth (default: 20)\n");
         print("  --no-determinism      Skip determinism check\n");
+        print("  --debug-alloc         Use overwriting allocator (catch use-after-free)\n");
         print("  --help, -h            Show this help\n");
         return config, false;
     }
@@ -315,6 +337,7 @@ main :: () {
     print("Validate: %\n", config.do_validate);
     print("All depths: %\n", config.all_depths);
     print("Determinism: %\n", config.determinism_check);
+    print("Debug alloc: %\n", config.debug_alloc);
     print("\n");
 
     // Enable validation flag if requested
@@ -322,9 +345,34 @@ main :: () {
         g_debug_validate = true;
     }
 
+    // Set up overwriting allocator if requested
+    debug_allocator: Allocator;
+    if config.debug_alloc {
+        debug_allocator = get_overwriting_allocator(overwrite_byte = 0xDE);
+        print("Overwriting allocator enabled (freed memory filled with 0xDE)\n");
+    }
+
+    run_tests(*config, debug_allocator);
+}
+
+run_tests :: (config: *StressConfig, debug_allocator: Allocator) {
+    if config.debug_alloc {
+        new_context := context;
+        new_context.allocator = debug_allocator;
+        push_context new_context {
+            run_tests_inner(config);
+        }
+        deinit_overwriting_allocator(debug_allocator);
+    } else {
+        run_tests_inner(config);
+    }
+}
+
+run_tests_inner :: (config: *StressConfig) {
     // Initialize resources
     print("Loading resources...\n");
     init_resource_db();
+    print("Resources loaded.\n");
 
     // Run tests
     results: StressResults;
@@ -338,7 +386,7 @@ main :: () {
         for depth: 1..max_d {
             results.total_tests += 1;
 
-            passed := test_generate(*config, *results, seed, depth);
+            passed := test_generate(config, *results, seed, depth);
             if passed {
                 results.passed += 1;
             }
@@ -363,6 +411,15 @@ main :: () {
         print("Validation issues: %\n", results.validation_issues_total);
     }
 
+    // Memory summary
+    if DefaultAlloc.is_initialized() {
+        stats := DefaultAlloc.global_statistics();
+        print("\n=== Memory ===\n");
+        print("Mapped:      % bytes\n", stats.mapped);
+        print("Mapped peak: % bytes\n", stats.mapped_peak);
+        print("Cached:      % bytes\n", stats.cached);
+    }
+
     // Print failures
     if results.failure_count > 0 {
         print("\nFailing seeds:\n");
@@ -373,7 +430,7 @@ main :: () {
     }
 
     // Write results file
-    write_results_file(*results, *config);
+    write_results_file(*results, config);
     print("\nResults written to stress-results.txt\n");
 
     if results.failed > 0 {

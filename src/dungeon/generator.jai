@@ -235,5 +235,6 @@ generate_dungeon :: (m: *GenMap, seed: u64 = 0, mode: GeneratorMode = .ORIGINAL,
 // Uses MakeLev panel-based generation
 generate_dungeon_original :: (m: *GenMap, seed: u32, depth: s32 = 1, above_map: *GenMap = null, dungeon_name: string = "") {
     // Use the MakeLev-style generation
-    generate_makelev(m, seed, depth = depth, above_map = above_map, dungeon_name = dungeon_name);
+    down_stairs := generate_makelev(m, seed, depth = depth, above_map = above_map, dungeon_name = dungeon_name);
+    array_free(down_stairs);
 }

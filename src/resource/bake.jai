@@ -25,7 +25,9 @@ parse_resource_file :: (path: string, monsters: *[..] RMonster, items: *[..] RIt
     // Initialize lexer and parser
     lexer := lexer_init(content);
     tokens := lexer_tokenize_all(*lexer);
+    defer array_free(tokens);
     parser := parser_init(tokens);
+    defer parser_free(*parser);
 
     // Parse all resources in the file
     ok := parser_parse(*parser);

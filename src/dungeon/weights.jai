@@ -545,10 +545,10 @@ build_corridor_weights :: (weights: *DungeonWeights) {
 }
 
 free_dungeon_weights :: (weights: *DungeonWeights) {
-    array_free(weights.room_regions);
-    array_free(weights.corridor_regions);
-    array_free(weights.vault_regions);
-    array_free(weights.corridor_weights);
+    array_free(weights.room_regions);      weights.room_regions.data = null;
+    array_free(weights.corridor_regions);  weights.corridor_regions.data = null;
+    array_free(weights.vault_regions);     weights.vault_regions.data = null;
+    array_free(weights.corridor_weights);  weights.corridor_weights.data = null;
 }
 
 // Helper to convert room type constant to bit position

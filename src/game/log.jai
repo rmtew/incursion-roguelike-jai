@@ -143,6 +143,7 @@ parse_command_log :: (text: string) -> CommandLog, bool {
 
 free_command_log :: (log: *CommandLog) {
     array_free(log.entries);
+    log.entries.data = null;
 }
 
 // ============================================================================
