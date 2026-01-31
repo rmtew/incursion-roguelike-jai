@@ -3304,3 +3304,114 @@ Implemented Tier 2 from the crash diagnosis plan: `MiniDumpWriteDump` integratio
 ### Verification
 
 All 9 build targets compile. Test suite: 213/217 pass (4 pre-existing parser failures, no regressions). See `docs/research/crash-diagnosis/JOURNAL.md` for sub-project updates.
+
+## 2026-02-01: Memory Leak Fixes + Full Codebase Audit
+
+### Leak Fixes (from planned changes)
+
+Fixed all identified memory leaks in the dungeon generation pipeline:
+
+1. **GenState internals** — Created `gen_state_free()` calling existing `terrain_registry_free` + `free_dungeon_weights`. Added `defer gen_state_free(*gs)` in `generate_makelev`. (~8-16 KB leaked per generation)
+2. **Stair arrays** — `defer array_free(up_stairs)` in makelev.jai, capture + `array_free(down_stairs)` in generator.jai
+3. **Dead code** — Removed unused legacy `write_streamer` overload that created and leaked a GenState
+4. **Minor** — Switched `validate_doors` `to_remove` to temp allocator
+5. **Stress test diagnostics** — Added `Default_Allocator` memory tracking around regen cycles
+
+### Full Codebase Memory Audit
+
+Ran three parallel exploration agents covering all allocation sites, cleanup functions, and struct lifecycles. Found and fixed two additional leaks:
+
+6. **Parser + token arrays** (bake.jai) — `parser_free()` existed but was never called. `lexer_tokenize_all()` returned a dynamic array never freed. Called 8x at startup. Largest single leak. Fix: `defer parser_free(*parser)` + `defer array_free(tokens)`.
+7. **Hash table string keys** (terrain_registry.jai) — `to_lower_copy` strings used as keys leaked when `deinit` freed bucket storage but not keys. Fix: iterate and free keys before `deinit`.
+
+Dismissed false positives: `gen_info.cells` (fixed-size embedded array), `free_command_log` (is called), `free_game` in main.jai (no game loop yet).
+
+### Regen Crash — FIXED
+
+Wired up `Overwriting_Allocator` (`--debug-alloc` flag) to detect use-after-free. Found and fixed two root causes:
+
+1. **Double-free in map_free → map_init** (map.jai): Jai's `array_free` frees backing memory but does NOT null the `data` pointer. When `map_init`'s `array_reset` sees a non-null `data` pointer, it frees it again. Fix: null data pointers after each `array_free` in `map_free`.
+
+2. **Use-after-free in terrain registry** (terrain_registry.jai): `terrain_registry_add` stored `*RuntimeTerrain` pointers into a `[..] RuntimeTerrain` dynamic array and added them to a hash table. When later `array_add` calls grew the array (reallocating the backing), those hash table pointers became dangling. Fix: separated `terrain_registry_add` (array-only) from `terrain_registry_build_index` (builds hash table after array is complete and stable).
+
+**Debugging methodology**: Added print fences at progressively finer granularity (regen path → generate_makelev → map_init), then added pointer tracing in `map_free` to compare freed addresses against the overwriting allocator's double-free reports. The pointer addresses matched exactly.
+
+### Verification
+
+- `./build.bat game test stress_test` — all compile
+- `./src/tests/test.exe` — 213/217 pass (4 pre-existing parser failures)
+- `./tools/stress_test.exe --count 100 --regen --debug-alloc` — 100/100 pass (overwriting allocator, no errors)
+- `./tools/stress_test.exe --count 100 --regen` — 100/100 pass (normal allocator)
+
+### Files Changed
+
+- `src/dungeon/map.jai` — null data pointers after array_free in map_free
+- `src/dungeon/makelev.jai` — gen_state_free, defer, dead code removal, temp allocator
+- `src/dungeon/generator.jai` — free discarded down_stairs
+- `src/dungeon/terrain_registry.jai` — free hash table string keys, split terrain_registry_add/build_index
+- `src/resource/bake.jai` — defer parser_free + array_free(tokens)
+- `tools/stress_test.jai` — Default_Allocator import, memory diagnostics, Overwriting_Allocator support
+- `docs/research/memory-allocation/` — updated JOURNAL, BACKLOG, README
+
+## 2026-02-01: Memory Allocation Research Sub-Project
+
+Created `docs/research/memory-allocation/` to audit all memory allocation patterns and design a proper allocator strategy.
+
+### Findings
+
+- **175+ allocation operations** across the codebase, all through default heap (rpmalloc)
+- **No custom allocators** — no Pool, Flat_Pool, or context overrides anywhere
+- **~15 temporary arrays** in `makelev.jai` per generation pass that should use `temp` allocator
+- **Per-level data** (GenMap arrays, BSP nodes, weights, terrain registry) should use `Pool` for bulk cleanup
+- ~~The regen crash is almost certainly a missing cleanup in the `map_free` cascade~~ — confirmed and fixed later this session (see above): double-free from `array_free` not nulling data pointers + use-after-free from pointers into growing `[..] RuntimeTerrain`. A Pool allocator would still eliminate this bug class by design
+
+### Jai Reference Sources Documented
+
+Catalogued best external sources for Jai research in `docs/research/jai-reference.md`:
+- The_Way_to_Jai (Ivo-Balbaert) — most comprehensive, especially chapters on allocators and context
+- BSVino/JaiPrimer Wiki — good overview of memory management and ownership
+- Jai-Community Library Wiki — context system and advanced patterns
+- ForrestTheWoods blog — practical usage patterns
+
+### Files Changed
+
+- **Created**: `docs/research/memory-allocation/README.md` — inventory, lifetime classification, allocator reference
+- **Created**: `docs/research/memory-allocation/JOURNAL.md` — session log
+- **Created**: `docs/research/memory-allocation/BACKLOG.md` — phased roadmap (4 phases)
+- **Updated**: `docs/research/jai-reference.md` — added external reference sources table
+- **Updated**: `CLAUDE.md` — added memory-allocation to reference table
+- **Updated**: `BACKLOG.md` — added memory allocation section
+
+## 2026-02-01: Entry Chamber, Dungeon Name Propagation, and TILE_START
+
+### Problem
+
+`init_game` never passed `dungeon_name` to `generate_dungeon`, so:
+- Entry Chamber was never placed on depth 1
+- No dungeon specials were placed at any depth
+- Generation constants were wrong (smaller rooms, straighter corridors, 20 depths instead of 10)
+- Player always spawned at room 0 center instead of the Entry Chamber's cave entrance
+
+### Changes
+
+1. **GenMap entry point fields** (map.jai) — Added `enter_x`, `enter_y` (default -1) to track where TILE_START places the player entry point.
+
+2. **TILE_START handling** (makelev.jai) — Added `TILE_START :: 0x08` constant. Both `write_grid_at_position` and `write_shaped_from_region` now check `tile.flags & TILE_START` after `place_tile_object` and record the entry coordinates on the map.
+
+3. **Dungeon name propagation** (loop.jai) — Added `dungeon_name` parameter to `init_game` (default `"The Goblin Caves"`) and passed it through to `generate_dungeon`. All existing callers get correct behavior via the default.
+
+4. **Player spawn at entry point** (loop.jai) — `game_init_player_position` now checks `enter_x`/`enter_y` first, before falling back to room 0 center.
+
+### Verification
+
+- `./build.bat test` — compiles
+- `./src/tests/test.exe` — 213/217 pass (4 pre-existing parser failures)
+- `./build.bat game` — compiles
+- `./build.bat dungeon_test` — compiles
+- Generation log confirms: "Placed grid special 'entry chamber' on depth 1"
+
+### Files Changed
+
+- `src/dungeon/map.jai` — added `enter_x`, `enter_y` fields to GenMap
+- `src/dungeon/makelev.jai` — added `TILE_START` constant; TILE_START handling in both tile-writing functions
+- `src/game/loop.jai` — `dungeon_name` param on `init_game`; entry point preference in `game_init_player_position`

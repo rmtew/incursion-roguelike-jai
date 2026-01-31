@@ -193,6 +193,10 @@ GenMap :: struct {
     // Doors with state tracking
     doors: [..] DoorInfo;
 
+    // Entry point (set by TILE_START flag in tile definitions)
+    enter_x: s32 = -1;  // -1 means not set
+    enter_y: s32 = -1;
+
     // Visibility system
     visibility: [MAP_WIDTH * MAP_HEIGHT] VisibilityInfo;
     torch_positions: [..] TorchPos;
@@ -228,17 +232,22 @@ map_init :: (m: *GenMap, width: s32 = MAP_WIDTH, height: s32 = MAP_HEIGHT) {
     array_reset(*m.rooms);
     array_reset(*m.monsters);
     array_reset(*m.items);
+    array_reset(*m.features);
     array_reset(*m.doors);
     array_reset(*m.torch_positions);
 }
 
 // Free map resources
+// Note: array_free does NOT zero the data pointer in the array header.
+// We must null it manually, because map_init's array_reset will free
+// any non-null data pointer (causing a double-free on reuse).
 map_free :: (m: *GenMap) {
-    array_free(m.rooms);
-    array_free(m.monsters);
-    array_free(m.items);
-    array_free(m.doors);
-    array_free(m.torch_positions);
+    array_free(m.rooms);           m.rooms.data = null;
+    array_free(m.monsters);        m.monsters.data = null;
+    array_free(m.items);           m.items.data = null;
+    array_free(m.features);        m.features.data = null;
+    array_free(m.doors);           m.doors.data = null;
+    array_free(m.torch_positions); m.torch_positions.data = null;
 }
 
 // Get terrain at position (returns ROCK if out of bounds)

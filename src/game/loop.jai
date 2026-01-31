@@ -13,7 +13,7 @@
 
 // Initialize a new game with given seed and depth.
 // Generates dungeon, places player at first room center, calculates lighting/FOV.
-init_game :: (gs: *GameState, seed: u64, depth: s32 = 1) {
+init_game :: (gs: *GameState, seed: u64, depth: s32 = 1, dungeon_name: string = "The Goblin Caves") {
     gs.seed = seed;
     gs.depth = depth;
     gs.turn = 0;
@@ -24,7 +24,7 @@ init_game :: (gs: *GameState, seed: u64, depth: s32 = 1) {
     mt_seed(*gs.rng, cast(u32)(seed ^ 0xDEADBEEF));
 
     // Generate dungeon (uses global_mt internally)
-    generate_dungeon(*gs.dungeon, seed, depth = depth);
+    generate_dungeon(*gs.dungeon, seed, depth = depth, dungeon_name = dungeon_name);
 
     // Place player at first room center
     game_init_player_position(gs);
@@ -269,6 +269,14 @@ advance_turn :: (gs: *GameState) {
 // Room center may be occupied by a pillar (castle rooms), so we search nearby.
 game_init_player_position :: (gs: *GameState) {
     m := *gs.dungeon;
+
+    // Prefer entry point if set by TILE_START
+    if m.enter_x >= 0 && m.enter_y >= 0 && game_can_move_to(m, m.enter_x, m.enter_y) {
+        gs.player_x = m.enter_x;
+        gs.player_y = m.enter_y;
+        return;
+    }
+
     if m.rooms.count > 0 {
         cx, cy := rect_center(m.rooms[0].bounds);
 

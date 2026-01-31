@@ -35,6 +35,9 @@ PRIO_FEATURE_FLOOR  :: 100;
 PRIO_DEPOSIT        :: 110;  // Treasure deposits in walls
 PRIO_MAX            :: 120;
 
+// Tile flags (from Defines.h:3880)
+TILE_START :: 0x08;  // Marks the player entry point
+
 // Streamer types (matching original regions with RF_RIVER, RF_CHASM, etc.)
 StreamerType :: enum {
     WATER_RIVER;      // Wide water river crossing the map
@@ -461,6 +464,12 @@ gen_state_init :: (gs: *GenState, con: DungeonConstants = DEFAULT_CON, depth: s3
 
     // Resolve terrain references for all regions
     resolve_region_terrains(*gs.dungeon_weights, *gs.terrain_registry);
+}
+
+// Free generation state internals (terrain registry + dungeon weights)
+gen_state_free :: (gs: *GenState) {
+    terrain_registry_free(*gs.terrain_registry);
+    free_dungeon_weights(*gs.dungeon_weights);
 }
 
 // Get cell info at position
@@ -2267,6 +2276,10 @@ write_shaped_from_region :: (m: *GenMap, gs: *GenState, panel: Rect, region: *Ru
             tile_terrain := terrain_type_from_rt(tile_rt);
             write_at_with_terrain(m, gs, mx, my, tile_terrain, tile_rt, PRIO_VAULT);
             place_tile_object(m, tile, mx, my);
+            if tile.flags & TILE_START != 0 {
+                m.enter_x = mx;
+                m.enter_y = my;
+            }
             col += 1;
             continue;
         }
@@ -2347,6 +2360,10 @@ write_grid_at_position :: (m: *GenMap, gs: *GenState, start_x: s32, start_y: s32
             tile_terrain := terrain_type_from_rt(tile_rt);
             write_at_with_terrain(m, gs, mx, my, tile_terrain, tile_rt, PRIO_VAULT);
             place_tile_object(m, tile, mx, my);
+            if tile.flags & TILE_START != 0 {
+                m.enter_x = mx;
+                m.enter_y = my;
+            }
             col += 1;
             continue;
         }
@@ -3333,24 +3350,6 @@ write_streamer :: (m: *GenMap, gs: *GenState, stype: StreamerType) {
     }
 }
 
-// Legacy version for backward compatibility
-write_streamer :: (m: *GenMap, terrain: Terrain, is_river: bool = false) {
-    // Determine streamer type from terrain and is_river
-    stype: StreamerType;
-    if terrain == .WATER {
-        stype = ifx is_river then .WATER_RIVER else .WATER_STREAM;
-    } else if terrain == .CHASM {
-        stype = .CHASM;
-    } else {
-        stype = .RUBBLE;
-    }
-
-    // Create temp GenState for legacy calls
-    gs: GenState;
-    gen_state_init(*gs);
-    write_streamer(m, *gs, stype);
-}
-
 // Write a vault (pre-designed special room) at a position
 // Returns true if vault was placed successfully
 write_vault :: (m: *GenMap, gs: *GenState, vault_idx: s32, x: s32, y: s32) -> bool {
@@ -3599,7 +3598,7 @@ validate_doors :: (m: *GenMap) {
     // Phase 1: Mark doors for removal
     // Use a parallel bool array to track which doors to delete
     to_remove: [..] bool;
-    defer array_free(to_remove);
+    to_remove.allocator = temp;
     array_resize(*to_remove, m.doors.count);
     for i: 0..cast(s64)m.doors.count-1 {
         to_remove[i] = false;
@@ -4985,6 +4984,7 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
     // Initialize generation state
     gs: GenState;
     gen_state_init(*gs, con, depth = depth);
+    defer gen_state_free(*gs);
 
     // Debug: set seed context for crash reporting
     debug_set_game_state(cast(u64)seed, depth, 0, 0, 0);
@@ -5181,6 +5181,7 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
 
     // Place up-stairs at positions from level above
     up_stairs := place_up_stairs(m, *gs, above_down_stairs);
+    defer array_free(up_stairs);
 
     // Place down-stairs (MIN_STAIRS to MAX_STAIRS)
     down_stairs := place_down_stairs(m, *gs, up_stairs, depth, max_depth);
