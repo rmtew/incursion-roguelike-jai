@@ -285,4 +285,30 @@ dungeon_verify.exe [--seed N] [--verbose]
 
 ---
 
+## 2026-02-01: Trap Passability Fix + Cross-Cutting Flow Updates
+
+### Changes
+
+**Code fix:** Added `.TRAP` and `.TRAP_HIDDEN` to both passability functions:
+- `game_can_move_to` (`src/game/loop.jai`) — player can now walk onto traps
+- `terrain_passable` (`src/dungeon/map.jai`) — consistency fix (Issue D from cross-cutting-flows.md)
+
+**Documentation updates to cross-cutting-flows.md:**
+- Flow 1 (Player Spawn): BROKEN → WORKING (fixed in c5f4169)
+- Flow 8 (Dungeon Specials): BROKEN → WORKING (fixed in c5f4169)
+- Flow 10 (Trap Passability): BROKEN → PARTIAL (passable now, trigger/detection still missing)
+- Issue A (dungeon_name propagation): marked RESOLVED
+- Issue D (passability inconsistency): marked RESOLVED
+- Summary table updated
+
+**BACKLOG.md:** Entry Chamber section marked DONE with reference to c5f4169.
+
+### Impact
+
+Players can now walk onto trap tiles. Previously, `TRAP` and `TRAP_HIDDEN` terrain types were in a limbo state — not solid (didn't block LOS), but not passable (blocked movement). This made traps act as invisible walls.
+
+The terrain-as-trap model remains a design mismatch with the original (where traps are Feature objects on floor tiles), but the immediate gameplay blocker is resolved.
+
+---
+
 *Future entries should be appended below*

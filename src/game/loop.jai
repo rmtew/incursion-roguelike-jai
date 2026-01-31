@@ -170,7 +170,8 @@ game_can_move_to :: (m: *GenMap, x: s32, y: s32) -> bool {
     t := map_get(m, x, y);
     return t == .FLOOR || t == .CORRIDOR || t == .DOOR_OPEN ||
            t == .STAIRS_UP || t == .STAIRS_DOWN ||
-           terrain_is_water(t) || t == .RUBBLE;
+           terrain_is_water(t) || t == .RUBBLE ||
+           t == .TRAP || t == .TRAP_HIDDEN;
 }
 
 // ============================================================================

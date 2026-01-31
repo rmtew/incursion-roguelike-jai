@@ -59,7 +59,8 @@ terrain_glyph :: (t: Terrain) -> u16 {
 // Is this terrain passable?
 terrain_passable :: (t: Terrain) -> bool {
     return t == .FLOOR || t == .CORRIDOR || t == .DOOR_OPEN ||
-           t == .STAIRS_UP || t == .STAIRS_DOWN || t == .RUBBLE;
+           t == .STAIRS_UP || t == .STAIRS_DOWN || t == .RUBBLE ||
+           t == .TRAP || t == .TRAP_HIDDEN;
 }
 
 // Is this terrain solid (blocks movement and sight)?

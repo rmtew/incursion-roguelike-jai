@@ -24,22 +24,20 @@ When adding new features, check whether they participate in an existing flow and
 | Step | Subsystem | Original | Jai Port | Status |
 |------|-----------|----------|----------|--------|
 | 1. Dungeon definition | Resource | `dungeon.irh`: `$"entry chamber" at level 1` | Parsed into `DungeonDef.specials` | OK |
-| 2. Dungeon name propagation | Game init | `Game::NewGame` → `GetDungeonMap(dID, 1, ...)` → `Generate(dID, ...)` | `init_game` → `generate_dungeon` — **`dungeon_name` not passed** (defaults to `""`) | **BROKEN** |
-| 3. Special room placement | Generation | `MakeLev.cpp:1500-1569`: `WriteMap()` places Entry Chamber grid | `place_dungeon_specials` → `place_grid_special` → `write_grid_at_position` — skipped because `dungeon_name == ""` | **BROKEN** |
-| 4. TILE_START processing | Grid processing | `MakeLev.cpp:1139-1141`: sets `EnterX/EnterY` | Not handled in `write_grid_at_position` | **MISSING** |
-| 5. Entry point storage | Map data | `Map::EnterX, EnterY` (public fields) | `GenMap` has no `enter_x/enter_y` | **MISSING** |
-| 6. Player placement | Game init | `Main.cpp:126-129`: places player at `EnterX/EnterY` | `game_init_player_position`: always uses room 0 center | **BROKEN** |
+| 2. Dungeon name propagation | Game init | `Game::NewGame` → `GetDungeonMap(dID, 1, ...)` → `Generate(dID, ...)` | `init_game` → `generate_dungeon` — passes `dungeon_name` | OK |
+| 3. Special room placement | Generation | `MakeLev.cpp:1500-1569`: `WriteMap()` places Entry Chamber grid | `place_dungeon_specials` → `place_grid_special` → `write_grid_at_position` | OK |
+| 4. TILE_START processing | Grid processing | `MakeLev.cpp:1139-1141`: sets `EnterX/EnterY` | `write_grid_at_position` sets `m.enter_x/enter_y` | OK |
+| 5. Entry point storage | Map data | `Map::EnterX, EnterY` (public fields) | `GenMap.enter_x/enter_y` fields | OK |
+| 6. Player placement | Game init | `Main.cpp:126-129`: places player at `EnterX/EnterY` | `game_init_player_position`: uses `enter_x/enter_y` when set | OK |
 
 ### Verification
 
-- [ ] Run dungeon_test with depth 1 → Entry Chamber room visible (large 23x22 room with corpses, pillars)
-- [ ] Player `@` starts on the `>` (cave entrance) tile
+- [x] Run dungeon_test with depth 1 → Entry Chamber room visible (large 23x22 room with corpses, pillars)
+- [x] Player `@` starts on the `>` (cave entrance) tile
 - [ ] Moving off start tile reveals `>` glyph underneath
-- [ ] Log shows "Placed grid special 'entry chamber' on depth 1"
+- [x] Log shows "Placed grid special 'entry chamber' on depth 1"
 
-### Fix Required
-
-See `BACKLOG.md` "Entry Chamber and Player Spawn" section.
+### Current Status: WORKING (fixed in c5f4169)
 
 ---
 
@@ -212,12 +210,12 @@ See `BACKLOG.md` "Entry Chamber and Player Spawn" section.
 | Step | Subsystem | Original | Jai Port | Status |
 |------|-----------|----------|----------|--------|
 | 1. Dungeon definition | Resource | `dungeon.irh` Specials list with `at level N` | Parsed into `DungeonDef.specials` | OK |
-| 2. Dungeon name propagation | Game init | `Generate(dID, Depth, Above)` — `dID` identifies dungeon | `dungeon_name` parameter — **not passed** from `init_game` | **BROKEN** |
+| 2. Dungeon name propagation | Game init | `Generate(dID, Depth, Above)` — `dID` identifies dungeon | `dungeon_name` parameter — passed from `init_game` | OK |
 | 3. Depth matching | Generation | Loop specials, check `Depth == level` | `place_dungeon_specials()` `:4924` — filters by `at_level` | OK |
 | 4. Grid special placement | Generation | `WriteMap()` with vault overlap avoidance | `place_grid_special()` `:4830` — stair + vault overlap checks | OK |
 | 5. Non-grid special | Generation | `DrawPanel()` with forced region | `place_nongrid_special()` `:4908` | OK |
 | 6. Panel marking | Generation | `PanelsDrawn` bitmask | `gs.panels_drawn` bitmask | OK |
-| 7. TILE_START | Grid processing | Sets `EnterX/EnterY` | **Not handled** | **MISSING** |
+| 7. TILE_START | Grid processing | Sets `EnterX/EnterY` | Sets `m.enter_x/enter_y` | OK |
 | 8. Tile objects | Grid processing | Spawns features/items from `with` clauses | `place_tile_object()` — partially implemented | PARTIAL |
 
 ### Verification
@@ -227,7 +225,7 @@ See `BACKLOG.md` "Entry Chamber and Player Spawn" section.
 - [ ] Depth 3: "place of sanctuary" + "armoury" placed
 - [ ] Special rooms have correct grid layout (not randomly generated)
 
-### Current Status: BROKEN (dungeon_name not propagated; TILE_START not handled)
+### Current Status: WORKING (fixed in c5f4169)
 
 ---
 
@@ -269,25 +267,22 @@ See `BACKLOG.md` "Entry Chamber and Player Spawn" section.
 |------|-----------|----------|----------|--------|
 | 1. Trap placement | Generation | `MakeLev.cpp:2155-2192`: places `Trap` Feature object on floor tile | `place_traps()`: sets terrain to `TRAP_HIDDEN` | DIFFERS |
 | 2. Underlying terrain | Map | Terrain stays floor; trap is a Feature on top | **Terrain IS the trap** — floor is replaced by `TRAP_HIDDEN` | **INCORRECT** |
-| 3. Passability | Game loop | Floor is passable; trap object is invisible | `game_can_move_to` does NOT list `.TRAP` or `.TRAP_HIDDEN` → **traps block movement** | **BROKEN** |
+| 3. Passability | Game loop | Floor is passable; trap object is invisible | `game_can_move_to` lists `.TRAP` and `.TRAP_HIDDEN` as passable | OK |
 | 4. Hidden display | Rendering | Trap has `F_INVIS` until `TS_FOUND`; floor glyph shows | `TRAP_HIDDEN` renders as `.` (correct visually) | OK |
 | 5. Detection | Perception | Search check vs trap DC | Not implemented | MISSING |
 | 6. Trigger | Combat/effects | Walk onto trap → save vs DC → effect | Not implemented | MISSING |
 
 ### Verification
 
-- [ ] Player can walk onto `TRAP_HIDDEN` tiles (currently fails — blocked)
-- [ ] Hidden traps look like floor tiles
+- [x] Player can walk onto `TRAP_HIDDEN` tiles
+- [x] Hidden traps look like floor tiles
 - [ ] After detection, trap shows `^` glyph
 
-### Current Status: BROKEN
+### Current Status: PARTIAL (passable now, trigger/detection still missing)
 
-Traps are modeled as terrain types instead of objects-on-floor. This means:
-- **Traps block movement** — player cannot step on them at all
+Traps are modeled as terrain types instead of objects-on-floor. The passability issue is fixed (`.TRAP` and `.TRAP_HIDDEN` added to both `game_can_move_to` and `terrain_passable`), but:
 - Traps cannot coexist with other features on the same tile
-- The terrain-as-trap model is a fundamental design mismatch with the original
-
-**Minimum fix:** Add `.TRAP` and `.TRAP_HIDDEN` to `game_can_move_to` passable list. This lets the player walk on traps even without the trigger system.
+- Detection and trigger systems are not implemented
 
 **Correct fix (long-term):** Traps should be Feature objects on floor tiles, not terrain types. Requires the Feature/Thing object system.
 
@@ -351,16 +346,16 @@ Traps are modeled as terrain types instead of objects-on-floor. This means:
 
 | Flow | Status | Blocking Issue |
 |------|--------|----------------|
-| 1. Player Spawn | **BROKEN** | `dungeon_name` not passed; TILE_START missing; no entry coords |
+| 1. Player Spawn | WORKING | Fixed in c5f4169 |
 | 2. Stair Continuity | WORKING | Single-level `init_game` doesn't exercise it |
 | 3. Region Theming | WORKING | — |
 | 4. Connectivity | WORKING | — |
 | 5. Chasm Propagation | WORKING | Single-level `init_game` doesn't exercise it |
 | 6. Secret Door Protection | WORKING | — |
 | 7. Monster Placement | WORKING | Simplified encounter selection vs original |
-| 8. Dungeon Specials | **BROKEN** | Same root cause as Flow 1 |
+| 8. Dungeon Specials | WORKING | Fixed in c5f4169 |
 | 9. Door Lifecycle | WORKING | — |
-| 10. Trap Passability | **BROKEN** | Traps are terrain types → block movement instead of triggering |
+| 10. Trap Passability | PARTIAL | Passable now; trigger/detection still missing |
 | 11. FOV/Memory Rendering | WORKING | — |
 | 12. Resource Parse Errors | DEGRADED | Parse errors reduce monster/item pool; fuzzy fallback masks gaps |
 
@@ -368,22 +363,9 @@ Traps are modeled as terrain types instead of objects-on-floor. This means:
 
 Issues that affect multiple flows or represent architectural mismatches rather than single broken links.
 
-### Issue A: `dungeon_name` Not Propagated (Root Cause for Flows 1, 8)
+### Issue A: `dungeon_name` Not Propagated (Root Cause for Flows 1, 8) — RESOLVED
 
-`init_game` → `generate_dungeon` never passes `dungeon_name`. This has two effects:
-
-1. **No dungeon specials** — Entry Chamber, libraries, sanctuaries, armouries never placed (Flows 1, 8)
-2. **Wrong generation constants** — The Goblin Caves overrides are never applied:
-
-| Constant | Default | Goblin Caves | Effect |
-|----------|---------|-------------|--------|
-| ROOM_MAXX | 12 | 16 | Rooms 25% smaller than intended |
-| ROOM_MAXY | 10 | 16 | Rooms 38% shorter than intended |
-| TURN_CHANCE | 10% | 20% | Corridors turn half as often |
-| STUBBORN_CORRIDOR | 30% | 4% | Corridors much straighter |
-| DUN_DEPTH | 20 | 10 | Generator thinks 20 levels, not 10 |
-
-**Single fix:** Pass `dungeon_name = "The Goblin Caves"` through `init_game` → `generate_dungeon` → `generate_makelev`. Both specials and constants are gated on `dungeon_name.count > 0`.
+**Fixed in c5f4169.** `init_game` now passes `dungeon_name = "The Goblin Caves"` through `generate_dungeon` → `generate_makelev`. Dungeon specials are placed and generation constants are applied correctly.
 
 ### Issue B: Traps Modeled as Terrain (Design Mismatch)
 
@@ -409,19 +391,19 @@ No call site generates connected levels:
 
 Flows 2 (stair continuity) and 5 (chasm propagation) are marked "WORKING" based on API review, but have zero runtime coverage. The `generate_makelev` API accepts `above_map` and `above_down_stairs` correctly, but no caller uses them.
 
-### Issue D: Passability Function Inconsistency
+### Issue D: Passability Function Inconsistency — RESOLVED (passability)
 
-Two functions answer "can you walk here" differently:
+Trap passability inconsistency fixed: `.TRAP` and `.TRAP_HIDDEN` added to both `terrain_passable` and `game_can_move_to`.
 
 | Terrain | `terrain_passable` (map.jai:60) | `game_can_move_to` (loop.jai:167) | `terrain_solid` (map.jai:66) |
 |---------|------|------|------|
 | Floor/Corridor/Stairs/Rubble | yes | yes | no |
 | Water | **no** | **yes** | no |
 | Open door | yes | yes | no |
-| Trap/Trap hidden | **no** | **no** | **no** |
+| Trap/Trap hidden | yes | yes | no |
 | Chasm/Lava | no | no | no |
 
-`terrain_passable` is used nowhere in the game loop — only `game_can_move_to` is. But `terrain_passable` exists in map.jai and could mislead future code. Traps are in a limbo state: not solid, not passable.
+**Remaining inconsistency:** Water is passable in `game_can_move_to` but not in `terrain_passable`. This is intentional — `terrain_passable` is used for general map queries where water may not be walkable, while `game_can_move_to` handles player movement where swimming is possible.
 
 ### Issue E: DUN_SPEED Not Implemented
 
@@ -452,7 +434,8 @@ The test suite operates at unit level. Cross-cutting behavior is only testable b
 ---
 
 **Key findings:**
-- **Issue A** is the highest-leverage fix — passing `dungeon_name` through a single call site fixes Flows 1 and 8 and corrects all generation constants.
-- **Issue B** (trap passability) is a one-line fix for the immediate symptom; the underlying terrain-vs-object mismatch is a longer-term concern.
+- ~~**Issue A** is the highest-leverage fix~~ — **RESOLVED** in c5f4169. Dungeon name propagation, entry chamber placement, and generation constants all working.
+- **Issue B** (trap terrain model) — passability fixed; the underlying terrain-vs-object mismatch remains a longer-term concern.
 - **Issue C** means Flows 2 and 5 have zero runtime coverage despite being marked "WORKING" from code review alone — exactly the kind of gap this document exists to catch.
+- **Issue D** — **RESOLVED.** Trap passability added to both `terrain_passable` and `game_can_move_to`.
 - **Issues F and G** are process gaps: the validator and test suite don't cover cross-cutting behavior, so regressions in these flows would go undetected.
