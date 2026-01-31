@@ -185,6 +185,18 @@ else if (At(NEXTX, NEXTY).Priority == PRIO_ROOM_WALL) {
 
 Note: These are constant *indices* into `Con[]` array.
 
+### Depth 1 Entry Point (NOT PORTED)
+
+On depth 1 of each dungeon, the original places an **Entry Chamber** (a dungeon special from the Specials list) rather than a generic up-staircase. The Entry Chamber grid has a tile marked with `TILE_START` which sets `Map::EnterX/EnterY`. The player starts at these coordinates.
+
+**Original flow:**
+1. `dungeon.irh`: `$"entry chamber" at level 1` in The Goblin Caves
+2. `MakeLev.cpp:1500-1569`: Places grid special via `WriteMap()`
+3. `MakeLev.cpp:1139-1141`: `TILE_START` flag → `EnterX = x + r.x1; EnterY = y + r.y1;`
+4. `Main.cpp:126-129`: Player placed at `EnterX/EnterY`
+
+**Jai port status:** Not implemented. `dungeon_name` not propagated from `init_game`; `TILE_START` not handled; `GenMap` lacks entry point fields. See `correctness-research/BACKLOG.md` for full gap analysis.
+
 ### Up-Stairs Placement
 
 **Source:** `MakeLev.cpp:1706-1743`

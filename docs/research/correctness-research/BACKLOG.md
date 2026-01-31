@@ -14,6 +14,47 @@
 - [ ] Constant verification script
 - [ ] Diff tool for comparing parsed output
 
+## Entry Chamber and Player Spawn (HIGH PRIORITY)
+
+**Status:** NOT IMPLEMENTED — blocks correct depth 1 experience
+
+**Problem:** In the original Incursion, the player starts at a specific "Entry Chamber" room on depth 1. The Jai port does not place this room and has no mechanism for setting the player's entry position.
+
+**Original behavior (MakeLev.cpp + Main.cpp + dungeon.irh):**
+
+1. The dungeon definition (`dungeon.irh`) specifies `$"entry chamber" at level 1` in the Specials list
+2. `Map::Generate()` places this as a grid-based special room (Step 3, MakeLev.cpp:1494-1602)
+3. The Entry Chamber grid defines a `>` tile mapped to `$"floor" with $"cave entrance" [TILE_START]`
+4. During grid processing (MakeLev.cpp:1139-1141), `TILE_START` sets `Map::EnterX/EnterY`
+5. `Game::NewGame()` (Main.cpp:126-129) places the player at `EnterX/EnterY`
+
+**Jai port gaps:**
+
+| Component | Original | Jai Port | Status |
+|-----------|----------|----------|--------|
+| Dungeon name propagation | Passed through to Generate() | `init_game` omits `dungeon_name` → defaults to `""` | MISSING |
+| Entry Chamber placement | `place_dungeon_specials` at depth 1 | Skipped because `dungeon_name == ""` | MISSING |
+| `TILE_START` flag | Sets `EnterX/EnterY` during grid processing | Not handled in `write_grid_at_position` | MISSING |
+| `EnterX/EnterY` fields | `Map` public fields (line 118 in Map class) | `GenMap` has no entry point fields | MISSING |
+| Player placement | Uses `EnterX/EnterY` if set | Always uses room 0 center | INCORRECT |
+| Up-stair fallback | N/A (entry point is portal, not stair) | Places bare `STAIRS_UP` at room 0, not tracked in count | WORKAROUND |
+
+**Implementation-review correction:** Step 3 (Special Rooms) is marked "MATCHES" but should be "PARTIAL" — `place_dungeon_specials()` exists but `TILE_START` handling and entry coordinates are missing, and the dungeon name is not propagated from the game layer.
+
+**Fix plan:**
+1. Add `enter_x, enter_y: s32` to `GenMap`
+2. Handle `TILE_START` in `write_grid_at_position` (set `m.enter_x/enter_y`)
+3. Pass `dungeon_name = "The Goblin Caves"` through `init_game` → `generate_dungeon`
+4. Update `game_init_player_position` to prefer `enter_x/enter_y` when set
+5. Update implementation-review.md Step 3 status
+
+**Key files:**
+- `src/game/loop.jai:16-40` (init_game, player placement)
+- `src/dungeon/generator.jai:230` (generate_dungeon, dungeon_name param)
+- `src/dungeon/makelev.jai:2325-2399` (write_grid_at_position, needs TILE_START)
+- `src/dungeon/map.jai` (GenMap struct, needs enter_x/enter_y)
+- Original: `MakeLev.cpp:1139-1141`, `Main.cpp:126-135`, `dungeon.irh:4081-4145`
+
 ## Deferred Work
 
 ### Glyph Rendering (HIGH PRIORITY)

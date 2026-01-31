@@ -12,7 +12,7 @@ This document compares the existing Jai implementation in `src/dungeon/makelev.j
 |------|-------------------|------------------------------|--------|
 | 1. Initialize | Fill with TERRAIN_ROCK, edge with TERRAIN_MAPEDGE, load constants | Fill with con.TERRAIN_ROCK/TERRAIN_MAPEDGE; dungeon constants loaded from .irh | MATCHES |
 | 2. Streamers | MIN_STREAMERS to MAX_STREAMERS, weighted selection, chasm propagation | MIN_STREAMERS to MAX_STREAMERS loop, depth restrictions, type reuse, chasm propagation | MATCHES |
-| 3. Special Rooms | AN_DUNSPEC annotations, predefined maps at specific depths | place_dungeon_specials(): grid + non-grid placement per depth | MATCHES |
+| 3. Special Rooms | AN_DUNSPEC annotations, predefined maps at specific depths, TILE_START sets EnterX/EnterY | place_dungeon_specials(): grid + non-grid placement per depth; TILE_START not handled, dungeon_name not propagated from game layer | PARTIAL |
 | 4. Draw Panels | Weighted room type + region selection, 200 tries max | Weighted selection with region filtering, 200 tries max | MATCHES |
 | 5. Connect Panels | Edge tiles, closest pairs, TT_DIRECT\|TT_WANDER tunnels | connect_panels() with edge tiles + closest pairs | MATCHES |
 | 5b. Fix-Up | 26 trials, 3 regions/trial, per-region best pairs | fixup_tunneling() with multi-region + diagonal dist | MATCHES |
@@ -210,6 +210,7 @@ Not defined (4): RF_WARN (3), RF_TRAPMAZE (13), RF_XTRA_CORP (14), RF_RAINBOW_W 
 3. ~~**Region terrain** - All rooms look the same (no themed areas)~~ **FIXED** (verified working at runtime, Gap 1)
 4. ~~**Trap placement** - Missing hazards~~ **FIXED**
 5. ~~**Stair placement** - Single stair instead of MIN_STAIRS to MAX_STAIRS~~ **FIXED**
+6. **Entry Chamber / TILE_START** - Depth 1 has no Entry Chamber; player starts at room 0 center instead of dungeon entry point. `dungeon_name` not passed to generator; `TILE_START` flag not processed; `GenMap` lacks `enter_x/enter_y` fields. See `correctness-research/BACKLOG.md` for full analysis.
 
 ### Medium Priority (Affects Variety)
 

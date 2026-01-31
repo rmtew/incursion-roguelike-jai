@@ -60,6 +60,11 @@ See **`master-index.md`** for the comprehensive research index covering all subs
 - Compare structured output against expected values
 - Self-contained, no need to build original source
 
+**Cross-cutting flow verification** catches gaps between subsystems:
+- Traces key behaviors end-to-end across subsystem boundaries
+- Defines observable outcomes (not just code presence)
+- See `cross-cutting-flows.md` for all traced flows
+
 ## Verification Phases
 
 | Phase | Focus | Status |
@@ -90,6 +95,7 @@ See **`master-index.md`** for the comprehensive research index covering all subs
 | `README.md` | This overview |
 | `master-index.md` | Comprehensive subsystem index with priorities |
 | `01-17*.md` | Individual subsystem research documents |
+| `cross-cutting-flows.md` | End-to-end behavioral flow traces |
 | `NOTES.md` | Detailed technical reference |
 | `JOURNAL.md` | Session history |
 | `BACKLOG.md` | Open questions and deferred work |
