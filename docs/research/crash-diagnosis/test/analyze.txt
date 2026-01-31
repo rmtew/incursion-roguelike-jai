@@ -1,0 +1,4 @@
+!analyze -v
+.ecxr
+kb
+q

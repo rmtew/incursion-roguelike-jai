@@ -1,0 +1,6 @@
+.sympath srv*C:\symbols*https://msdl.microsoft.com/download/symbols;C:\Data\R\git\incursion-port-jai\docs\research\crash-diagnosis\test
+.reload
+!analyze -v
+.ecxr
+kb
+q

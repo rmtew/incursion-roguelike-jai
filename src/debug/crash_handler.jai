@@ -1,7 +1,8 @@
 // Crash Handler - Structured crash reporting for debug diagnosis
 //
 // Provides a global DebugContext struct that is written at safe checkpoints
-// during dungeon generation. On crash, writes everything to crash-report.txt.
+// during dungeon generation. On crash, writes everything to crash-report.txt
+// and a minidump to crash-dumps/.
 //
 // Usage:
 //   debug_init();                          // Install handlers at startup
@@ -9,6 +10,8 @@
 //   debug_set_game_state(gs);              // Called after init_game / do_action
 //
 // Near-zero cost: each breadcrumb is a single global struct write.
+
+#import "Windows";
 
 // ============================================================================
 // Generation Step Enum
@@ -103,6 +106,7 @@ g_debug_context: DebugContext;
 
 // Global flag: run validators after each generation step (off by default)
 g_debug_validate := false;
+
 
 // ============================================================================
 // Breadcrumb Functions
@@ -226,15 +230,73 @@ END,
 }
 
 // ============================================================================
+// Minidump Support
+// ============================================================================
+
+// Write a minidump to crash-dumps/ directory.
+// Can be called with exception_pointers (from SEH handler) or without (on-demand).
+// Uses only Win32 APIs and stack/global data — safe from exception filter context.
+debug_write_minidump :: (exception_pointers: *EXCEPTION_POINTERS = null) -> bool {
+    // Ensure crash-dumps directory exists (ignore error if already exists)
+    CreateDirectoryA("crash-dumps".data, null);
+
+    // Build filename with context: crash-dumps/crash-seed{seed}-depth{depth}.dmp
+    ctx := *g_debug_context;
+    filename := tprint("crash-dumps/crash-seed%-depth%.dmp", ctx.seed, ctx.depth);
+
+    // Open file for writing
+    // GENERIC_WRITE=0x40000000, share=0, CREATE_ALWAYS=2, FILE_ATTRIBUTE_NORMAL=0x80
+    file := CreateFileA(filename.data, 0x40000000, 0, null, 2, 0x80, null);
+    if cast(u64) file == 0xFFFF_FFFF_FFFF_FFFF  return false;  // INVALID_HANDLE_VALUE
+    defer CloseHandle(file);
+
+    // Set up exception info if provided
+    mei: MINIDUMP_EXCEPTION_INFORMATION;
+    mei_ptr: *MINIDUMP_EXCEPTION_INFORMATION = null;
+    if exception_pointers {
+        mei.ThreadId = GetCurrentThreadId();
+        mei.ExceptionPointers = exception_pointers;
+        mei.ClientPointers = .FALSE;
+        mei_ptr = *mei;
+    }
+
+    // Write the minidump with global variable state included
+    result := MiniDumpWriteDump(
+        GetCurrentProcess(),
+        GetCurrentProcessId(),
+        file,
+        .MiniDumpWithDataSegs,
+        mei_ptr,
+        null,
+        null
+    );
+
+    return result == .TRUE;
+}
+
+// SEH handler for unhandled exceptions (access violations, stack overflows, etc.)
+// push_context without arguments creates a default context in #c_call functions.
+debug_seh_handler :: (ep: *EXCEPTION_POINTERS) -> s32 #c_call {
+    push_context {
+        crash_msg := tprint("Unhandled exception 0x%",
+            formatInt(cast(u64) ep.ExceptionRecord.ExceptionCode, base=16, minimum_digits=8));
+        write_crash_report(crash_msg);
+        debug_write_minidump(ep);
+    }
+    return 1;  // EXCEPTION_EXECUTE_HANDLER
+}
+
+// ============================================================================
 // Assertion Handler
 // ============================================================================
 
-// Custom assertion handler that writes crash report before aborting.
+// Custom assertion handler that writes crash report and minidump before aborting.
 debug_assertion_failed :: (
     loc: Source_Code_Location, message: string
 ) -> bool {
     crash_msg := tprint("Assertion failed at %:%: %", loc.fully_pathed_filename, loc.line_number, message);
     write_crash_report(crash_msg);
+    debug_write_minidump();
     // Return false to let the default handler abort
     return false;
 }
@@ -256,6 +318,10 @@ debug_init :: () {
 
     // Install custom assertion handler
     context.assertion_failed = debug_assertion_failed;
+
+    // Install SEH handler for unhandled exceptions and suppress Windows error dialog
+    SetUnhandledExceptionFilter(debug_seh_handler);
+    SetErrorMode(.SEM_FAILCRITICALERRORS | .SEM_NOGPFAULTERRORBOX);
 
     g_debug_context.initialized = true;
 }

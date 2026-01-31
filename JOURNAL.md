@@ -3269,3 +3269,38 @@ Replaced with a "Session Conventions" section referencing the shared file, with 
 - 213/217 tests pass (unchanged — 4 expected mon1-4.irh partial parse failures)
 - `agent-docs/` directory present with expected content
 - CLAUDE.md retains all project-specific guidance
+
+### Follow-up: Critical Development Rules
+
+Reviewed another project's CLAUDE.md for patterns worth adopting. Applied four improvements:
+
+1. **"Critical Development Rules" section** — Consolidated the most important rules (Jai NDA, `.bat` invocation, `git clean` warning, design doc update triggers) into one prominent section near the top. Previously these were scattered across Environment and Session Conventions.
+2. **`.bat` file invocation guidance** — Documented `./build.bat` (not bare `build.bat`) and referenced `agent-docs/windows/terminal_quirks.md`. This was a real issue hit during the session.
+3. **Design docs update rule** — Added "when modifying X, update doc Y" mapping for parser, dungeon, and resource format changes.
+4. **Windows docs in reference table** — Added `agent-docs/windows/terminal_quirks.md` entry.
+
+Also fixed the Build & Test code block to use `./build.bat` consistently (matching the actual invocation needed in Git Bash), and removed the duplicated Jai NDA line from the Environment section since it's now in Critical Development Rules.
+
+## 2026-01-31: Crash diagnosis automation research
+
+Started sub-project investigating Windows crash diagnosis tools for Claude automation. Surveyed available system tooling (dbghelp.dll, WER, Application Verifier, cdb) and identified a three-tier approach: WER LocalDumps for automatic capture, SEH handler + MiniDumpWriteDump for controlled dumps, and cdb.exe for automated analysis. See `docs/research/crash-diagnosis/` for full details.
+
+## 2026-01-31: Minidump support implementation
+
+Implemented Tier 2 from the crash diagnosis plan: `MiniDumpWriteDump` integration in `crash_handler.jai` with three trigger points.
+
+### Changes
+
+- **`src/debug/crash_handler.jai`** — Added `#import "Windows"`, `debug_write_minidump()` utility, `debug_seh_handler()` as unhandled exception filter, modified `debug_init()` to install SEH handler + `SetErrorMode`, modified `debug_assertion_failed()` to write dump alongside text report.
+- **`tools/stress_test.jai`** — Added `debug_write_minidump()` calls before `add_failure()` at all three failure sites (validation, determinism, regen-validate).
+- **`.gitignore`** — Added `crash-dumps/` and `*.dmp`.
+
+### Jai-specific decisions
+
+- **`Context` type unavailable at global scope** — Jai accesses the context via the `context` keyword, not a named type. The plan originally called for saving context to a global for the SEH handler. Fix: use `push_context` without arguments in the `#c_call` handler, which creates a default context with working allocators.
+- **Win32 constants as inline hex** — The Windows module exports functions and enums but may not export `#define`-style constants (`GENERIC_WRITE`, `CREATE_ALWAYS`, `FILE_ATTRIBUTE_NORMAL`). Used inline hex values with comments to avoid potential naming conflicts.
+- **String null-termination** — Jai string literals and `tprint` results are null-terminated in memory, so `.data` can be passed directly to Win32 `*u8` parameters without `to_c_string()`.
+
+### Verification
+
+All 9 build targets compile. Test suite: 213/217 pass (4 pre-existing parser failures, no regressions). See `docs/research/crash-diagnosis/JOURNAL.md` for sub-project updates.

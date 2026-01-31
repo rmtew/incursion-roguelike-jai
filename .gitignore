@@ -15,5 +15,9 @@ __pycache__/
 *.swp
 *~
 
+# Crash dumps
+crash-dumps/
+*.dmp
+
 # Claude Code local settings
 .claude/

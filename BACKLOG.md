@@ -196,5 +196,5 @@ Fully implemented in `src/glyph_cp437.jai`:
 - **Regen crash**: `stress_test.exe --regen` triggers allocator crash in `place_doors_makelev` during free+regenerate cycle. Likely stale array state after `map_free` + `map_init`. The `features` array in GenMap is not freed in `map_free` or reset in `map_init` (memory leak). Discovered by stress test (2026-01-31).
 
 ### Debug Infrastructure
-- Crash handler only triggers on assertion failures, not on allocator crashes or segfaults. Could add Windows structured exception handling for broader coverage.
+- ~~Crash handler only triggers on assertion failures, not on allocator crashes or segfaults.~~ Fixed: SEH handler + minidump support added (2026-01-31). `SetUnhandledExceptionFilter` catches hard crashes, `MiniDumpWriteDump` writes dumps from SEH handler, assertion handler, and stress test failures.
 - Intermediate validation calls in `generate_makelev` print to stdout; could route to a file for less noise.

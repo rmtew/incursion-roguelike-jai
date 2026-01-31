@@ -140,6 +140,7 @@ test_generate :: (config: *StressConfig, results: *StressResults, seed: u64, dep
         if vr.issue_count > 0 {
             results.validation_issues_total += vr.issue_count;
             text := format_validation_result(*vr);
+            debug_write_minidump();
             add_failure(results, seed, depth, "validate", tprint("% issue(s)", vr.issue_count));
             return false;
         }
@@ -155,6 +156,7 @@ test_generate :: (config: *StressConfig, results: *StressResults, seed: u64, dep
         hash2 := hash_state(gs2);
 
         if hash1 != hash2 {
+            debug_write_minidump();
             add_failure(results, seed, depth, "determinism",
                 tprint("hash mismatch: % vs %", format_hash(hash1), format_hash(hash2)));
             return false;
@@ -170,6 +172,7 @@ test_generate :: (config: *StressConfig, results: *StressResults, seed: u64, dep
             vr := validate_map(*gs.dungeon, .COMPLETE);
             if vr.issue_count > 0 {
                 results.validation_issues_total += vr.issue_count;
+                debug_write_minidump();
                 add_failure(results, seed + 1, depth, "regen-validate",
                     tprint("% issue(s) after regen", vr.issue_count));
                 return false;
