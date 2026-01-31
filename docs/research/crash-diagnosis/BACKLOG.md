@@ -16,14 +16,15 @@
 - [ ] ~~**WER LocalDumps registry setup**~~ — deferred; persistent registry change unwanted on this machine. In-process SEH handler covers the same cases without system-level config.
 - [x] **Install cdb.exe** — installed via `winget install Microsoft.WinDbg` (MSIX package)
 - [x] **cdb analysis workflow** — tested end-to-end, `.ecxr; kb; q` works reliably (`!analyze -v` hangs on symbol server)
-- [ ] **agent-docs guide** — `agent-docs/windows/crash_diagnosis.md` covering the general-purpose knowledge (WER, minidumps, cdb, dbghelp APIs, Application Verifier). Must be project-agnostic so other repos using the agent-docs submodule can reference it.
-- [ ] **Runtime verification** — trigger a real crash or assertion and verify dump file is written and analyzable with cdb
+- [x] **cdb automation wrapper scripts** — `analyze-dump.sh` (post-mortem) and `attach-dump.sh` (live-attach). Solves Claude Code approval friction via "allow similar" on a stable command pattern. (2026-01-31)
+- [x] **Runtime verification** — diagnosed regen crash via live-attach. Double-fault: allocator corruption in `place_doors_makelev` → SEH handler crashes on `tprint`. (2026-01-31). Follow-up (2026-01-31): SEH handler fixed, `features` array lifecycle fixed. Regen crash persisted. **RESOLVED** (2026-02-01): Root cause found via `Overwriting_Allocator` in stress test — two bugs: (1) `array_free` doesn't null data pointer, `array_reset` double-frees on reuse; (2) terrain registry stored pointers into growing `[..] RuntimeTerrain`, invalidated by realloc. See `docs/research/memory-allocation/` for full write-up.
+- [x] **SEH handler safety** — Rewritten to be fully allocator-free (2026-01-31). Re-entry guard (`g_seh_in_progress`), fixed-buffer formatting helpers (`seh_append_*`), minidump-first ordering. No `push_context`, `tprint`, or allocator calls in the SEH path. Verified: produces valid crash-report.txt and .dmp on allocator-corruption crash.
+- [x] **agent-docs guide** — `agent-docs/windows/crash_diagnosis.md` covering minidump generation, cdb analysis, handler safety, WER LocalDumps, Application Verifier, and wrapper scripts. Project-agnostic with C and Jai examples. (2026-01-31)
 
 ## Future ideas
 
 - [ ] StackWalk64 / SymFromAddr for in-process symbol resolution in crash-report.txt
-- [ ] Application Verifier integration for stress test runs (heap corruption detection)
+- [ ] ~~Application Verifier integration~~ — not needed, Overwriting_Allocator was sufficient
 - [ ] procdump wrapper for monitoring long stress test runs
 - [ ] Event log query as first-pass triage step
-- [ ] Agent-docs guide for Windows crash diagnosis workflow (shareable across projects)
 - [ ] On-demand dump command in game UI (following original Incursion's [M]inidump pattern)

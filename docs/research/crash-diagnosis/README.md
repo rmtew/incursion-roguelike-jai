@@ -1,6 +1,6 @@
 # Windows Crash Diagnosis Automation
 
-**Status**: Tier 2 implemented — SEH handler + minidump generation from three trigger points. Tier 3 (cdb analysis) tested end-to-end.
+**Status**: Tier 2 + Tier 3 operational — allocator-safe SEH handler + minidump generation + cdb automation scripts for post-mortem and live-attach debugging.
 **Goal**: Produce minidumps as a general diagnostic artifact — both on-demand and on crash — for automated analysis via cdb.
 
 ## Current Infrastructure
@@ -217,6 +217,32 @@ srv*C:\symbols*https://msdl.microsoft.com/download/symbols;<pdb-directory>
 
 Workflow: dump generated (by any trigger) → Claude runs cdb → parses output → correlates with crash-report.txt breadcrumbs → reports root cause with stack trace, faulting instruction, and game context.
 
+### Automation scripts
+
+Two wrapper scripts in `docs/research/crash-diagnosis/test/` solve the Claude Code approval friction — "allow similar" covers all invocations once approved once per script:
+
+**Post-mortem analysis** (`analyze-dump.sh`):
+```bash
+bash docs/research/crash-diagnosis/test/analyze-dump.sh <dump-file> [pdb-directory]
+```
+Resolves cdb dynamically, sets up symbol server with local cache, runs `!analyze -v` + `.ecxr` + `kb`. Best for crash dumps from the SEH handler or assertion handler.
+
+**Live-attach debugging** (`attach-dump.sh`):
+```bash
+bash docs/research/crash-diagnosis/test/attach-dump.sh <exe-name-or-pid>
+```
+Attaches to a running/hung process, dumps all thread stacks (`~*kb`), writes a full minidump to `crash-dumps/`, then detaches (process continues). Best for processes that appear hung or are stuck in a tight loop.
+
+| Mode | Script | When to use | Primary output |
+|------|--------|-------------|----------------|
+| Post-mortem | `analyze-dump.sh` | Crash dumps (.dmp files) | `!analyze -v` bug classification, source line, stack |
+| Live-attach | `attach-dump.sh` | Hung/stuck processes | `~*kb` all thread stacks |
+
+### Known limitations
+
+- **`!analyze -v` on live-attach dumps**: The dump captures the debugger break-in thread as the "exception." Use `~*kb` during attach instead, or switch to thread 0 manually in the dump.
+- ~~**SEH handler double-fault**~~: Fixed. `debug_seh_handler` is now fully allocator-free (re-entry guard, fixed-buffer formatting, Win32-only I/O). Produces valid dump + report even when the crash is allocator corruption.
+
 ## Implementation Notes
 
 ### Jai FFI approach
@@ -227,11 +253,17 @@ Win32 `#define`-style constants (`GENERIC_WRITE`, `CREATE_ALWAYS`, `FILE_ATTRIBU
 
 ### Context handling in #c_call SEH handler
 
-Jai's `Context` is not a named type — it's accessed via the `context` keyword (only available inside function bodies). For the `#c_call` SEH handler, `push_context` without arguments creates a default context with working allocators. This is the documented pattern from `jai-language.md`.
+The SEH handler avoids `push_context` entirely — all formatting is done with `#c_call`-safe helpers that don't need Jai context. Key constraint: `for` loops require context (they dispatch through `for_expansion`), so all helpers use `while` loops. Non-`#c_call` functions like `gen_step_name` can't be called from a `#c_call` function, so a separate `seh_append_gen_step` duplicates the lookup.
 
 ### Signal handler safety
 
-The crash handler uses `tprint` (temp allocator with pre-allocated arena), which is safe in exception context. `MiniDumpWriteDump` is documented as safe to call from an exception filter. The SEH handler calls `reset_temporary_storage()` inside the `push_context` block to ensure clean temp state.
+The SEH handler (`debug_seh_handler`) is fully allocator-free — no `push_context`, `tprint`, or allocator calls. It uses:
+- `g_seh_in_progress` re-entry guard to prevent double-fault
+- `seh_append_*` helpers that format into fixed `[2048] u8` stack buffers using `while` loops (not `for`, which requires Jai context)
+- `seh_write_minidump` and `seh_write_crash_report` that use only Win32 APIs (`CreateFileA`/`WriteFile`/`CloseHandle`)
+- Minidump-first ordering (most valuable artifact written before crash report formatting)
+
+The existing `write_crash_report` and `debug_write_minidump` (which use `tprint`) are unchanged — they're called from the assertion handler and stress test where the allocator is intact. `MiniDumpWriteDump` is documented as safe to call from an exception filter.
 
 ### Dump file naming
 
