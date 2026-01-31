@@ -176,6 +176,21 @@ Ideas for enabling Claude Code to drive and test the GUI:
     - Hook input at application level
     - Combined read/write access for full control
 
+## Memory Allocation
+
+Research sub-project: `docs/research/memory-allocation/`
+
+- Full codebase audit completed (~45 array declarations, ~90 array_add calls, ~12 New calls, ~15 copy_string — all struct lifecycles mapped)
+- **Fixed:** GenState leaks (terrain registry, dungeon weights), stair arrays, parser/token arrays, terrain registry string keys, dead code leak
+- **Fixed:** Regen crash — two root causes found via Overwriting_Allocator:
+  1. Double-free: `array_free` doesn't null data pointer, `array_reset` frees again (map.jai)
+  2. Use-after-free: terrain registry stored pointers into growing dynamic array (terrain_registry.jai)
+- 100/100 seeds pass `--regen --debug-alloc` (overwriting allocator)
+- All allocation still goes through default heap (rpmalloc) — no arenas or pools
+- Dungeon generation creates ~15 temporary heap arrays per pass that should use `temp` allocator
+- Per-level data (GenMap arrays, BSP nodes, weights) should use `Pool` for bulk cleanup
+- See sub-project backlog for remaining phases (temp allocator, Pool, MEMORY_DEBUGGER)
+
 ## Technical Debt
 
 ### Glyph Rendering — COMPLETE (2026-01-28)
@@ -193,8 +208,11 @@ Fully implemented in `src/glyph_cp437.jai`:
 - BSP tree nodes are individually allocated (could use pool)
 - Room array uses dynamic allocation (could be fixed size for MVP)
 - **Room connectivity**: `validate_room_connectivity` reports rooms unreachable from room 0 in most seeds. `fixup_tunneling` doesn't fully connect all regions. Discovered by stress test validator (2026-01-31).
-- **Regen crash**: `stress_test.exe --regen` triggers allocator crash in `place_doors_makelev` during free+regenerate cycle. Likely stale array state after `map_free` + `map_init`. The `features` array in GenMap is not freed in `map_free` or reset in `map_init` (memory leak). Discovered by stress test (2026-01-31).
+- ~~**Regen crash**~~: **FIXED** (2026-02-01). Two root causes found via Overwriting_Allocator:
+  1. **Double-free in map_free→map_init**: `array_free` does not zero the data pointer; subsequent `array_reset` (in `map_init`) frees the dangling pointer again. Fix: null data pointers after `array_free` in `map_free`.
+  2. **Use-after-free in terrain registry**: `terrain_registry_add` stored `*RuntimeTerrain` pointers into a dynamic array; when the array grew, those pointers became dangling. Fix: separated `terrain_registry_add` (array-only) from `terrain_registry_build_index` (builds hash table after array is complete).
+  - 100/100 seeds pass with `--regen --debug-alloc` (overwriting allocator).
 
 ### Debug Infrastructure
-- ~~Crash handler only triggers on assertion failures, not on allocator crashes or segfaults.~~ Fixed: SEH handler + minidump support added (2026-01-31). `SetUnhandledExceptionFilter` catches hard crashes, `MiniDumpWriteDump` writes dumps from SEH handler, assertion handler, and stress test failures.
+- ~~Crash handler only triggers on assertion failures, not on allocator crashes or segfaults.~~ Fixed: SEH handler + minidump support added (2026-01-31). SEH handler made allocator-safe (2026-01-31): re-entry guard, fixed-buffer formatting, minidump-first ordering. No `push_context`/`tprint`/allocator calls in SEH path.
 - Intermediate validation calls in `generate_makelev` print to stdout; could route to a file for less noise.

@@ -41,6 +41,7 @@ Follow [agent-docs/workflows/session_conventions.md](agent-docs/workflows/sessio
 | `docs/research/correctness-research/` | Verifying port matches original Incursion behavior |
 | `docs/research/specs/` | Specifications derived from correctness research |
 | `docs/research/parser-research/` | Lexer/parser implementation notes |
+| `docs/research/memory-allocation/` | Memory allocation audit and allocator strategy |
 | `docs/research/scripting/` | Scripting system research |
 
 ## Build & Test
