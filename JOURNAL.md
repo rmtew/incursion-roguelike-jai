@@ -3415,3 +3415,30 @@ Catalogued best external sources for Jai research in `docs/research/jai-referenc
 - `src/dungeon/map.jai` — added `enter_x`, `enter_y` fields to GenMap
 - `src/dungeon/makelev.jai` — added `TILE_START` constant; TILE_START handling in both tile-writing functions
 - `src/game/loop.jai` — `dungeon_name` param on `init_game`; entry point preference in `game_init_player_position`
+
+## 2026-02-01: Fix Room Connectivity in fixup_tunneling
+
+### Problem
+
+`fixup_tunneling` carved tunnels between disconnected regions but then called `flood_connect(gs, m, sx, sy)` on a source cell already marked `.connected = true`. Since `flood_connect` early-returns when the start cell is already connected (line 510), the newly carved tunnel tiles and destination region were never flood-marked as connected within the trial. The port compensated with a full clear + re-flood at trial end, but this meant only 1 effective connection assessment per trial instead of 3, and complex maps could fail to fully connect within the 26-trial limit.
+
+The original C++ (MakeLev.cpp:1856) explicitly clears `Connected` on the source tile before re-flooding.
+
+Additionally, the validator's `validate_room_connectivity` used 4-directional flood fill while the game's `flood_connect` uses 8-directional, causing false-positive "unreachable room" reports for rooms connected via diagonal adjacency.
+
+### Changes
+
+1. **Clear connected flag before flood** (makelev.jai:4643-4644) — After `carve_tunnel`, clear `source_cell.connected = false` before calling `flood_connect`, matching the original C++ behavior. This lets the flood traverse the new tunnel and mark the destination region as connected within the same trial.
+
+2. **Fix validator flood direction** (validator.jai:228-231) — Changed `validate_room_connectivity` from 4-directional to 8-directional flood fill to match the game's connectivity model.
+
+### Verification
+
+- `./build.bat test` — compiles
+- `./src/tests/test.exe` — 213/217 pass (4 pre-existing parser failures)
+- `./build.bat game` — compiles
+
+### Files Changed
+
+- `src/dungeon/makelev.jai` — 2 lines added (clear connected before flood)
+- `src/debug/validator.jai` — flood fill changed from 4-dir to 8-dir

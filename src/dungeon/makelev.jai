@@ -4640,22 +4640,13 @@ fixup_tunneling :: (m: *GenMap, gs: *GenState) {
                 cr = select_corridor(*gs.selection, *gs.dungeon_weights);
             }
             carve_tunnel(m, gs, sx, sy, bp.dx, bp.dy, TT_DIRECT | TT_WANDER, corridor_region=cr);
+            source_cell := get_cell(gs, m, sx, sy);
+            if source_cell != null  source_cell.connected = false;
             flood_connect(gs, m, sx, sy);
             tunneled = true;
         }
 
         if !tunneled break;
-
-        // Full re-flood for next trial iteration
-        clear_connected(gs, m);
-        for y: 1..m.height-2 {
-            for x: 1..m.width-2 {
-                if !is_solid_for_flood(m, x, y) {
-                    flood_connect(gs, m, x, y);
-                    break y;
-                }
-            }
-        }
     }
 }
 
@@ -4686,6 +4677,7 @@ find_room_at :: (m: *GenMap, x: s32, y: s32) -> s32 {
 // If position is in solid rock, carve a 3x3 area around it
 place_up_stairs :: (m: *GenMap, gs: *GenState, above_stairs: [] StairPos) -> stairs_placed: [..] StairPos {
     stairs_placed: [..] StairPos;
+    stairs_placed.allocator = temp;
 
     for stair: above_stairs {
         x := stair.x;
@@ -5181,7 +5173,6 @@ generate_makelev :: (m: *GenMap, seed: u32, above_down_stairs: [] StairPos = .[]
 
     // Place up-stairs at positions from level above
     up_stairs := place_up_stairs(m, *gs, above_down_stairs);
-    defer array_free(up_stairs);
 
     // Place down-stairs (MIN_STAIRS to MAX_STAIRS)
     down_stairs := place_down_stairs(m, *gs, up_stairs, depth, max_depth);

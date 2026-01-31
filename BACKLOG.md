@@ -186,10 +186,9 @@ Research sub-project: `docs/research/memory-allocation/`
   1. Double-free: `array_free` doesn't null data pointer, `array_reset` frees again (map.jai)
   2. Use-after-free: terrain registry stored pointers into growing dynamic array (terrain_registry.jai)
 - 100/100 seeds pass `--regen --debug-alloc` (overwriting allocator)
-- All allocation still goes through default heap (rpmalloc) — no arenas or pools
-- Dungeon generation creates ~15 temporary heap arrays per pass that should use `temp` allocator
+- **Phase 2 complete**: All 17 function-scoped arrays in `makelev.jai` use `temp` allocator (zero heap churn, zero cleanup needed). Only `down_stairs` stays heap (return value, caller-owned).
 - Per-level data (GenMap arrays, BSP nodes, weights) should use `Pool` for bulk cleanup
-- See sub-project backlog for remaining phases (temp allocator, Pool, MEMORY_DEBUGGER)
+- See sub-project backlog for remaining phases (Pool, MEMORY_DEBUGGER)
 
 ## Technical Debt
 
@@ -207,7 +206,7 @@ Fully implemented in `src/glyph_cp437.jai`:
 ### Dungeon Generator
 - BSP tree nodes are individually allocated (could use pool)
 - Room array uses dynamic allocation (could be fixed size for MVP)
-- **Room connectivity**: `validate_room_connectivity` reports rooms unreachable from room 0 in most seeds. `fixup_tunneling` doesn't fully connect all regions. Discovered by stress test validator (2026-01-31).
+- **Room connectivity**: ~~`validate_room_connectivity` reports rooms unreachable from room 0 in most seeds.~~ **FIXED** (2026-02-01). Root cause: `fixup_tunneling` called `flood_connect` on a source cell already marked connected, so the flood returned immediately without marking the newly carved tunnel or destination region. Fix: clear `connected` flag on source cell before re-flooding (matching original C++ behavior). Also fixed validator using 4-directional flood vs game's 8-directional flood, which caused false-positive unreachable reports.
 - ~~**Regen crash**~~: **FIXED** (2026-02-01). Two root causes found via Overwriting_Allocator:
   1. **Double-free in map_free→map_init**: `array_free` does not zero the data pointer; subsequent `array_reset` (in `map_init`) frees the dangling pointer again. Fix: null data pointers after `array_free` in `map_free`.
   2. **Use-after-free in terrain registry**: `terrain_registry_add` stored `*RuntimeTerrain` pointers into a dynamic array; when the array grew, those pointers became dangling. Fix: separated `terrain_registry_add` (array-only) from `terrain_registry_build_index` (builds hash table after array is complete).

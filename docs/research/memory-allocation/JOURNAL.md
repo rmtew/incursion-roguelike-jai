@@ -131,6 +131,24 @@ Fix: Added key iteration and free in `terrain_registry_free` before `deinit`.
 - `src/resource/bake.jai` — defer parser_free + array_free(tokens)
 - `tools/stress_test.jai` — Default_Allocator import, memory diagnostics
 
+## 2026-02-01: Phase 2 Complete — All Function-Scoped Arrays Use Temp
+
+### Summary
+
+Converted the last remaining heap-allocated function-scoped array (`up_stairs` via `place_up_stairs`) to use `.allocator = temp`. All 17 function-scoped arrays in `makelev.jai` now use the temp allocator.
+
+`down_stairs` intentionally remains heap-allocated — it's the return value of `generate_makelev` and ownership transfers to the caller (`generate_dungeon_original`).
+
+### Change
+
+- `place_up_stairs`: added `stairs_placed.allocator = temp`
+- `generate_makelev`: removed `defer array_free(up_stairs)`
+
+### Verification
+
+- `./build.bat test` compiles, `./src/tests/test.exe` passes (213/217, same baseline)
+- `./build.bat game` compiles
+
 ## 2026-02-01: Regen Crash Root Cause Found and Fixed
 
 ### Approach

@@ -15,15 +15,19 @@
 ## Phase 2: Temp Allocator for Function-Scoped Arrays
 
 Candidate sites in `makelev.jai`:
-- [ ] Flood fill stacks (`stack: [..] Point`)
-- [ ] Connected/unconnected edge lists
-- [ ] Cellular automata grids (`grid`, `next_grid`)
-- [ ] Pathfinding stacks and visited arrays
-- [ ] Life game grids
-- [ ] Corridor path arrays
-- [ ] Panel edge arrays
-- [ ] Valid vault index arrays
-- [ ] Removal tracking arrays
+- [x] Flood fill stacks (`stack: [..] Point`)
+- [x] Connected/unconnected edge lists
+- [x] Cellular automata grids (`grid`, `next_grid`)
+- [x] Pathfinding stacks and visited arrays
+- [x] Life game grids
+- [x] Corridor path arrays
+- [x] Panel edge arrays
+- [x] Valid vault index arrays
+- [x] Removal tracking arrays
+- [x] Maze stacks, best pairs, all_stairs, vault lists
+- [x] `up_stairs` in `generate_makelev` (via `place_up_stairs`)
+
+**Note:** `down_stairs` intentionally stays heap-allocated — it's the return value of `generate_makelev` and ownership transfers to the caller.
 
 Each change: set `.allocator = temp`, remove corresponding `array_free`/`defer`.
 

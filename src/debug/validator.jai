@@ -224,11 +224,11 @@ validate_room_connectivity :: (m: *GenMap, result: *ValidationResult) {
         sx := stack_x[stack_top];
         sy := stack_y[stack_top];
 
-        // Check 4 cardinal neighbors
-        neighbors_x :: s32.[0, 0, -1, 1];
-        neighbors_y :: s32.[-1, 1, 0, 0];
+        // Check 8 neighbors (matches flood_connect's 8-directional fill)
+        neighbors_x :: s32.[0, 0, -1, 1, -1, -1, 1, 1];
+        neighbors_y :: s32.[-1, 1, 0, 0, -1, 1, -1, 1];
 
-        for i: 0..3 {
+        for i: 0..7 {
             nx := sx + neighbors_x[i];
             ny := sy + neighbors_y[i];
 
