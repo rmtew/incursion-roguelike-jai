@@ -3432,6 +3432,18 @@ Additionally, the validator's `validate_room_connectivity` used 4-directional fl
 
 2. **Fix validator flood direction** (validator.jai:228-231) — Changed `validate_room_connectivity` from 4-directional to 8-directional flood fill to match the game's connectivity model.
 
+### Stress Test Investigation
+
+Ran 1000-seed stress test with `--validate` to verify fix. Result: 32/1000 pass (968 fail room_connectivity). Traced `fixup_tunneling` for seed 1:
+
+- `flood_connect` returns 1 after each tunnel — source cell's neighbors are all already `connected=true`, and the newly carved tunnel tiles aren't adjacent to the source in a reachable way
+- Same pairs retry every trial — connected/unconnected state doesn't change
+- Root cause: `carve_tunnel` fails to bridge source to destination. Edge clamping at `x <= 2` forces tunnels east instead of south, force-turns redirect away from target. Tunnels carve tiles going the wrong direction.
+
+The connected-flag fix and validator 8-dir fix are genuine correctness improvements (matching original C++), but the dominant failure is `carve_tunnel` reliability — a pre-existing deeper issue tracked separately in BACKLOG.
+
+Also aligned validator traversal to match `is_solid_for_flood` exactly (`!terrain_solid || door`) instead of the ad-hoc `terrain_passable || terrain_is_water || door` check, eliminating false positives from CHASM/LAVA tiles.
+
 ### Verification
 
 - `./build.bat test` — compiles
@@ -3440,5 +3452,5 @@ Additionally, the validator's `validate_room_connectivity` used 4-directional fl
 
 ### Files Changed
 
-- `src/dungeon/makelev.jai` — 2 lines added (clear connected before flood)
-- `src/debug/validator.jai` — flood fill changed from 4-dir to 8-dir
+- `src/dungeon/makelev.jai` — clear connected before flood, restore re-flood between trials (needed when tunnels don't bridge)
+- `src/debug/validator.jai` — flood fill: 4-dir→8-dir, traversal aligned with `is_solid_for_flood`

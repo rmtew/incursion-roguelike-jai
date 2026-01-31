@@ -4647,6 +4647,21 @@ fixup_tunneling :: (m: *GenMap, gs: *GenState) {
         }
 
         if !tunneled break;
+
+        // Full re-flood for next trial iteration
+        // Required because carve_tunnel may not bridge source to destination
+        // (e.g. edge clamping redirects tunnel), so the per-connection flood
+        // can't always traverse the new tunnel. Re-flooding ensures newly
+        // carved tiles are properly marked connected for the next trial.
+        clear_connected(gs, m);
+        for y: 1..m.height-2 {
+            for x: 1..m.width-2 {
+                if !is_solid_for_flood(m, x, y) {
+                    flood_connect(gs, m, x, y);
+                    break y;
+                }
+            }
+        }
     }
 }
 

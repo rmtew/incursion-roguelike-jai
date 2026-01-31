@@ -182,7 +182,7 @@ validate_room_connectivity :: (m: *GenMap, result: *ValidationResult) {
     cx, cy := rect_center(r0);
     if map_in_bounds(m, cx, cy) {
         t := map_get(m, cx, cy);
-        if terrain_passable(t) || terrain_is_water(t) || t == .DOOR_CLOSED || t == .DOOR_SECRET {
+        if !terrain_solid(t) || t == .DOOR_CLOSED || t == .DOOR_SECRET {
             start_x = cx;
             start_y = cy;
         }
@@ -193,7 +193,7 @@ validate_room_connectivity :: (m: *GenMap, result: *ValidationResult) {
         for y: r0.y1..r0.y2 {
             for x: r0.x1..r0.x2 {
                 t := map_get(m, x, y);
-                if terrain_passable(t) || terrain_is_water(t) {
+                if !terrain_solid(t) {
                     start_x = x;
                     start_y = y;
                     break;
@@ -237,8 +237,8 @@ validate_room_connectivity :: (m: *GenMap, result: *ValidationResult) {
             if visited[idx] continue;
 
             t := map_get(m, nx, ny);
-            // Can traverse through: passable terrain, water, doors (even closed/secret)
-            if terrain_passable(t) || terrain_is_water(t) || t == .DOOR_CLOSED || t == .DOOR_SECRET {
+            // Match is_solid_for_flood: traverse anything that's not terrain_solid, plus doors
+            if !terrain_solid(t) || t == .DOOR_CLOSED || t == .DOOR_SECRET {
                 visited[idx] = true;
                 if stack_top < 4096 {
                     stack_x[stack_top] = nx;
