@@ -206,7 +206,13 @@ Fully implemented in `src/glyph_cp437.jai`:
 ### Dungeon Generator
 - BSP tree nodes are individually allocated (could use pool)
 - Room array uses dynamic allocation (could be fixed size for MVP)
-- **Room connectivity**: `fixup_tunneling` doesn't fully connect all regions (968/1000 seeds fail validator). Fixed two sub-issues: (1) `flood_connect` called on already-connected source cell — added connected-flag clear matching original C++; (2) validator used 4-directional flood vs game's 8-directional. **Root cause remaining**: `carve_tunnel` often fails to bridge source to destination — edge clamping near map boundaries redirects tunnels away from targets, force-turns and early termination prevent reaching destinations. Tunnels carve tiles in the wrong direction, so even with correct flooding, regions stay disconnected. Needs `carve_tunnel` reliability investigation.
+- **Room connectivity**: 966/1000 seeds pass (34 still fail). Fixed three issues:
+  1. `flood_connect` called on already-connected source cell — added connected-flag clear matching original C++
+  2. Validator used 4-directional flood vs game's 8-directional — fixed to 8-dir with `!terrain_solid || door` traversal
+  3. **`carve_tunnel` write phase only carved ROCK** — original checks `At(x,y).Solid` which includes WALL. Tunnels couldn't break through room walls to create connections. Fixed to check `cell.solid`.
+  4. **`find_room_at` collapsed all corridor islands into region -1** — replaced with flood-fill island labeling so each disconnected island gets its own best-pair tunnel attempt.
+  - Remaining 34/1000 failures are edge clamping cases near map boundaries where tunnels can't reach destinations.
+- **Items placed on PILLAR terrain**: ~162/1000 seeds have items on PILLAR tiles (castle-style rooms). Population system doesn't skip pillars during item placement. Separate from connectivity.
 - ~~**Regen crash**~~: **FIXED** (2026-02-01). Two root causes found via Overwriting_Allocator:
   1. **Double-free in map_free→map_init**: `array_free` does not zero the data pointer; subsequent `array_reset` (in `map_init`) frees the dangling pointer again. Fix: null data pointers after `array_free` in `map_free`.
   2. **Use-after-free in terrain registry**: `terrain_registry_add` stored `*RuntimeTerrain` pointers into a dynamic array; when the array grew, those pointers became dangling. Fix: separated `terrain_registry_add` (array-only) from `terrain_registry_build_index` (builds hash table after array is complete).

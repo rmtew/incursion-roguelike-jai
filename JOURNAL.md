@@ -3454,3 +3454,32 @@ Also aligned validator traversal to match `is_solid_for_flood` exactly (`!terrai
 
 - `src/dungeon/makelev.jai` — clear connected before flood, restore re-flood between trials (needed when tunnels don't bridge)
 - `src/debug/validator.jai` — flood fill: 4-dir→8-dir, traversal aligned with `is_solid_for_flood`
+
+## 2026-02-01: Fix carve_tunnel Reliability — Write Phase + Island Labeling
+
+### Problem
+
+Stress test showed 968/1000 seeds failing room_connectivity. Two root causes in `fixup_tunneling`:
+
+1. **Write phase only carved ROCK** — `carve_tunnel` write phase checked `map_get == .ROCK` but the original checks `At(x,y).Solid`, which includes WALL terrain. Tunnels couldn't break through room walls to create connections, so even when the tunnel path reached a room, no opening was created.
+
+2. **`find_room_at` collapsed corridor islands** — used room bounding-box check returning -1 for all corridor tiles. In best-pairs grouping, all disconnected corridor islands were lumped into region -1, so only one tunnel per trial was attempted for all corridor disconnections. The original uses per-tile `RegionAt()` which gives each island a unique region ID.
+
+### Changes
+
+1. **Fix write phase** (makelev.jai:3041-3042) — Changed corridor floor write condition from `if map_get(m, p.x, p.y) == .ROCK` to `if pcell != null && pcell.solid`, matching the original's `At(x,y).Solid` check. Tunnels now carve through WALL tiles (room walls), creating openings that connect corridors to rooms.
+
+2. **Add flood-fill island labeling** (makelev.jai:4569-4610) — In `fixup_tunneling`, replaced `find_room_at(m, u.x, u.y)` with a flood-fill that labels each disconnected island of unconnected tiles with a unique integer ID. Uses 8-directional fill matching `flood_connect`. Each island gets its own best-pair, allowing up to 3 islands to be connected per trial.
+
+### Results
+
+- **Before**: 32/1000 pass (968 fail room_connectivity)
+- **After**: 804/1000 pass (196 fail total)
+  - 34 seeds still fail room_connectivity (edge clamping cases near map boundaries)
+  - ~162 seeds fail due to items placed on PILLAR terrain (separate population system bug)
+- Room connectivity pass rate: 3.2% → 96.6%
+
+### Files Changed
+
+- `src/dungeon/makelev.jai` — write phase: `cell.solid` instead of `== .ROCK`; island labeling flood fill in `fixup_tunneling`
+- `BACKLOG.md` — updated connectivity status, added PILLAR placement issue

@@ -3039,20 +3039,18 @@ carve_tunnel :: (m: *GenMap, gs: *GenState, sx: s32, sy: s32, dx: s32, dy: s32, 
     }
 
     for p: path {
-        if map_get(m, p.x, p.y) == .ROCK {
+        // Carve through any solid tile (ROCK, WALL, etc.)
+        // Source: MakeLev.cpp:3577 — if (At(x,y).Solid) { WriteAt(...) }
+        // Original carves through all solid tiles, not just ROCK. This is
+        // critical for tunnels to break through room walls and create connections.
+        pcell := get_cell(gs, m, p.x, p.y);
+        if pcell != null && pcell.solid {
             if floor_terrain != null {
                 write_at_with_terrain(m, gs, p.x, p.y, corridor, floor_terrain, PRIO_ROOM_FLOOR);
             } else {
                 map_set(m, p.x, p.y, corridor);
-                // Update cell info
-                // Source: MakeLev.cpp:3581 — const int f_prio = PRIO_ROOM_FLOOR
-                // Corridor floors use PRIO_ROOM_FLOOR (70) so they can't be
-                // overwritten by room walls (40), preserving connectivity
-                cell := get_cell(gs, m, p.x, p.y);
-                if cell != null {
-                    cell.priority = PRIO_ROOM_FLOOR;
-                    cell.solid = false;
-                }
+                pcell.priority = PRIO_ROOM_FLOOR;
+                pcell.solid = false;
             }
 
             // Add walls around corridor
@@ -4567,6 +4565,52 @@ fixup_tunneling :: (m: *GenMap, gs: *GenState) {
             break;
         }
 
+        // Label disconnected islands via flood fill
+        // The original uses per-tile RegionAt() to group disconnected tiles.
+        // find_room_at returns -1 for corridors, collapsing all corridor islands
+        // into one group and limiting fixup to one tunnel attempt per trial.
+        // Flood-fill labeling gives each disconnected island a unique ID.
+        island_ids: [MAP_WIDTH * MAP_HEIGHT] s32;  // 0 = unlabeled
+        next_island: s32 = 1;
+        island_stack: [..] Point;
+        island_stack.allocator = temp;
+
+        for iy: 1..m.height-2 {
+            for ix: 1..m.width-2 {
+                iidx := iy * m.width + ix;
+                if island_ids[iidx] != 0 continue;
+                if is_solid_for_flood(m, ix, iy) continue;
+                icell := get_cell(gs, m, ix, iy);
+                if icell == null || icell.connected continue;
+
+                // New unconnected island — 8-directional flood fill
+                island_stack.count = 0;
+                array_add(*island_stack, Point.{ix, iy});
+                island_ids[iidx] = next_island;
+
+                while island_stack.count > 0 {
+                    ipos := pop(*island_stack);
+                    for idy: -1..1 {
+                        for idx: -1..1 {
+                            if idx == 0 && idy == 0 continue;
+                            inx := ipos.x + cast(s32) idx;
+                            iny := ipos.y + cast(s32) idy;
+                            if inx < 0 || inx >= m.width || iny < 0 || iny >= m.height continue;
+                            inidx := iny * m.width + inx;
+                            if island_ids[inidx] != 0 continue;
+                            if is_solid_for_flood(m, inx, iny) continue;
+                            inc := get_cell(gs, m, inx, iny);
+                            if inc == null || inc.connected continue;
+                            island_ids[inidx] = next_island;
+                            array_add(*island_stack, Point.{inx, iny});
+                        }
+                    }
+                }
+
+                next_island += 1;
+            }
+        }
+
         // Build best-pair-per-region array
         // Source: MakeLev.cpp:1811-1842
         best_pairs: [..] BestPair;
@@ -4574,7 +4618,7 @@ fixup_tunneling :: (m: *GenMap, gs: *GenState) {
 
         // Identify distinct regions among unconnected edges
         for u: unconnected_edges {
-            region_id := find_room_at(m, u.x, u.y);
+            region_id := island_ids[u.y * m.width + u.x];
 
             // Check if we already track this region
             found := false;
@@ -4596,7 +4640,7 @@ fixup_tunneling :: (m: *GenMap, gs: *GenState) {
         // Find closest connected<->unconnected pair per region
         for c: connected_edges {
             for u: unconnected_edges {
-                region_id := find_room_at(m, u.x, u.y);
+                region_id := island_ids[u.y * m.width + u.x];
                 d := dist(c.x, c.y, u.x, u.y);
 
                 for *bp: best_pairs {
